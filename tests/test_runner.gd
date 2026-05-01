@@ -4,6 +4,7 @@ const AssetsScript := preload("res://src/autoloads/krakout_assets.gd")
 const LevelsScript := preload("res://src/autoloads/krakout_levels.gd")
 const LevelDataScript := preload("res://src/data/krakout_level_data.gd")
 const LevelGridRendererScript := preload("res://src/render/level_grid_renderer.gd")
+const BrickAtlasMappingScript := preload("res://src/render/brick_atlas_mapping.gd")
 const GameplaySheetCatalogScript := preload("res://src/playfield/krakout_gameplay_sheet_catalog.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
@@ -44,13 +45,18 @@ func _run() -> void:
 	var level = _load_level_from_path(_assets.level_path("Default", 1))
 	_assert(level != null, "Default level 1 loads")
 	if level != null:
-		_assert(level.columns == LevelDataScript.COLUMNS, "Default level has 31 columns")
-		_assert(level.rows_count == LevelDataScript.ROWS, "Default level has 10 rows")
+		_assert(level.columns == LevelDataScript.COLUMNS, "Default level has 20 columns")
+		_assert(level.rows_count == LevelDataScript.ROWS, "Default level has 13 rows")
 		_assert(level.tile_at(0, 0) == 19, "Default level first raw tile is preserved")
+		_assert(level.tile_at(19, 0) == 0, "Default level first row preserves empty board tail cells")
+		_assert(level.level_tail_bytes.size() == LevelDataScript.LEVEL_TAIL_SIZE, "Default level preserves 50 tail bytes")
+		_assert(level.level_tail_bytes[0] == 0, "Default level tail byte 0 is preserved")
+		_assert(level.level_tail_bytes[14] == 5, "Default level tail non-zero data is preserved")
 		_assert(level.tile_semantics == "unmapped", "Default level tile semantics stay unmapped")
 		_assert(level.populated_tile_count() > 0, "Default level contains non-empty raw tiles")
 
 	_validate_playfield_spec()
+	_validate_brick_atlas_mapping()
 	_validate_level_grid_renderer_defaults()
 	_validate_gameplay_sheet_catalog()
 	_validate_manifest_paths()
@@ -118,11 +124,24 @@ func _validate_playfield_spec() -> void:
 	_assert(PlayfieldSpecScript.VIEWPORT_SIZE == Vector2i(640, 480), "playfield viewport preserves original size")
 	_assert(PlayfieldSpecScript.GRID_COLUMNS == LevelDataScript.COLUMNS, "playfield grid column count matches levels")
 	_assert(PlayfieldSpecScript.GRID_ROWS == LevelDataScript.ROWS, "playfield grid row count matches levels")
-	_assert(PlayfieldSpecScript.GRID_ORIGIN == Vector2(10, 82), "playfield grid origin is centralized")
-	_assert(PlayfieldSpecScript.BRICK_SIZE == Vector2(20, 10), "playfield brick size is centralized")
-	_assert(PlayfieldSpecScript.GRID_SIZE == Vector2(620, 100), "playfield grid size derives from 31x10 bricks")
-	_assert(PlayfieldSpecScript.grid_rect() == Rect2(Vector2(10, 82), Vector2(620, 100)), "playfield grid rect is stable")
-	_assert(PlayfieldSpecScript.brick_rect(30, 9) == Rect2(Vector2(610, 172), Vector2(20, 10)), "playfield brick rect maps final cell")
+	_assert(PlayfieldSpecScript.GRID_ORIGIN == Vector2(47, 63), "playfield grid origin matches IDA draw loop")
+	_assert(PlayfieldSpecScript.BRICK_SIZE == Vector2(20, 30), "playfield brick size matches Bricks sheet cells")
+	_assert(PlayfieldSpecScript.GRID_SIZE == Vector2(400, 390), "playfield grid size derives from 20x13 bricks")
+	_assert(PlayfieldSpecScript.grid_rect() == Rect2(Vector2(47, 63), Vector2(400, 390)), "playfield grid rect is stable")
+	_assert(PlayfieldSpecScript.brick_rect(19, 12) == Rect2(Vector2(427, 423), Vector2(20, 30)), "playfield brick rect maps final cell")
+
+
+func _validate_brick_atlas_mapping() -> void:
+	var mapping: BrickAtlasMapping = BrickAtlasMappingScript.new()
+	_assert(mapping.is_empty_tile(0), "brick mapping skips empty tile")
+	_assert(mapping.is_empty_tile(170), "brick mapping skips high non-visual tile")
+	_assert(not mapping.is_empty_tile(161), "brick mapping keeps highest visual tile")
+	_assert(mapping.source_rect_for_tile(1) == Rect2(Vector2(0, 0), Vector2(20, 30)), "brick tile 1 maps to first row")
+	_assert(mapping.source_rect_for_tile(19) == Rect2(Vector2(0, 540), Vector2(20, 30)), "brick tile 19 maps by tile id row")
+	_assert(mapping.source_rect_for_tile(68, 2) == Rect2(Vector2(40, 2010), Vector2(20, 30)), "animated tile 68 uses animation frame column")
+	_assert(mapping.source_rect_for_tile(161, 3) == Rect2(Vector2(60, 4800), Vector2(20, 30)), "highest animated tile stays within Bricks sheet")
+	_assert(mapping.visual_frame_for_tile(20, 3) == 0, "static brick ignores animation frame")
+	_assert(mapping.visual_frame_for_tile(68, 3) == 3, "animated brick accepts animation frame")
 
 
 func _validate_level_grid_renderer_defaults() -> void:
@@ -181,7 +200,7 @@ func _validate_gameplay_sheet_catalog() -> void:
 
 	_assert(GameplaySheetCatalogScript.has_verified_frame_layout("Bricks"), "brick sheet has verified frame layout")
 	_assert(
-		GameplaySheetCatalogScript.verified_frame_rect_for("Bricks", 5) == Rect2(Vector2(0, 10), Vector2(20, 10)),
+		GameplaySheetCatalogScript.verified_frame_rect_for("Bricks", 5) == Rect2(Vector2(0, 30), Vector2(20, 30)),
 		"brick sheet verified frame rect advances by atlas columns"
 	)
 	_assert(

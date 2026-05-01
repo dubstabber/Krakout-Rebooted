@@ -31,7 +31,7 @@ const SHEETS := {
 		"texture_name": "Bricks",
 		"expected_size": Vector2i(100, 4830),
 		"source": "IDA sub_40D650",
-		"verified_frame_size": Vector2i(20, 10),
+		"verified_frame_size": Vector2i(20, 30),
 		"verified_columns": 5,
 	},
 	"Bullets": {

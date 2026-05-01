@@ -4,12 +4,29 @@ class_name PlayfieldRenderer
 const LevelGridRendererScript := preload("res://src/render/level_grid_renderer.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 
+const BACKGROUND_TILE_SIZE := Vector2(50, 50)
+const WALL_REPEAT_STEP := 45
+const WALL_TOP_SOURCE := Rect2(Vector2(0, 45), Vector2(45, 25))
+const WALL_SIDE_SOURCE := Rect2(Vector2(11, 0), Vector2(25, 45))
+const WALL_TOP_LEFT_SOURCE := Rect2(Vector2(45, 0), Vector2(45, 45))
+const WALL_TOP_RIGHT_SOURCE := Rect2(Vector2(90, 0), Vector2(45, 27))
+const WALL_BOTTOM_LEFT_SOURCE := Rect2(Vector2(90, 27), Vector2(45, 45))
+const WALL_BOTTOM_RIGHT_SOURCE := Rect2(Vector2(45, 45), Vector2(45, 27))
+const WALL_LEFT_X := 2
+const WALL_RIGHT_X := 613
+const WALL_TOP_Y := 36
+const WALL_BOTTOM_Y := 453
+const WALL_SIDE_START_Y := 81
+
 @export var default_episode := PlayfieldSpecScript.DEFAULT_EPISODE
 @export var default_level_number := PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER
-@export var background_texture_name := "Background"
+@export var background_texture_name := "Backgr"
+@export var walls_texture_name := "Walls"
 
 var level_data: KrakoutLevelData
 var grid_renderer: LevelGridRenderer
+var background_texture: Texture2D
+var walls_texture: Texture2D
 
 
 func _ready() -> void:
@@ -31,14 +48,8 @@ func _build_scene() -> void:
 	if grid_renderer != null:
 		return
 
-	var background_texture := _load_asset_texture(background_texture_name)
-	if background_texture != null:
-		var background := Sprite2D.new()
-		background.name = "Background"
-		background.centered = false
-		background.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		background.texture = background_texture
-		add_child(background)
+	background_texture = _load_asset_texture(background_texture_name)
+	walls_texture = _load_asset_texture(walls_texture_name)
 
 	grid_renderer = LevelGridRendererScript.new()
 	grid_renderer.name = "LevelGridRenderer"
@@ -47,6 +58,44 @@ func _build_scene() -> void:
 	grid_renderer.default_episode = default_episode
 	grid_renderer.default_level_number = default_level_number
 	add_child(grid_renderer)
+	queue_redraw()
+
+
+func _draw() -> void:
+	_draw_background_tiles()
+	_draw_walls()
+
+
+func _draw_background_tiles() -> void:
+	if background_texture == null:
+		return
+
+	var source := Rect2(Vector2.ZERO, BACKGROUND_TILE_SIZE)
+	for y in range(0, PlayfieldSpecScript.VIEWPORT_SIZE.y, int(BACKGROUND_TILE_SIZE.y)):
+		for x in range(0, PlayfieldSpecScript.VIEWPORT_SIZE.x, int(BACKGROUND_TILE_SIZE.x)):
+			draw_texture_rect_region(
+				background_texture,
+				Rect2(Vector2(x, y), BACKGROUND_TILE_SIZE),
+				source
+			)
+
+
+func _draw_walls() -> void:
+	if walls_texture == null:
+		return
+
+	for x in range(WALL_REPEAT_STEP, PlayfieldSpecScript.VIEWPORT_SIZE.x, WALL_REPEAT_STEP):
+		draw_texture_rect_region(walls_texture, Rect2(Vector2(x, WALL_TOP_Y), WALL_TOP_SOURCE.size), WALL_TOP_SOURCE)
+		draw_texture_rect_region(walls_texture, Rect2(Vector2(x, WALL_BOTTOM_Y), WALL_TOP_SOURCE.size), WALL_TOP_SOURCE)
+
+	for y in range(WALL_SIDE_START_Y, WALL_BOTTOM_Y, WALL_REPEAT_STEP):
+		draw_texture_rect_region(walls_texture, Rect2(Vector2(WALL_LEFT_X, y), WALL_SIDE_SOURCE.size), WALL_SIDE_SOURCE)
+		draw_texture_rect_region(walls_texture, Rect2(Vector2(WALL_RIGHT_X, y), WALL_SIDE_SOURCE.size), WALL_SIDE_SOURCE)
+
+	draw_texture_rect_region(walls_texture, Rect2(Vector2(0, WALL_TOP_Y), WALL_TOP_LEFT_SOURCE.size), WALL_TOP_LEFT_SOURCE)
+	draw_texture_rect_region(walls_texture, Rect2(Vector2(595, WALL_TOP_Y), WALL_TOP_RIGHT_SOURCE.size), WALL_TOP_RIGHT_SOURCE)
+	draw_texture_rect_region(walls_texture, Rect2(Vector2(0, 435), WALL_BOTTOM_LEFT_SOURCE.size), WALL_BOTTOM_LEFT_SOURCE)
+	draw_texture_rect_region(walls_texture, Rect2(Vector2(595, WALL_BOTTOM_Y), WALL_BOTTOM_RIGHT_SOURCE.size), WALL_BOTTOM_RIGHT_SOURCE)
 
 
 func _apply_level() -> void:

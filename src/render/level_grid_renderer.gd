@@ -4,6 +4,8 @@ class_name LevelGridRenderer
 const BrickAtlasMappingScript := preload("res://src/render/brick_atlas_mapping.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 
+const ANIMATION_STEP_SECONDS := 0.1
+
 @export var origin := PlayfieldSpecScript.GRID_ORIGIN
 @export var tile_size := PlayfieldSpecScript.BRICK_SIZE
 @export var default_episode := PlayfieldSpecScript.DEFAULT_EPISODE
@@ -12,6 +14,10 @@ const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec
 var level_data: KrakoutLevelData
 var brick_texture: Texture2D
 var atlas_mapping: BrickAtlasMapping = BrickAtlasMappingScript.new()
+var _animation_frame := 0
+var _animation_direction := 1
+var _animation_elapsed := 0.0
+var _has_animated_tiles := false
 
 
 func _ready() -> void:
@@ -26,6 +32,26 @@ func _ready() -> void:
 
 func set_level(data: KrakoutLevelData) -> void:
 	level_data = data
+	_has_animated_tiles = _level_has_animated_tiles(data)
+	queue_redraw()
+
+
+func _process(delta: float) -> void:
+	if not _has_animated_tiles:
+		return
+
+	_animation_elapsed += delta
+	if _animation_elapsed < ANIMATION_STEP_SECONDS:
+		return
+
+	_animation_elapsed = 0.0
+	_animation_frame += _animation_direction
+	if _animation_frame >= atlas_mapping.max_animation_frame:
+		_animation_frame = atlas_mapping.max_animation_frame
+		_animation_direction = -1
+	elif _animation_frame <= 0:
+		_animation_frame = 0
+		_animation_direction = 1
 	queue_redraw()
 
 
@@ -46,7 +72,7 @@ func _draw() -> void:
 			draw_texture_rect_region(
 				brick_texture,
 				target,
-				atlas_mapping.source_rect_for_tile(tile_id)
+				atlas_mapping.source_rect_for_tile(tile_id, _animation_frame)
 			)
 
 
@@ -64,3 +90,14 @@ func _load_default_level():
 		return null
 
 	return levels.call("load_level", default_episode, default_level_number)
+
+
+func _level_has_animated_tiles(data: KrakoutLevelData) -> bool:
+	if data == null:
+		return false
+
+	for row: Array in data.tile_ids:
+		for value: Variant in row:
+			if atlas_mapping.is_animated_tile(int(value)):
+				return true
+	return false

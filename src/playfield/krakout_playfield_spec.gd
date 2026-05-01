@@ -2,11 +2,11 @@ extends RefCounted
 class_name KrakoutPlayfieldSpec
 
 const VIEWPORT_SIZE := Vector2i(640, 480)
-const GRID_COLUMNS := 31
-const GRID_ROWS := 10
-const GRID_ORIGIN := Vector2(10, 82)
-const BRICK_SIZE := Vector2(20, 10)
-const GRID_SIZE := Vector2(620, 100)
+const GRID_COLUMNS := 20
+const GRID_ROWS := 13
+const GRID_ORIGIN := Vector2(47, 63)
+const BRICK_SIZE := Vector2(20, 30)
+const GRID_SIZE := Vector2(400, 390)
 const DEFAULT_EPISODE := "Default"
 const DEFAULT_LEVEL_NUMBER := 1
 

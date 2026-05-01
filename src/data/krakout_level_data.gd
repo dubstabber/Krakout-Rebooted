@@ -1,8 +1,9 @@
 extends RefCounted
 class_name KrakoutLevelData
 
-const COLUMNS := 31
-const ROWS := 10
+const COLUMNS := 20
+const ROWS := 13
+const LEVEL_TAIL_SIZE := 50
 
 var source_path := ""
 var source_episode := ""
@@ -13,7 +14,9 @@ var level_number := 0
 var columns := COLUMNS
 var rows_count := ROWS
 var tile_ids: Array = []
+var level_tail_bytes: Array[int] = []
 var unique_tile_values: Array[int] = []
+var tail_unique_values: Array[int] = []
 var tile_semantics := "unmapped"
 
 
@@ -52,6 +55,18 @@ static func from_dictionary(data: Dictionary, path: String = ""):
 	var unique_values: Array = data.get("unique_tile_values", [])
 	for value: Variant in unique_values:
 		level.unique_tile_values.append(int(value))
+
+	var tail_bytes: Array = data.get("level_tail_bytes", [])
+	if tail_bytes.size() != LEVEL_TAIL_SIZE:
+		push_error("Unexpected Krakout level tail size in %s: %d" % [path, tail_bytes.size()])
+		return null
+
+	for value: Variant in tail_bytes:
+		level.level_tail_bytes.append(int(value))
+
+	var tail_values: Array = data.get("tail_unique_values", [])
+	for value: Variant in tail_values:
+		level.tail_unique_values.append(int(value))
 
 	return level
 
