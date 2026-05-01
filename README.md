@@ -9,9 +9,14 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 
 - `KrakoutAssets` autoload indexes textures, audio, and level paths from the manifest.
 - `KrakoutLevels` autoload loads raw 31x10 level JSON into `KrakoutLevelData`.
+- `KrakoutPlayfieldSpec` centralizes the original 640x480 display and brick-grid
+  coordinate constants.
+- `KrakoutGameplaySheetCatalog` records the IDA-backed gameplay texture sheets
+  and verified dimensions without guessing unknown animation/frame semantics.
 - `LevelGridRenderer` renders raw non-zero tile IDs through an isolated brick atlas
   mapping. Tile gameplay semantics are intentionally still unmapped.
-- `scenes/app/app.tscn` boots a 640x480 level viewer for `Default/level_001.json`.
+- `PlayfieldRenderer` composes the current 640x480 playfield shell for
+  `Default/level_001.json`.
 
 ## Validation
 

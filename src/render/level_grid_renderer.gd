@@ -2,11 +2,12 @@ extends Node2D
 class_name LevelGridRenderer
 
 const BrickAtlasMappingScript := preload("res://src/render/brick_atlas_mapping.gd")
+const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 
-@export var origin := Vector2(10, 82)
-@export var tile_size := Vector2(20, 10)
-@export var default_episode := "Default"
-@export var default_level_number := 1
+@export var origin := PlayfieldSpecScript.GRID_ORIGIN
+@export var tile_size := PlayfieldSpecScript.BRICK_SIZE
+@export var default_episode := PlayfieldSpecScript.DEFAULT_EPISODE
+@export var default_level_number := PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER
 
 var level_data: KrakoutLevelData
 var brick_texture: Texture2D
@@ -17,10 +18,10 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 	if brick_texture == null:
-		brick_texture = KrakoutAssets.load_texture("Bricks")
+		brick_texture = _load_asset_texture("Bricks")
 
 	if level_data == null:
-		set_level(KrakoutLevels.load_level(default_episode, default_level_number))
+		set_level(_load_default_level())
 
 
 func set_level(data: KrakoutLevelData) -> void:
@@ -47,3 +48,19 @@ func _draw() -> void:
 				target,
 				atlas_mapping.source_rect_for_tile(tile_id)
 			)
+
+
+func _load_asset_texture(texture_name: String) -> Texture2D:
+	var assets := get_node_or_null("/root/KrakoutAssets")
+	if assets == null or not assets.has_method("load_texture"):
+		return null
+
+	return assets.call("load_texture", texture_name) as Texture2D
+
+
+func _load_default_level():
+	var levels := get_node_or_null("/root/KrakoutLevels")
+	if levels == null or not levels.has_method("load_level"):
+		return null
+
+	return levels.call("load_level", default_episode, default_level_number)
