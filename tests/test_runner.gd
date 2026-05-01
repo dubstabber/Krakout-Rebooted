@@ -175,11 +175,36 @@ func _validate_menu_and_game_scenes() -> void:
 	await process_frame
 
 	_assert(menu.has_signal("start_game_requested"), "main menu exposes start game signal")
+	_assert(menu.has_signal("rules_requested"), "main menu exposes rules signal")
+	_assert(menu.has_signal("high_score_requested"), "main menu exposes high score signal")
+	_assert(menu.has_signal("options_requested"), "main menu exposes options signal")
+	_assert(menu.has_signal("credits_requested"), "main menu exposes credits signal")
 	_assert(menu.has_signal("quit_requested"), "main menu exposes quit signal")
 	_assert(menu.find_child("Background", true, false) != null, "main menu creates background art")
 	_assert(menu.find_child("Title", true, false) != null, "main menu creates title art")
+	_assert(menu.find_child("SelectedCaption", true, false) != null, "main menu creates selected caption")
 
-	var start_button := menu.find_child("StartGameButton", true, false)
+	var expected_menu_items := {
+		"RulesButton": Vector2(30, 190),
+		"StartGameButton": Vector2(270, 190),
+		"HighScoreButton": Vector2(510, 190),
+		"OptionsButton": Vector2(150, 270),
+		"CreditsButton": Vector2(390, 270),
+		"ExitButton": Vector2(270, 350),
+	}
+	for button_name: String in expected_menu_items.keys():
+		var item_button := menu.find_child(button_name, true, false) as TextureButton
+		_assert(item_button != null, "main menu creates original icon button: %s" % button_name)
+		if item_button == null:
+			continue
+		_assert(item_button.position == expected_menu_items[button_name], "main menu icon position matches original: %s" % button_name)
+		_assert(item_button.texture_normal is AtlasTexture, "main menu icon uses atlas texture: %s" % button_name)
+
+	_assert(menu.has_method("selected_caption"), "main menu exposes selected caption for tests")
+	if menu.has_method("selected_caption"):
+		_assert(menu.call("selected_caption") == "Start New Game", "main menu defaults to start caption")
+
+	var start_button := menu.find_child("StartGameButton", true, false) as TextureButton
 	_assert(start_button != null, "main menu creates start game button")
 	if start_button != null:
 		var signal_state := {"did_request_start": false}
@@ -187,6 +212,14 @@ func _validate_menu_and_game_scenes() -> void:
 		start_button.emit_signal("pressed")
 		await process_frame
 		_assert(signal_state["did_request_start"], "start game button emits start request")
+
+	var rules_button := menu.find_child("RulesButton", true, false) as TextureButton
+	if rules_button != null:
+		var rules_signal_state := {"did_request_rules": false}
+		menu.rules_requested.connect(func() -> void: rules_signal_state["did_request_rules"] = true)
+		rules_button.emit_signal("pressed")
+		await process_frame
+		_assert(rules_signal_state["did_request_rules"], "rules button emits stub request")
 	menu.queue_free()
 
 	var game := GameScreenScene.instantiate()
