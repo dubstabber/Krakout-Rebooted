@@ -14,6 +14,17 @@ func episode_slugs() -> Array[String]:
 	return result
 
 
+func episode_summaries() -> Array[Dictionary]:
+	var assets := _assets()
+	if assets == null or not assets.has_method("episode_summaries"):
+		return []
+
+	var result: Array[Dictionary] = []
+	for summary: Dictionary in assets.call("episode_summaries"):
+		result.append(summary.duplicate())
+	return result
+
+
 func level_path(episode_slug: String, level_number: int) -> String:
 	var assets := _assets()
 	if assets == null or not assets.has_method("level_path"):

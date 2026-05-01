@@ -2,6 +2,7 @@ extends Control
 
 const GameScreenScene := preload("res://scenes/game/game_screen.tscn")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
+const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 
 var _current_screen: Node
 
@@ -19,8 +20,17 @@ func _show_main_menu() -> void:
 	_set_screen(menu)
 
 
-func _show_game() -> void:
-	_set_screen(GameScreenScene.instantiate())
+func _show_episode_select() -> void:
+	var episode_select := EpisodeSelectScreenScene.instantiate()
+	episode_select.episode_selected.connect(_on_episode_selected)
+	episode_select.back_requested.connect(_show_main_menu)
+	_set_screen(episode_select)
+
+
+func _show_game(episode_slug: String, level_number: int) -> void:
+	var game := GameScreenScene.instantiate()
+	game.start_game(episode_slug, level_number)
+	_set_screen(game)
 
 
 func _set_screen(screen: Node) -> void:
@@ -32,7 +42,11 @@ func _set_screen(screen: Node) -> void:
 
 
 func _on_start_game_requested() -> void:
-	_show_game()
+	_show_episode_select()
+
+
+func _on_episode_selected(episode_slug: String, level_number: int) -> void:
+	_show_game(episode_slug, level_number)
 
 
 func _on_quit_requested() -> void:

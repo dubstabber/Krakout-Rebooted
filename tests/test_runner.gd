@@ -7,6 +7,7 @@ const LevelGridRendererScript := preload("res://src/render/level_grid_renderer.g
 const GameplaySheetCatalogScript := preload("res://src/playfield/krakout_gameplay_sheet_catalog.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
+const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 const GameScreenScene := preload("res://scenes/game/game_screen.tscn")
 const AppScene := preload("res://scenes/app/app.tscn")
 
@@ -38,6 +39,7 @@ func _run() -> void:
 	var episode_slugs: Array = _assets.episode_slugs()
 	_assert(episode_slugs.has("Default"), "Default episode is indexed")
 	_assert(_assets.level_path("Default", 1) == "res://assets/krakout/levels/Default/level_001.json", "Default level 1 path is indexed")
+	_validate_episode_catalog()
 
 	var level = _load_level_from_path(_assets.level_path("Default", 1))
 	_assert(level != null, "Default level 1 loads")
@@ -88,6 +90,28 @@ func _validate_manifest_paths() -> void:
 
 	for level_entry: Dictionary in _assets.manifest.get("levels", []):
 		_assert(_is_runtime_path(level_entry), "level manifest path is runtime-safe")
+
+
+func _validate_episode_catalog() -> void:
+	var episode_summaries: Array = _assets.episode_summaries()
+	_assert(episode_summaries.size() == 17, "episode summary catalog exposes all extracted episodes")
+	_assert(_levels.episode_summaries().size() == 17, "level autoload exposes episode summaries")
+
+	var default_summary := _find_summary(episode_summaries, "Default")
+	_assert(not default_summary.is_empty(), "Default episode summary exists")
+	if not default_summary.is_empty():
+		_assert(default_summary["title"] == "Default Episode", "Default summary preserves decoded episode title")
+		_assert(default_summary["level_count"] == 14, "Default summary preserves level count")
+		_assert(default_summary["first_level_number"] == 1, "Default summary exposes first level number")
+
+	var abstraction_summary := _find_summary(episode_summaries, "Abstraction")
+	_assert(not abstraction_summary.is_empty(), "Abstraction episode summary exists")
+	if not abstraction_summary.is_empty():
+		_assert(abstraction_summary["title"] == "Abstraction", "Abstraction summary preserves decoded episode title")
+		_assert(abstraction_summary["level_count"] == 14, "Abstraction summary preserves level count")
+
+	if episode_summaries.size() > 0:
+		_assert(episode_summaries[0]["slug"] == "Abstraction", "episode summaries are sorted by decoded title")
 
 
 func _validate_playfield_spec() -> void:
@@ -168,6 +192,7 @@ func _validate_gameplay_sheet_catalog() -> void:
 
 func _validate_menu_and_game_scenes() -> void:
 	_assert(ResourceLoader.exists("res://scenes/menu/main_menu_screen.tscn"), "main menu scene exists")
+	_assert(ResourceLoader.exists("res://scenes/menu/episode_select_screen.tscn"), "episode select scene exists")
 	_assert(ResourceLoader.exists("res://scenes/game/game_screen.tscn"), "game screen scene exists")
 
 	var menu := MainMenuScreenScene.instantiate()
@@ -222,6 +247,48 @@ func _validate_menu_and_game_scenes() -> void:
 		_assert(rules_signal_state["did_request_rules"], "rules button emits stub request")
 	menu.queue_free()
 
+	var episode_select := EpisodeSelectScreenScene.instantiate()
+	root.add_child(episode_select)
+	await process_frame
+
+	_assert(episode_select.has_signal("episode_selected"), "episode select exposes episode selected signal")
+	_assert(episode_select.has_signal("back_requested"), "episode select exposes back signal")
+	_assert(episode_select.call("episode_count") == 17, "episode select lists all extracted episodes")
+	_assert(episode_select.call("page_count") == 2, "episode select paginates extracted episodes")
+	_assert(episode_select.call("visible_row_count") == 10, "episode select shows ten rows on first page")
+	_assert(episode_select.find_child("PageStatus", true, false) != null, "episode select creates page status")
+	_assert(episode_select.find_child("UpButton", true, false) != null, "episode select creates up arrow")
+	_assert(episode_select.find_child("DownButton", true, false) != null, "episode select creates down arrow")
+
+	var selected_summary: Dictionary = episode_select.call("selected_episode_summary")
+	_assert(selected_summary.get("slug", "") == "Abstraction", "episode select defaults to first sorted episode")
+
+	var down_button := episode_select.find_child("DownButton", true, false) as TextureButton
+	if down_button != null:
+		down_button.emit_signal("pressed")
+		await process_frame
+		_assert(episode_select.call("current_page") == 1, "episode select down arrow advances page")
+		_assert(episode_select.call("visible_row_count") == 7, "episode select second page shows remaining episodes")
+
+	var episode_signal_state := {
+		"did_select_episode": false,
+		"slug": "",
+		"level_number": 0,
+	}
+	episode_select.episode_selected.connect(func(slug: String, level_number: int) -> void:
+		episode_signal_state["did_select_episode"] = true
+		episode_signal_state["slug"] = slug
+		episode_signal_state["level_number"] = level_number
+	)
+	var first_row_button := episode_select.find_child("EpisodeRowButton1", true, false) as Button
+	if first_row_button != null:
+		first_row_button.emit_signal("pressed")
+		await process_frame
+		_assert(episode_signal_state["did_select_episode"], "episode row emits episode selected")
+		_assert(not String(episode_signal_state["slug"]).is_empty(), "episode selection includes slug")
+		_assert(episode_signal_state["level_number"] == 1, "episode selection starts at first level")
+	episode_select.queue_free()
+
 	var game := GameScreenScene.instantiate()
 	_assert(game.episode_slug == PlayfieldSpecScript.DEFAULT_EPISODE, "game screen defaults to shared episode")
 	_assert(game.level_number == PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER, "game screen defaults to shared level number")
@@ -245,7 +312,16 @@ func _validate_menu_and_game_scenes() -> void:
 	if app_menu != null:
 		app_menu.emit_signal("start_game_requested")
 		await process_frame
-		_assert(app.find_child("GameScreen", true, false) != null, "app switches from menu to game screen")
+		var app_episode_select := app.find_child("EpisodeSelectScreen", true, false)
+		_assert(app_episode_select != null, "app switches from menu to episode select screen")
+		if app_episode_select != null:
+			app_episode_select.emit_signal("episode_selected", "Retro", 1)
+			await process_frame
+			var app_game := app.find_child("GameScreen", true, false)
+			_assert(app_game != null, "app switches from episode select to game screen")
+			if app_game != null:
+				_assert(app_game.episode_slug == "Retro", "app starts selected episode")
+				_assert(app_game.level_number == 1, "app starts selected episode at first level")
 	app.queue_free()
 
 
@@ -263,6 +339,13 @@ func _load_level_from_path(path: String):
 
 func _is_runtime_path(entry: Dictionary) -> bool:
 	return String(entry.get("output_path", "")).begins_with("res://assets/krakout/")
+
+
+func _find_summary(summaries: Array, slug: String) -> Dictionary:
+	for summary: Dictionary in summaries:
+		if summary.get("slug", "") == slug:
+			return summary
+	return {}
 
 
 func _assert(condition: bool, message: String) -> void:
