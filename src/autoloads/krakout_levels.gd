@@ -4,11 +4,22 @@ const KrakoutLevelDataScript := preload("res://src/data/krakout_level_data.gd")
 
 
 func episode_slugs() -> Array[String]:
-	return KrakoutAssets.episode_slugs()
+	var assets := _assets()
+	if assets == null or not assets.has_method("episode_slugs"):
+		return []
+
+	var result: Array[String] = []
+	for slug: String in assets.call("episode_slugs"):
+		result.append(slug)
+	return result
 
 
 func level_path(episode_slug: String, level_number: int) -> String:
-	return KrakoutAssets.level_path(episode_slug, level_number)
+	var assets := _assets()
+	if assets == null or not assets.has_method("level_path"):
+		return ""
+
+	return String(assets.call("level_path", episode_slug, level_number))
 
 
 func load_level(episode_slug: String, level_number: int):
@@ -32,3 +43,7 @@ func load_level_from_path(path: String):
 		return null
 
 	return KrakoutLevelDataScript.from_dictionary(parsed, path)
+
+
+func _assets() -> Node:
+	return get_node_or_null("/root/KrakoutAssets")

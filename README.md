@@ -17,6 +17,8 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   mapping. Tile gameplay semantics are intentionally still unmapped.
 - `PlayfieldRenderer` composes the current 640x480 playfield shell for
   `Default/level_001.json`.
+- `KrakoutApp` now starts on a Godot `Control` main menu and routes `Start Game`
+  into a game screen that loads the current `Default/level_001.json` shell.
 
 ## Validation
 
