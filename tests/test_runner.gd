@@ -7,6 +7,7 @@ const LevelGridRendererScript := preload("res://src/render/level_grid_renderer.g
 const BrickAtlasMappingScript := preload("res://src/render/brick_atlas_mapping.gd")
 const GameplaySheetCatalogScript := preload("res://src/playfield/krakout_gameplay_sheet_catalog.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
+const PlayfieldRendererScript := preload("res://src/playfield/playfield_renderer.gd")
 const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantics.gd")
 const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
 const GameSessionScript := preload("res://src/gameplay/krakout_game_session.gd")
@@ -14,6 +15,7 @@ const RandomScript := preload("res://src/gameplay/krakout_random.gd")
 const RacketRendererScript := preload("res://src/render/racket_renderer.gd")
 const BallRendererScript := preload("res://src/render/ball_renderer.gd")
 const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
+const GameHudScript := preload("res://src/game/game_hud.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 const GameScreenScene := preload("res://scenes/game/game_screen.tscn")
@@ -68,10 +70,12 @@ func _run() -> void:
 		_validate_game_session(level)
 
 	_validate_playfield_spec()
+	_validate_playfield_renderer_shell()
 	_validate_brick_semantics()
 	_validate_original_rng()
 	_validate_brick_atlas_mapping()
 	_validate_level_grid_renderer_defaults()
+	_validate_game_hud_presentation()
 	_validate_gameplay_sheet_catalog()
 	_validate_manifest_paths()
 	await _validate_menu_and_game_scenes()
@@ -152,6 +156,17 @@ func _validate_playfield_spec() -> void:
 	_assert(PlayfieldSpecScript.GRID_SIZE == Vector2(400, 390), "playfield grid size derives from 20x13 bricks")
 	_assert(PlayfieldSpecScript.grid_rect() == Rect2(Vector2(47, 63), Vector2(400, 390)), "playfield grid rect is stable")
 	_assert(PlayfieldSpecScript.brick_rect(19, 12) == Rect2(Vector2(427, 423), Vector2(20, 30)), "playfield brick rect maps final cell")
+
+
+func _validate_playfield_renderer_shell() -> void:
+	var renderer: PlayfieldRenderer = PlayfieldRendererScript.new()
+	_assert(renderer.gameplay_background_source_rect() == Rect2(Vector2(100, 0), Vector2(50, 50)), "playfield renderer uses original lattice background tile")
+	_assert(PlayfieldRendererScript.WALL_LEFT_X == 2, "left wall x remains original-screen aligned")
+	_assert(PlayfieldRendererScript.WALL_RIGHT_X == 613, "right wall x remains original-screen aligned")
+	_assert(PlayfieldRendererScript.WALL_TOP_Y == 36, "top wall y remains original-screen aligned")
+	_assert(PlayfieldRendererScript.WALL_BOTTOM_Y == 453, "bottom wall y remains original-screen aligned")
+	_assert(PlayfieldRendererScript.WALL_SIDE_START_Y == 81, "side wall start remains original-screen aligned")
+	renderer.free()
 
 
 func _validate_brick_semantics() -> void:
@@ -518,6 +533,24 @@ func _validate_level_grid_renderer_defaults() -> void:
 	_assert(renderer.default_episode == PlayfieldSpecScript.DEFAULT_EPISODE, "level renderer uses shared default episode")
 	_assert(renderer.default_level_number == PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER, "level renderer uses shared default level")
 	renderer.free()
+
+
+func _validate_game_hud_presentation() -> void:
+	var hud: KrakoutGameHud = GameHudScript.new()
+
+	_assert(hud.caption_texts() == ["Your Score", "Balls Left", "Level", "High Score"], "game hud exposes original status captions")
+	_assert(hud.caption_positions() == [Vector2(24, 0), Vector2(190, 0), Vector2(370, 0), Vector2(500, 0)], "game hud captions use fixed original-screen anchors")
+	var anchors: Dictionary = hud.value_anchor_positions()
+	_assert(anchors["score_right"] == Vector2(137, 18), "game hud anchors score value under original caption")
+	_assert(anchors["lives_center"] == Vector2(278, 18), "game hud anchors balls-left value under original caption")
+	_assert(anchors["level_center"] == Vector2(420, 18), "game hud anchors level value under original caption")
+	_assert(anchors["best_score_right"] == Vector2(615, 18), "game hud anchors high-score value under original caption")
+	var values: Dictionary = hud.status_values()
+	_assert(values["score"] == 0, "game hud defaults score to zero")
+	_assert(values["lives"] == 0, "game hud defaults spare balls to zero without a session")
+	_assert(values["level"] == 1, "game hud defaults display level to one")
+	_assert(values["best_score"] == 0, "game hud defaults high score to zero")
+	hud.free()
 
 
 func _validate_gameplay_sheet_catalog() -> void:

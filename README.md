@@ -16,8 +16,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   and verified dimensions without guessing unknown animation/frame semantics.
 - `LevelGridRenderer` renders raw visual board IDs through an isolated IDA-backed
   brick atlas mapping, keeping gameplay meaning out of the visual loader.
-- `PlayfieldRenderer` composes the 640x480 playfield shell from `Backgr`, `Walls`,
-  and the selected level board, then creates a mutable board state for gameplay.
+- `PlayfieldRenderer` composes the 640x480 playfield shell from the original
+  lattice `Backgr` tile, `Walls`, and the selected level board, then creates a
+  mutable board state for gameplay.
 - `KrakoutBrickSemantics` and `KrakoutBoardState` preserve the original brick
   active/completion rules, the IDA-backed behavior-case table, and delayed 3x3
   chain explosions for tile IDs 43/68.
@@ -40,7 +41,7 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - The gameplay loop now tracks the original-backed run counters around that
   loop: 15-point brick scoring, gradual displayed-score catch-up, three spare
   balls, a 20,000-point extra-ball threshold, wrapped episode progression, and
-  a lightweight HUD/game-over route back to the menu.
+  an original-layout gameplay HUD/game-over route back to the menu.
 - `KrakoutApp` now starts on a Godot `Control` main menu, routes `Start Game`
   into an episode browser backed by decoded episode metadata, and starts the
   selected episode at its first level.

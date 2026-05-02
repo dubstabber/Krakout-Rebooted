@@ -6,6 +6,7 @@ const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec
 const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
 
 const BACKGROUND_TILE_SIZE := Vector2(50, 50)
+const GAMEPLAY_BACKGROUND_SOURCE := Rect2(Vector2(100, 0), BACKGROUND_TILE_SIZE)
 const WALL_REPEAT_STEP := 45
 const WALL_TOP_SOURCE := Rect2(Vector2(0, 45), Vector2(45, 25))
 const WALL_SIDE_SOURCE := Rect2(Vector2(11, 0), Vector2(25, 45))
@@ -59,6 +60,10 @@ func current_board_state():
 	return board_state
 
 
+func gameplay_background_source_rect() -> Rect2:
+	return GAMEPLAY_BACKGROUND_SOURCE
+
+
 func refresh_board() -> void:
 	if grid_renderer != null:
 		grid_renderer.queue_redraw()
@@ -90,13 +95,12 @@ func _draw_background_tiles() -> void:
 	if background_texture == null:
 		return
 
-	var source := Rect2(Vector2.ZERO, BACKGROUND_TILE_SIZE)
 	for y in range(0, PlayfieldSpecScript.VIEWPORT_SIZE.y, int(BACKGROUND_TILE_SIZE.y)):
 		for x in range(0, PlayfieldSpecScript.VIEWPORT_SIZE.x, int(BACKGROUND_TILE_SIZE.x)):
 			draw_texture_rect_region(
 				background_texture,
 				Rect2(Vector2(x, y), BACKGROUND_TILE_SIZE),
-				source
+				GAMEPLAY_BACKGROUND_SOURCE
 			)
 
 

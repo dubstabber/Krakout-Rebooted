@@ -4,15 +4,34 @@ class_name KrakoutGameHud
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 
 const GAME_OVER_STATE := "game_over"
+const CAPTION_TEXTS := ["Your Score", "Balls Left", "Level", "High Score"]
+const CAPTION_POSITIONS := [
+	Vector2(24, 0),
+	Vector2(190, 0),
+	Vector2(370, 0),
+	Vector2(500, 0),
+]
+const SCORE_VALUE_RIGHT := Vector2(137, 18)
+const LIVES_VALUE_CENTER := Vector2(278, 18)
+const LEVEL_VALUE_CENTER := Vector2(420, 18)
+const BEST_SCORE_VALUE_RIGHT := Vector2(615, 18)
+const FONT_GLYPH_SIZE := Vector2(32, 24)
+const FONT_SPACE_ADVANCE := 8
+const FONT_GLYPH_GAP := 2
+const DIGIT_SIZE := Vector2(16, 20)
 
 var session
-var _score_label: Label
-var _lives_label: Label
-var _level_label: Label
-var _best_score_label: Label
 var _game_over_title: Label
 var _game_over_summary: Label
 var _game_over_hint: Label
+var _score_value := 0
+var _lives_value := 0
+var _level_value := 1
+var _best_score_value := 0
+var _font_texture: Texture2D
+var _font_image: Image
+var _digit_texture: Texture2D
+var _glyph_metrics := {}
 
 
 func _ready() -> void:
@@ -53,10 +72,10 @@ func refresh() -> void:
 func status_values() -> Dictionary:
 	if session == null:
 		return {
-			"score": 0,
-			"lives": 0,
-			"level": 1,
-			"best_score": 0,
+			"score": _score_value,
+			"lives": _lives_value,
+			"level": _level_value,
+			"best_score": _best_score_value,
 		}
 
 	return {
@@ -67,14 +86,28 @@ func status_values() -> Dictionary:
 	}
 
 
-func _ensure_nodes() -> void:
-	if _score_label != null:
-		return
+func caption_texts() -> Array:
+	return CAPTION_TEXTS.duplicate()
 
-	_score_label = _make_label("ScoreValue", Vector2(80, 4), Vector2(80, 28), HORIZONTAL_ALIGNMENT_RIGHT)
-	_lives_label = _make_label("LivesValue", Vector2(260, 4), Vector2(55, 28), HORIZONTAL_ALIGNMENT_CENTER)
-	_level_label = _make_label("LevelValue", Vector2(400, 4), Vector2(70, 28), HORIZONTAL_ALIGNMENT_CENTER)
-	_best_score_label = _make_label("BestScoreValue", Vector2(560, 4), Vector2(72, 28), HORIZONTAL_ALIGNMENT_RIGHT)
+
+func caption_positions() -> Array:
+	return CAPTION_POSITIONS.duplicate()
+
+
+func value_anchor_positions() -> Dictionary:
+	return {
+		"score_right": SCORE_VALUE_RIGHT,
+		"lives_center": LIVES_VALUE_CENTER,
+		"level_center": LEVEL_VALUE_CENTER,
+		"best_score_right": BEST_SCORE_VALUE_RIGHT,
+	}
+
+
+func _ensure_nodes() -> void:
+	_load_hud_textures()
+
+	if _game_over_title != null:
+		return
 
 	_game_over_title = _make_label("GameOverTitle", Vector2(0, 205), Vector2(640, 30), HORIZONTAL_ALIGNMENT_CENTER)
 	_game_over_title.text = "Game Over!"
@@ -99,13 +132,166 @@ func _make_label(label_name: String, label_position: Vector2, label_size: Vector
 
 
 func _set_status_values(score_value: int, lives_value: int, level_value: int, best_score_value: int) -> void:
-	_score_label.text = str(score_value)
-	_lives_label.text = str(lives_value)
-	_level_label.text = str(level_value)
-	_best_score_label.text = str(best_score_value)
+	_score_value = score_value
+	_lives_value = lives_value
+	_level_value = level_value
+	_best_score_value = best_score_value
+	queue_redraw()
 
 
 func _set_game_over_visible(is_visible: bool) -> void:
 	_game_over_title.visible = is_visible
 	_game_over_summary.visible = is_visible
 	_game_over_hint.visible = is_visible
+
+
+func _draw() -> void:
+	_draw_status_hud()
+
+
+func _draw_status_hud() -> void:
+	for caption_index in range(CAPTION_TEXTS.size()):
+		_draw_font_text(String(CAPTION_TEXTS[caption_index]), CAPTION_POSITIONS[caption_index])
+
+	_draw_digits(_score_value, SCORE_VALUE_RIGHT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_draw_digits(_lives_value, LIVES_VALUE_CENTER, HORIZONTAL_ALIGNMENT_CENTER)
+	_draw_digits(_level_value, LEVEL_VALUE_CENTER, HORIZONTAL_ALIGNMENT_CENTER)
+	_draw_digits(_best_score_value, BEST_SCORE_VALUE_RIGHT, HORIZONTAL_ALIGNMENT_RIGHT)
+
+
+func _draw_font_text(text: String, draw_position: Vector2) -> void:
+	if _font_texture == null:
+		return
+
+	var pen_x := draw_position.x
+	for character_index in range(text.length()):
+		var character := text.substr(character_index, 1)
+		if character == " ":
+			pen_x += FONT_SPACE_ADVANCE
+			continue
+
+		var metric := _glyph_metric_for(character)
+		if metric.is_empty():
+			continue
+
+		var source: Rect2 = metric["source"]
+		var offset: Vector2 = metric["offset"]
+		draw_texture_rect_region(
+			_font_texture,
+			Rect2(Vector2(pen_x, draw_position.y + offset.y), source.size),
+			source
+		)
+		pen_x += float(metric["advance"])
+
+
+func _draw_digits(value: int, anchor: Vector2, alignment: HorizontalAlignment) -> void:
+	if _digit_texture == null:
+		return
+
+	var text := str(max(0, value))
+	var draw_width := text.length() * int(DIGIT_SIZE.x)
+	var x := anchor.x
+	if alignment == HORIZONTAL_ALIGNMENT_RIGHT:
+		x -= draw_width
+	elif alignment == HORIZONTAL_ALIGNMENT_CENTER:
+		x -= draw_width * 0.5
+
+	for digit_index in range(text.length()):
+		var character := text.substr(digit_index, 1)
+		var digit := character.unicode_at(0) - "0".unicode_at(0)
+		if digit < 0 or digit > 9:
+			continue
+
+		draw_texture_rect_region(
+			_digit_texture,
+			Rect2(Vector2(x + digit_index * DIGIT_SIZE.x, anchor.y), DIGIT_SIZE),
+			Rect2(Vector2(0, digit * DIGIT_SIZE.y), DIGIT_SIZE)
+		)
+
+
+func _glyph_metric_for(character: String) -> Dictionary:
+	if _glyph_metrics.has(character):
+		return _glyph_metrics[character]
+
+	var source := _font_source_rect_for(character)
+	if source == Rect2():
+		_glyph_metrics[character] = {}
+		return {}
+
+	var bounds := _opaque_bounds(source)
+	if bounds.size == Vector2.ZERO:
+		_glyph_metrics[character] = {}
+		return {}
+
+	var metric := {
+		"source": Rect2(source.position + bounds.position, bounds.size),
+		"offset": bounds.position,
+		"advance": bounds.size.x + FONT_GLYPH_GAP,
+	}
+	_glyph_metrics[character] = metric
+	return metric
+
+
+func _font_source_rect_for(character: String) -> Rect2:
+	var code := character.unicode_at(0)
+	var upper_a := "A".unicode_at(0)
+	var upper_z := "Z".unicode_at(0)
+	var lower_a := "a".unicode_at(0)
+	var lower_z := "z".unicode_at(0)
+	var glyph_index := -1
+
+	if code >= upper_a and code <= upper_z:
+		glyph_index = code - upper_a
+	elif code >= lower_a and code <= lower_z:
+		glyph_index = 26 + code - lower_a
+
+	if glyph_index < 0:
+		return Rect2()
+
+	return Rect2(Vector2(0, glyph_index * FONT_GLYPH_SIZE.y), FONT_GLYPH_SIZE)
+
+
+func _opaque_bounds(source: Rect2) -> Rect2:
+	if _font_image == null:
+		return Rect2(Vector2.ZERO, FONT_GLYPH_SIZE)
+
+	var min_x := int(FONT_GLYPH_SIZE.x)
+	var min_y := int(FONT_GLYPH_SIZE.y)
+	var max_x := -1
+	var max_y := -1
+
+	for y in range(int(FONT_GLYPH_SIZE.y)):
+		for x in range(int(FONT_GLYPH_SIZE.x)):
+			var pixel := _font_image.get_pixel(int(source.position.x) + x, int(source.position.y) + y)
+			if pixel.a <= 0.01:
+				continue
+			min_x = min(min_x, x)
+			min_y = min(min_y, y)
+			max_x = max(max_x, x)
+			max_y = max(max_y, y)
+
+	if max_x < min_x or max_y < min_y:
+		return Rect2()
+
+	return Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x + 1, max_y - min_y + 1))
+
+
+func _load_hud_textures() -> void:
+	if _font_texture == null:
+		_font_texture = _load_asset_texture("Font")
+		if _font_texture != null:
+			_font_image = _font_texture.get_image()
+
+	if _digit_texture == null:
+		_digit_texture = _load_asset_texture("Digits")
+
+
+func _load_asset_texture(texture_name: String) -> Texture2D:
+	if not is_inside_tree():
+		return null
+
+	var assets := get_node_or_null("/root/KrakoutAssets")
+	if assets == null or not assets.has_method("load_texture"):
+		return null
+
+	return assets.call("load_texture", texture_name) as Texture2D
