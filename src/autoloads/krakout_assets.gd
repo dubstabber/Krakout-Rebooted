@@ -85,6 +85,31 @@ func level_path(episode_slug: String, level_number: int) -> String:
 	return String(levels.get(level_number, ""))
 
 
+func level_numbers(episode_slug: String) -> Array[int]:
+	var result: Array[int] = []
+	if not _levels_by_episode.has(episode_slug):
+		return result
+
+	var levels: Dictionary = _levels_by_episode[episode_slug]
+	for level_number: Variant in levels.keys():
+		result.append(int(level_number))
+	result.sort()
+	return result
+
+
+func episode_level_count(episode_slug: String) -> int:
+	return level_numbers(episode_slug).size()
+
+
+func wrapped_level_number(episode_slug: String, display_level_number: int) -> int:
+	var numbers: Array[int] = level_numbers(episode_slug)
+	if numbers.is_empty():
+		return 0
+
+	var zero_based_index: int = max(0, display_level_number - 1)
+	return numbers[zero_based_index % numbers.size()]
+
+
 func load_texture(name: String) -> Texture2D:
 	var path := texture_path(name)
 	if path.is_empty():

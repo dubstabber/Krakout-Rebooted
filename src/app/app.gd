@@ -30,6 +30,7 @@ func _show_episode_select() -> void:
 func _show_game(episode_slug: String, level_number: int) -> void:
 	var game := GameScreenScene.instantiate()
 	game.start_game(episode_slug, level_number)
+	game.return_to_menu_requested.connect(_show_main_menu)
 	_set_screen(game)
 
 

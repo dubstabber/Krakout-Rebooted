@@ -23,6 +23,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - `KrakoutGameSession` adds the first playable ball/racket loop around that
   board state: mouse-following right-side racket, ready/launch/play/lost/complete
   states, wall/racket/brick collision, and redraw signaling.
+- The gameplay loop now tracks the original-backed run counters around that
+  loop: 15-point brick scoring, gradual displayed-score catch-up, three spare
+  balls, a 20,000-point extra-ball threshold, wrapped episode progression, and
+  a lightweight HUD/game-over route back to the menu.
 - `KrakoutApp` now starts on a Godot `Control` main menu, routes `Start Game`
   into an episode browser backed by decoded episode metadata, and starts the
   selected episode at its first level.

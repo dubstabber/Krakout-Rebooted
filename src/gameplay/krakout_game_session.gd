@@ -9,8 +9,12 @@ const STATE_READY := "ready"
 const STATE_PLAYING := "playing"
 const STATE_BALL_LOST := "ball_lost"
 const STATE_LEVEL_COMPLETE := "level_complete"
+const STATE_GAME_OVER := "game_over"
 
 const MAX_BALLS := 5
+const INITIAL_LIVES := 3
+const BRICK_SCORE := 15
+const EXTRA_LIFE_SCORE_STEP := 20000
 const RACKET_X := 570.0
 const RACKET_WIDTH := 16.0
 const RACKET_HEIGHT := 164.0
@@ -29,12 +33,35 @@ var state := STATE_READY
 var balls: Array[Dictionary] = []
 var racket_y := RACKET_MIN_Y
 var board_changed := false
+var score := 0
+var displayed_score := 0
+var best_score := 0
+var lives_remaining := INITIAL_LIVES
+var points_to_next_extra_life := EXTRA_LIFE_SCORE_STEP
+var display_level_number := 1
 
 
 func load_level(level: KrakoutLevelData) -> void:
-	board_state = BoardStateScript.new() if level != null else null
-	if board_state != null:
-		board_state.load_level(level)
+	var next_display_level := 1
+	if level != null and level.level_number > 0:
+		next_display_level = level.level_number
+	start_run(level, next_display_level)
+
+
+func start_run(level: KrakoutLevelData, selected_display_level_number: int = 1, starting_best_score: int = 0) -> void:
+	score = 0
+	displayed_score = 0
+	best_score = max(0, starting_best_score)
+	lives_remaining = INITIAL_LIVES
+	points_to_next_extra_life = EXTRA_LIFE_SCORE_STEP
+	display_level_number = max(1, selected_display_level_number)
+	_load_board_for_level(level)
+	reset_round()
+
+
+func advance_to_level(level: KrakoutLevelData, next_display_level_number: int) -> void:
+	display_level_number = max(1, next_display_level_number)
+	_load_board_for_level(level)
 	reset_round()
 
 
@@ -48,6 +75,27 @@ func reset_round() -> void:
 	board_changed = false
 	balls.clear()
 	_add_ready_ball()
+
+
+func award_score(points: int) -> void:
+	if points <= 0:
+		return
+
+	score += points
+	best_score = max(best_score, score)
+	while score >= points_to_next_extra_life:
+		lives_remaining += 1
+		points_to_next_extra_life += EXTRA_LIFE_SCORE_STEP
+
+
+func visible_lives() -> int:
+	return max(0, lives_remaining)
+
+
+func _load_board_for_level(level: KrakoutLevelData) -> void:
+	board_state = BoardStateScript.new() if level != null else null
+	if board_state != null:
+		board_state.load_level(level)
 
 
 func move_racket_to(mouse_y: float) -> void:
@@ -73,12 +121,19 @@ func launch_ready_ball() -> bool:
 
 func update(delta: float) -> void:
 	board_changed = false
+	_update_displayed_score()
 
-	if board_state != null and board_state.process_chain_explosions(delta) > 0:
-		board_changed = true
+	if board_state != null:
+		var chain_cleared_count: int = board_state.process_chain_explosions(delta)
+		if chain_cleared_count > 0:
+			board_changed = true
+			award_score(chain_cleared_count * BRICK_SCORE)
 
 	if board_state != null and board_state.is_complete():
 		state = STATE_LEVEL_COMPLETE
+		return
+
+	if state == STATE_GAME_OVER:
 		return
 
 	if state != STATE_PLAYING:
@@ -99,7 +154,7 @@ func update(delta: float) -> void:
 	if board_state != null and board_state.is_complete():
 		state = STATE_LEVEL_COMPLETE
 	elif active_count <= 0:
-		state = STATE_BALL_LOST
+		_handle_round_lost()
 
 
 func consume_board_changed() -> bool:
@@ -244,14 +299,15 @@ func _collide_with_board(ball: Dictionary, previous_position: Vector2) -> bool:
 	var column := int(hit["column"])
 	var row := int(hit["row"])
 	var tile_id := int(hit["tile_id"])
-	var changed := false
+	var cleared_count := 0
 	if BrickSemanticsScript.is_chain_explosion_tile(tile_id):
-		changed = board_state.explode_at(column, row) > 0
-	else:
-		changed = board_state.clear_tile(column, row)
+		cleared_count = board_state.explode_at(column, row)
+	elif board_state.clear_tile(column, row):
+		cleared_count = 1
 
-	if changed:
+	if cleared_count > 0:
 		board_changed = true
+		award_score(cleared_count * BRICK_SCORE)
 
 	_reflect_from_tile(ball, previous_position, PlayfieldSpecScript.brick_rect(column, row))
 	return true
@@ -291,3 +347,20 @@ func _reflect_from_tile(ball: Dictionary, previous_position: Vector2, tile_rect:
 		velocity.y = -velocity.y
 
 	ball["velocity"] = velocity
+
+
+func _handle_round_lost() -> void:
+	lives_remaining -= 1
+	if lives_remaining < 0:
+		state = STATE_GAME_OVER
+		balls.clear()
+		return
+
+	reset_round()
+
+
+func _update_displayed_score() -> void:
+	if displayed_score + 10 < score:
+		displayed_score += 10
+	elif displayed_score < score:
+		displayed_score += 1

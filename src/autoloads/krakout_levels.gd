@@ -33,6 +33,33 @@ func level_path(episode_slug: String, level_number: int) -> String:
 	return String(assets.call("level_path", episode_slug, level_number))
 
 
+func level_numbers(episode_slug: String) -> Array[int]:
+	var assets := _assets()
+	if assets == null or not assets.has_method("level_numbers"):
+		return []
+
+	var result: Array[int] = []
+	for level_number: int in assets.call("level_numbers", episode_slug):
+		result.append(level_number)
+	return result
+
+
+func episode_level_count(episode_slug: String) -> int:
+	var assets := _assets()
+	if assets == null or not assets.has_method("episode_level_count"):
+		return 0
+
+	return int(assets.call("episode_level_count", episode_slug))
+
+
+func wrapped_level_number(episode_slug: String, display_level_number: int) -> int:
+	var assets := _assets()
+	if assets == null or not assets.has_method("wrapped_level_number"):
+		return 0
+
+	return int(assets.call("wrapped_level_number", episode_slug, display_level_number))
+
+
 func load_level(episode_slug: String, level_number: int):
 	var path := level_path(episode_slug, level_number)
 	if path.is_empty():
@@ -40,6 +67,15 @@ func load_level(episode_slug: String, level_number: int):
 		return null
 
 	return load_level_from_path(path)
+
+
+func load_wrapped_level(episode_slug: String, display_level_number: int):
+	var source_level_number := wrapped_level_number(episode_slug, display_level_number)
+	if source_level_number <= 0:
+		push_error("Unknown Krakout episode for wrapped level: %s" % episode_slug)
+		return null
+
+	return load_level(episode_slug, source_level_number)
 
 
 func load_level_from_path(path: String):

@@ -93,7 +93,7 @@ func process_chain_explosions(delta: float) -> int:
 
 	var pending := _pending_chain_explosions
 	_pending_chain_explosions = []
-	var fired_count := 0
+	var cleared_count := 0
 	for entry: Dictionary in pending:
 		var remaining := float(entry.get("remaining", 0.0)) - delta
 		if remaining > 0.0:
@@ -104,10 +104,9 @@ func process_chain_explosions(delta: float) -> int:
 		var column := int(entry.get("column", -1))
 		var row := int(entry.get("row", -1))
 		if BrickSemanticsScript.is_chain_explosion_tile(tile_at(column, row)):
-			explode_at(column, row)
-			fired_count += 1
+			cleared_count += explode_at(column, row)
 
-	return fired_count
+	return cleared_count
 
 
 func pending_chain_explosion_count() -> int:

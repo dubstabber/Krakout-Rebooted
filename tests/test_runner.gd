@@ -117,6 +117,15 @@ func _validate_episode_catalog() -> void:
 		_assert(default_summary["title"] == "Default Episode", "Default summary preserves decoded episode title")
 		_assert(default_summary["level_count"] == 14, "Default summary preserves level count")
 		_assert(default_summary["first_level_number"] == 1, "Default summary exposes first level number")
+		var default_level_numbers: Array[int] = _levels.level_numbers("Default")
+		_assert(default_level_numbers.size() == 14, "level catalog exposes Default level numbers")
+		_assert(default_level_numbers[0] == 1, "level catalog sorts first Default level")
+		_assert(default_level_numbers[default_level_numbers.size() - 1] == 14, "level catalog sorts final Default level")
+		_assert(_levels.wrapped_level_number("Default", 15) == 1, "level catalog wraps displayed level numbers")
+		var wrapped_level: KrakoutLevelData = _levels.load_wrapped_level("Default", 15)
+		_assert(wrapped_level != null, "level catalog loads wrapped level")
+		if wrapped_level != null:
+			_assert(wrapped_level.level_number == 1, "wrapped level keeps source level number")
 
 	var abstraction_summary := _find_summary(episode_summaries, "Abstraction")
 	_assert(not abstraction_summary.is_empty(), "Abstraction episode summary exists")
@@ -205,6 +214,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.board_state != null, "game session owns board state")
 	_assert(session.board_state.remaining_required_bricks == 143, "game session preserves required brick count")
 	_assert(session.active_ball_count() == 1, "game session shows a ready ball")
+	_assert(session.score == 0, "game session starts with zero score")
+	_assert(session.displayed_score == 0, "game session starts with zero displayed score")
+	_assert(session.lives_remaining == GameSessionScript.INITIAL_LIVES, "game session starts with original spare ball count")
+	_assert(session.points_to_next_extra_life == GameSessionScript.EXTRA_LIFE_SCORE_STEP, "game session starts with original extra life threshold")
+	_assert(session.display_level_number == 1, "game session displays source level number")
 
 	session.move_racket_to(-100.0)
 	_assert(session.racket_rect().position.y == GameSessionScript.RACKET_MIN_Y, "racket clamps to top bound")
@@ -233,13 +247,25 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	var missed_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	missed_session.force_ball(Vector2(GameSessionScript.BALL_LOST_X + 1.0, 350), Vector2(120, 0))
 	missed_session.update(0.01)
-	_assert(missed_session.state == GameSessionScript.STATE_BALL_LOST, "missed ball enters ball-lost state")
+	_assert(missed_session.state == GameSessionScript.STATE_READY, "missed ball resets to ready while spare balls remain")
+	_assert(missed_session.lives_remaining == GameSessionScript.INITIAL_LIVES - 1, "missed ball consumes one spare ball")
+	_assert(missed_session.active_ball_count() == 1, "missed ball creates a new ready ball")
+	for miss_index in range(GameSessionScript.INITIAL_LIVES):
+		missed_session.force_ball(Vector2(GameSessionScript.BALL_LOST_X + 1.0, 350), Vector2(120, 0))
+		missed_session.update(0.01)
+	_assert(missed_session.state == GameSessionScript.STATE_GAME_OVER, "losing with zero spare balls enters game over")
+	_assert(missed_session.visible_lives() == 0, "game over display clamps spare balls at zero")
+	_assert(missed_session.active_ball_count() == 0, "game over hides active balls")
 
 	var brick_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	brick_session.force_ball(PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2), Vector2(-80, 0))
 	brick_session.update(0.01)
 	_assert(brick_session.board_state.tile_at(0, 0) == 0, "ball hit clears brick through board state")
 	_assert(brick_session.consume_board_changed(), "brick hit marks board for redraw")
+	_assert(brick_session.score == GameSessionScript.BRICK_SCORE, "brick hit awards original score increment")
+	for catchup_index in range(6):
+		brick_session.update(0.0)
+	_assert(brick_session.displayed_score == GameSessionScript.BRICK_SCORE, "displayed score catches up gradually")
 	_assert(brick_session.state == GameSessionScript.STATE_LEVEL_COMPLETE, "clearing final required brick completes level")
 
 	var chain_session = _game_session_from_level(_make_level_from_rows([[43, 68]]))
@@ -248,9 +274,27 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(chain_session.board_state.tile_at(0, 0) == 0, "chain tile hit clears source tile")
 	_assert(chain_session.board_state.tile_at(1, 0) == 68, "chain tile hit leaves neighbor pending")
 	_assert(chain_session.board_state.pending_chain_explosion_count() == 1, "chain tile hit schedules delayed neighbor")
+	_assert(chain_session.score == GameSessionScript.BRICK_SCORE, "chain hit scores immediate cleared tile")
 	chain_session.update(0.031)
 	_assert(chain_session.board_state.tile_at(1, 0) == 0, "delayed chain explosion clears neighbor")
+	_assert(chain_session.score == GameSessionScript.BRICK_SCORE * 2, "delayed chain explosion awards score")
 	_assert(chain_session.state == GameSessionScript.STATE_LEVEL_COMPLETE, "chain explosion can complete level")
+
+	var bonus_life_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	bonus_life_session.award_score(GameSessionScript.EXTRA_LIFE_SCORE_STEP - GameSessionScript.BRICK_SCORE)
+	_assert(bonus_life_session.lives_remaining == GameSessionScript.INITIAL_LIVES, "extra life waits for threshold")
+	bonus_life_session.award_score(GameSessionScript.BRICK_SCORE)
+	_assert(bonus_life_session.lives_remaining == GameSessionScript.INITIAL_LIVES + 1, "extra life is awarded at original threshold")
+	_assert(bonus_life_session.points_to_next_extra_life == GameSessionScript.EXTRA_LIFE_SCORE_STEP * 2, "extra life threshold advances")
+
+	var advance_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	advance_session.award_score(30)
+	advance_session.lives_remaining = 2
+	advance_session.advance_to_level(_make_level_from_rows([[2]]), 15)
+	_assert(advance_session.score == 30, "level advance preserves run score")
+	_assert(advance_session.lives_remaining == 2, "level advance preserves spare balls")
+	_assert(advance_session.display_level_number == 15, "level advance preserves displayed level")
+	_assert(advance_session.state == GameSessionScript.STATE_READY, "level advance resets round to ready")
 
 
 func _validate_brick_atlas_mapping() -> void:
@@ -449,10 +493,27 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(gameplay.board_state == playfield.board_state, "game screen shares gameplay board with renderer")
 			_assert(game.find_child("RacketRenderer", true, false) != null, "game screen creates racket renderer")
 			_assert(game.find_child("BallRenderer", true, false) != null, "game screen creates ball renderer")
+			var hud = game.call("current_hud")
+			_assert(hud != null, "game screen creates gameplay hud")
+			if hud != null:
+				var hud_values: Dictionary = hud.call("status_values")
+				_assert(hud_values["score"] == 0, "game hud starts with score")
+				_assert(hud_values["lives"] == GameSessionScript.INITIAL_LIVES, "game hud starts with spare balls")
+				_assert(hud_values["level"] == PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER, "game hud starts with display level")
 			game.call("move_racket_to", 10000.0)
 			_assert(gameplay.racket_rect().end.y == GameSessionScript.RACKET_MAX_BOTTOM, "game screen routes racket movement")
 			_assert(game.call("launch_ready_ball"), "game screen routes ball launch")
 			_assert(gameplay.state == GameSessionScript.STATE_PLAYING, "game screen launch enters playing state")
+			if hud != null:
+				gameplay.state = GameSessionScript.STATE_GAME_OVER
+				gameplay.lives_remaining = -1
+				gameplay.score = 45
+				gameplay.display_level_number = 3
+				hud.call("refresh")
+				var game_over_title := hud.find_child("GameOverTitle", true, false) as Label
+				var game_over_summary := hud.find_child("GameOverSummary", true, false) as Label
+				_assert(game_over_title != null and game_over_title.visible, "game hud shows game over title")
+				_assert(game_over_summary != null and game_over_summary.text == "Your Level #3, and Score 45", "game hud shows game over run summary")
 	game.queue_free()
 
 	var app := AppScene.instantiate()
@@ -474,6 +535,9 @@ func _validate_menu_and_game_scenes() -> void:
 			if app_game != null:
 				_assert(app_game.episode_slug == "Retro", "app starts selected episode")
 				_assert(app_game.level_number == 1, "app starts selected episode at first level")
+				app_game.emit_signal("return_to_menu_requested")
+				await process_frame
+				_assert(app.find_child("MainMenuScreen", true, false) != null, "app returns from game over to main menu")
 	app.queue_free()
 
 
