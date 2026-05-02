@@ -32,12 +32,16 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   16-entry cap.
 - Pressing Space now activates the first collected bonus in the original stack
   order. The current supported effects are standard ball, ball size/speed,
-  paddle size, extra life, destroy one ball, back wall, and jump to next level;
-  projectile, fireball, magnet, random, and explosion-family effects remain
-  explicit pending parity work.
+  paddle size, shooting paddle projectiles, extra life, destroy one ball, back
+  wall, and jump to next level; fireball, magnet, random, and explosion-family
+  effects remain explicit pending parity work.
 - `KrakoutBonusRenderer` draws falling bonuses, collected stack entries, and the
   stack pointer from the extracted `Bonuses_a`, `Bonuses_aa`, and
   `PointToBonusInStack` sheets.
+- `KrakoutBulletRenderer` draws the one-shot and continuous shooting-paddle
+  projectiles from the extracted `Bullets` sheet, while `KrakoutGameSession`
+  owns the original-backed 10-projectile pool, 250ms fire gate, leftward travel,
+  and brick-hit routing.
 - `Back Wall (30 sec)` now uses a timed session effect, reflects missed balls
   at the original right-side wall boundary, syncs the wall visual through the
   playfield renderer, and reports its countdown through the original

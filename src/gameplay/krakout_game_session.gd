@@ -60,6 +60,20 @@ const BONUS_STACK_FRAME_SECONDS := 0.07
 const BONUS_POINTER_FRAME_SECONDS := 0.05
 const BACK_WALL_DURATION_SECONDS := 30.0
 const BACK_WALL_STATUS_ICON_INDEX := 3
+const MAX_PROJECTILES := 10
+const PROJECTILE_FIRE_COOLDOWN_SECONDS := 0.25
+const PROJECTILE_STEP_X := 5.0
+const PROJECTILE_EXPIRE_X := 27.0
+const PROJECTILE_SIZE := Vector2(35, 15)
+const PROJECTILE_TRAIL_OFFSET := Vector2(30, 0)
+const PROJECTILE_HEAD_FRAME_COUNT := 5
+const PROJECTILE_TRAIL_FRAME_COUNT := 10
+const PROJECTILE_HEAD_FRAME_SECONDS := 0.05
+const PROJECTILE_TRAIL_FRAME_SECONDS := 0.01
+const PROJECTILE_TYPE_STRONG := 0
+const PROJECTILE_TYPE_CONTINUOUS := 1
+const PROJECTILE_MODE_DISABLED := 0
+const PROJECTILE_MODE_CONTINUOUS := 1
 const BONUS_ADD_STANDARD_BALL := 0
 const BONUS_ADD_FIREBALL := 1
 const BONUS_NON_STRICKED_BALLS := 2
@@ -112,6 +126,8 @@ const SUPPORTED_BONUS_EFFECTS := {
 	BONUS_INCREASE_BALL_SIZE: true,
 	BONUS_INCREASE_BALL_SPEED: true,
 	BONUS_DECREASE_BALL_SPEED: true,
+	BONUS_SHOOTING_PADDLE_TIMED: true,
+	BONUS_SHOOTING_PADDLE_CONTINUOUS: true,
 	BONUS_SHRINK_PADDLE: true,
 	BONUS_EXPAND_PADDLE: true,
 	BONUS_BACK_WALL: true,
@@ -151,11 +167,14 @@ var remaining_bonus_stock := 0
 var falling_bonuses: Array[Dictionary] = []
 var bonus_stack: Array[Dictionary] = []
 var bonus_pointer_frame := 0
+var projectiles: Array[Dictionary] = []
 var back_wall_time_remaining := 0.0
 var _bonus_rng = RandomScript.new()
 var _bonus_animation_rng = RandomScript.new(31415)
 var _bonus_drop_cooldown := BONUS_DROP_GATE_SECONDS
 var _bonus_pointer_elapsed := 0.0
+var _projectile_fire_cooldown := 0.0
+var _shooting_paddle_mode := PROJECTILE_MODE_DISABLED
 
 
 func _init() -> void:
@@ -278,6 +297,11 @@ func update(delta: float) -> void:
 		return
 
 	_update_falling_bonuses(delta)
+	_update_projectiles(delta)
+	if board_state != null and board_state.is_complete():
+		state = STATE_LEVEL_COMPLETE
+		return
+	_update_projectile_fire(delta)
 
 	var active_count := 0
 	for index in range(balls.size()):
@@ -318,6 +342,14 @@ func visible_falling_bonuses() -> Array[Dictionary]:
 	return visible
 
 
+func visible_projectiles() -> Array[Dictionary]:
+	var visible: Array[Dictionary] = []
+	for projectile: Dictionary in projectiles:
+		if bool(projectile.get("active", false)):
+			visible.append(projectile.duplicate())
+	return visible
+
+
 func bonus_stack_entries() -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	for entry: Dictionary in bonus_stack:
@@ -337,6 +369,10 @@ func active_bonus_indicators() -> Array[Dictionary]:
 
 func is_back_wall_active() -> bool:
 	return back_wall_time_remaining > 0.0
+
+
+func is_shooting_paddle_active() -> bool:
+	return _shooting_paddle_mode == PROJECTILE_MODE_CONTINUOUS
 
 
 func activate_next_bonus() -> Dictionary:
@@ -380,6 +416,10 @@ func active_ball_count() -> int:
 	return visible_balls().size()
 
 
+func active_projectile_count() -> int:
+	return visible_projectiles().size()
+
+
 func current_racket_height() -> float:
 	return RACKET_SEGMENT_PIXEL_STEP * float(racket_segment_count) + RACKET_SEGMENT_MARGIN
 
@@ -391,6 +431,10 @@ func racket_rect() -> Rect2:
 func ball_rect(ball: Dictionary) -> Rect2:
 	var size := float(ball.get("size", BALL_SIZE))
 	return Rect2(ball.get("position", Vector2.ZERO), Vector2(size, size))
+
+
+func projectile_rect(projectile: Dictionary) -> Rect2:
+	return Rect2(projectile.get("position", Vector2.ZERO), PROJECTILE_SIZE)
 
 
 func first_ball_position() -> Vector2:
@@ -543,6 +587,14 @@ func _collide_with_board(ball: Dictionary, previous_position: Vector2) -> bool:
 	var column := int(hit["column"])
 	var row := int(hit["row"])
 	var tile_id := int(hit["tile_id"])
+	var hit_result := _resolve_board_tile_hit(column, row, tile_id)
+	_apply_board_hit_result(hit_result)
+
+	_reflect_from_tile(ball, previous_position, PlayfieldSpecScript.brick_rect(column, row))
+	return true
+
+
+func _resolve_board_tile_hit(column: int, row: int, tile_id: int) -> Dictionary:
 	var cleared_count := 0
 	var did_change_board := false
 	if BrickSemanticsScript.is_chain_explosion_tile(tile_id):
@@ -553,13 +605,19 @@ func _collide_with_board(ball: Dictionary, previous_position: Vector2) -> bool:
 		cleared_count = int(regular_hit_result.get("cleared_count", 0))
 		did_change_board = bool(regular_hit_result.get("changed", false))
 
+	return {
+		"changed": did_change_board,
+		"cleared_count": cleared_count,
+	}
+
+
+func _apply_board_hit_result(hit_result: Dictionary) -> void:
+	var did_change_board := bool(hit_result.get("changed", false))
+	var cleared_count := int(hit_result.get("cleared_count", 0))
 	if did_change_board:
 		board_changed = true
 	if cleared_count > 0:
 		award_score(cleared_count * BRICK_SCORE)
-
-	_reflect_from_tile(ball, previous_position, PlayfieldSpecScript.brick_rect(column, row))
-	return true
 
 
 func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictionary:
@@ -704,6 +762,9 @@ func _reset_bonus_drop_gate() -> void:
 
 func _clear_timed_bonus_state() -> void:
 	back_wall_time_remaining = 0.0
+	projectiles.clear()
+	_shooting_paddle_mode = PROJECTILE_MODE_DISABLED
+	_projectile_fire_cooldown = 0.0
 
 
 func _update_bonus_timers(delta: float) -> void:
@@ -764,6 +825,109 @@ func _advance_falling_bonus(bonus: Dictionary, delta: float) -> void:
 	bonus["frame_elapsed"] = frame_elapsed
 	if next_x > BONUS_EXPIRE_X:
 		bonus["active"] = false
+
+
+func _update_projectile_fire(delta: float) -> void:
+	if _projectile_fire_cooldown > 0.0:
+		_projectile_fire_cooldown = maxf(0.0, _projectile_fire_cooldown - delta)
+		if is_zero_approx(_projectile_fire_cooldown):
+			_projectile_fire_cooldown = 0.0
+
+	if _shooting_paddle_mode != PROJECTILE_MODE_CONTINUOUS:
+		return
+	if _projectile_fire_cooldown > 0.0:
+		return
+
+	if _spawn_projectile(PROJECTILE_TYPE_CONTINUOUS):
+		_projectile_fire_cooldown = PROJECTILE_FIRE_COOLDOWN_SECONDS
+
+
+func _spawn_projectile(projectile_type: int) -> bool:
+	_compact_projectiles()
+	if projectiles.size() >= MAX_PROJECTILES:
+		return false
+
+	projectiles.append({
+		"active": true,
+		"type": projectile_type,
+		"position": _projectile_spawn_position(),
+		"head_frame": 0,
+		"head_frame_elapsed": 0.0,
+		"trail_frame": 0,
+		"trail_frame_elapsed": 0.0,
+	})
+	return true
+
+
+func _projectile_spawn_position() -> Vector2:
+	return Vector2(
+		RACKET_X - 20.0,
+		racket_y + current_racket_height() * 0.5 - 1.0
+	)
+
+
+func _update_projectiles(delta: float) -> void:
+	for index in range(projectiles.size()):
+		var projectile := projectiles[index]
+		if not bool(projectile.get("active", false)):
+			continue
+
+		_advance_projectile(projectile, delta)
+		if bool(projectile.get("active", false)) and _collide_projectile_with_board(projectile):
+			if int(projectile.get("type", PROJECTILE_TYPE_CONTINUOUS)) == PROJECTILE_TYPE_CONTINUOUS:
+				projectile["active"] = false
+		projectiles[index] = projectile
+
+	_compact_projectiles()
+
+
+func _advance_projectile(projectile: Dictionary, delta: float) -> void:
+	var position: Vector2 = projectile.get("position", Vector2.ZERO)
+	position.x -= PROJECTILE_STEP_X
+	projectile["position"] = position
+	if position.x <= PROJECTILE_EXPIRE_X:
+		projectile["active"] = false
+
+	var head_elapsed := float(projectile.get("head_frame_elapsed", 0.0)) + delta
+	var head_frame := int(projectile.get("head_frame", 0))
+	while head_elapsed >= PROJECTILE_HEAD_FRAME_SECONDS:
+		head_frame = (head_frame + 1) % PROJECTILE_HEAD_FRAME_COUNT
+		head_elapsed -= PROJECTILE_HEAD_FRAME_SECONDS
+	projectile["head_frame"] = head_frame
+	projectile["head_frame_elapsed"] = head_elapsed
+
+	var trail_elapsed := float(projectile.get("trail_frame_elapsed", 0.0)) + delta
+	var trail_frame := int(projectile.get("trail_frame", 0))
+	while trail_elapsed >= PROJECTILE_TRAIL_FRAME_SECONDS:
+		trail_frame = (trail_frame + 1) % PROJECTILE_TRAIL_FRAME_COUNT
+		trail_elapsed -= PROJECTILE_TRAIL_FRAME_SECONDS
+	projectile["trail_frame"] = trail_frame
+	projectile["trail_frame_elapsed"] = trail_elapsed
+
+
+func _collide_projectile_with_board(projectile: Dictionary) -> bool:
+	if board_state == null:
+		return false
+
+	var hit := _first_board_hit(projectile_rect(projectile))
+	if hit.is_empty():
+		return false
+
+	var hit_result := _resolve_board_tile_hit(
+		int(hit["column"]),
+		int(hit["row"]),
+		int(hit["tile_id"])
+	)
+	_apply_board_hit_result(hit_result)
+	return true
+
+
+func _compact_projectiles() -> void:
+	var compacted: Array[Dictionary] = []
+	for projectile: Dictionary in projectiles:
+		if bool(projectile.get("active", false)):
+			compacted.append(projectile)
+	projectiles = compacted
 
 
 func _compact_falling_bonuses() -> void:
@@ -837,6 +1001,10 @@ func _apply_bonus_effect(type_id: int) -> Dictionary:
 			return _adjust_ball_speed(BALL_SPEED_STEP)
 		BONUS_DECREASE_BALL_SPEED:
 			return _adjust_ball_speed(-BALL_SPEED_STEP)
+		BONUS_SHOOTING_PADDLE_TIMED:
+			return _activate_shooting_paddle_one_shot()
+		BONUS_SHOOTING_PADDLE_CONTINUOUS:
+			return _activate_shooting_paddle_continuous()
 		BONUS_SHRINK_PADDLE:
 			return _adjust_racket_segments(-RACKET_BONUS_STEP_SEGMENTS)
 		BONUS_EXPAND_PADDLE:
@@ -895,6 +1063,30 @@ func _adjust_racket_segments(delta_segments: int) -> Dictionary:
 func _activate_back_wall() -> Dictionary:
 	back_wall_time_remaining = BACK_WALL_DURATION_SECONDS
 	return {"effect": "back_wall", "seconds_remaining": back_wall_time_remaining}
+
+
+func _activate_shooting_paddle_one_shot() -> Dictionary:
+	_shooting_paddle_mode = PROJECTILE_MODE_DISABLED
+	var spawned := _spawn_projectile(PROJECTILE_TYPE_STRONG)
+	if spawned:
+		_projectile_fire_cooldown = PROJECTILE_FIRE_COOLDOWN_SECONDS
+	return {
+		"effect": "shooting_paddle_one_shot",
+		"spawned": spawned,
+	}
+
+
+func _activate_shooting_paddle_continuous() -> Dictionary:
+	_shooting_paddle_mode = PROJECTILE_MODE_CONTINUOUS
+	var spawned := false
+	if _projectile_fire_cooldown <= 0.0:
+		spawned = _spawn_projectile(PROJECTILE_TYPE_CONTINUOUS)
+		if spawned:
+			_projectile_fire_cooldown = PROJECTILE_FIRE_COOLDOWN_SECONDS
+	return {
+		"effect": "shooting_paddle_continuous",
+		"spawned": spawned,
+	}
 
 
 func _destroy_one_active_ball() -> bool:

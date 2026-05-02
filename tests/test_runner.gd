@@ -15,6 +15,7 @@ const RandomScript := preload("res://src/gameplay/krakout_random.gd")
 const RacketRendererScript := preload("res://src/render/racket_renderer.gd")
 const BallRendererScript := preload("res://src/render/ball_renderer.gd")
 const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
+const BulletRendererScript := preload("res://src/render/bullet_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
 const BitmapTextScript := preload("res://src/render/krakout_bitmap_text.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
@@ -455,6 +456,61 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	var repeated_unsupported_result: Dictionary = unsupported_bonus_session.activate_next_bonus()
 	_assert(repeated_unsupported_result["status"] == "unsupported", "unsupported bonus remains first after rejected activation")
 
+	var one_shot_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(one_shot_session, GameSessionScript.BONUS_SHOOTING_PADDLE_TIMED)
+	var one_shot_result: Dictionary = one_shot_session.activate_next_bonus()
+	_assert(one_shot_result["status"] == "applied", "one-shot shooting bonus applies")
+	_assert(one_shot_result["effect"] == "shooting_paddle_one_shot", "one-shot shooting bonus reports effect")
+	_assert(one_shot_session.active_projectile_count() == 1, "one-shot shooting bonus spawns one projectile")
+	_assert(not one_shot_session.is_shooting_paddle_active(), "one-shot shooting bonus does not leave continuous shooting armed")
+	_assert(one_shot_session.bonus_stack_entries().is_empty(), "one-shot shooting bonus consumes first stack entry")
+	var one_shot_projectiles: Array = one_shot_session.visible_projectiles()
+	if one_shot_projectiles.size() == 1:
+		_assert(
+			one_shot_session.projectile_rect(one_shot_projectiles[0]) == Rect2(Vector2(550, 144), GameSessionScript.PROJECTILE_SIZE),
+			"one-shot projectile starts at IDA-backed paddle muzzle"
+		)
+	one_shot_session.update(0.01)
+	one_shot_projectiles = one_shot_session.visible_projectiles()
+	if one_shot_projectiles.size() == 1:
+		_assert(one_shot_projectiles[0]["position"] == Vector2(545, 144), "projectile advances left by original step")
+
+	var continuous_shooting_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(continuous_shooting_session, GameSessionScript.BONUS_SHOOTING_PADDLE_CONTINUOUS)
+	var continuous_shooting_result: Dictionary = continuous_shooting_session.activate_next_bonus()
+	_assert(continuous_shooting_result["status"] == "applied", "continuous shooting bonus applies")
+	_assert(continuous_shooting_result["effect"] == "shooting_paddle_continuous", "continuous shooting bonus reports effect")
+	_assert(continuous_shooting_session.is_shooting_paddle_active(), "continuous shooting bonus arms shooting mode")
+	_assert(continuous_shooting_session.active_projectile_count() == 1, "continuous shooting bonus fires immediately")
+	continuous_shooting_session.update(GameSessionScript.PROJECTILE_FIRE_COOLDOWN_SECONDS - 0.01)
+	_assert(continuous_shooting_session.active_projectile_count() == 1, "continuous shooting waits for original cooldown")
+	continuous_shooting_session.update(0.01)
+	_assert(continuous_shooting_session.active_projectile_count() == 2, "continuous shooting fires after original cooldown")
+	for shot_index in range(20):
+		continuous_shooting_session.update(GameSessionScript.PROJECTILE_FIRE_COOLDOWN_SECONDS)
+	_assert(continuous_shooting_session.active_projectile_count() == GameSessionScript.MAX_PROJECTILES, "continuous shooting caps active projectiles")
+
+	var projectile_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	var hit_projectiles: Array[Dictionary] = [_projectile(
+		GameSessionScript.PROJECTILE_TYPE_CONTINUOUS,
+		PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2)
+	)]
+	projectile_hit_session.projectiles = hit_projectiles
+	projectile_hit_session.update(0.0)
+	_assert(projectile_hit_session.board_state.tile_at(0, 0) == 0, "projectile hit clears brick through board state")
+	_assert(projectile_hit_session.consume_board_changed(), "projectile hit marks board for redraw")
+	_assert(projectile_hit_session.score == GameSessionScript.BRICK_SCORE, "projectile hit awards brick score")
+	_assert(projectile_hit_session.active_projectile_count() == 0, "continuous projectile deactivates after brick hit")
+
+	var projectile_expire_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	var expiring_projectiles: Array[Dictionary] = [_projectile(
+		GameSessionScript.PROJECTILE_TYPE_CONTINUOUS,
+		Vector2(GameSessionScript.PROJECTILE_EXPIRE_X + 1.0, 200)
+	)]
+	projectile_expire_session.projectiles = expiring_projectiles
+	projectile_expire_session.update(0.0)
+	_assert(projectile_expire_session.active_projectile_count() == 0, "projectile expires at original left bound")
+
 	var add_ball_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(add_ball_session, GameSessionScript.BONUS_ADD_STANDARD_BALL)
 	var add_ball_result: Dictionary = add_ball_session.activate_next_bonus()
@@ -808,6 +864,7 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(game.find_child("RacketRenderer", true, false) != null, "game screen creates racket renderer")
 			_assert(game.find_child("BallRenderer", true, false) != null, "game screen creates ball renderer")
 			_assert(game.find_child("BonusRenderer", true, false) != null, "game screen creates bonus renderer")
+			_assert(game.find_child("BulletRenderer", true, false) != null, "game screen creates bullet renderer")
 			var hud = game.call("current_hud")
 			_assert(hud != null, "game screen creates gameplay hud")
 			if hud != null:
@@ -830,6 +887,11 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("activate_next_bonus")
 			await process_frame
 			_assert(playfield.call("is_back_wall_active"), "game screen syncs back-wall visual state")
+			_stack_bonus(gameplay, GameSessionScript.BONUS_SHOOTING_PADDLE_TIMED)
+			var shooting_result: Dictionary = game.call("activate_next_bonus")
+			await process_frame
+			_assert(shooting_result["effect"] == "shooting_paddle_one_shot", "game screen routes shooting bonus activation")
+			_assert(gameplay.active_projectile_count() == 1, "game screen exposes spawned projectile")
 			if hud != null:
 				gameplay.state = GameSessionScript.STATE_GAME_OVER
 				gameplay.lives_remaining = -1
@@ -934,6 +996,18 @@ func _stack_bonus(session, type_id: int) -> void:
 		"frame": 0,
 		"frame_elapsed": 0.0,
 	})
+
+
+func _projectile(projectile_type: int, position: Vector2) -> Dictionary:
+	return {
+		"active": true,
+		"type": projectile_type,
+		"position": position,
+		"head_frame": 0,
+		"head_frame_elapsed": 0.0,
+		"trail_frame": 0,
+		"trail_frame_elapsed": 0.0,
+	}
 
 
 func _is_runtime_path(entry: Dictionary) -> bool:

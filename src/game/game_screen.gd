@@ -9,6 +9,7 @@ const GameSessionScript := preload("res://src/gameplay/krakout_game_session.gd")
 const RacketRendererScript := preload("res://src/render/racket_renderer.gd")
 const BallRendererScript := preload("res://src/render/ball_renderer.gd")
 const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
+const BulletRendererScript := preload("res://src/render/bullet_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
 
 @export var episode_slug := PlayfieldSpecScript.DEFAULT_EPISODE
@@ -20,6 +21,7 @@ var gameplay_session
 var racket_renderer
 var ball_renderer
 var bonus_renderer
+var bullet_renderer
 var hud_renderer
 var _run_started := false
 
@@ -170,6 +172,11 @@ func _ensure_gameplay_nodes() -> void:
 		bonus_renderer.name = "BonusRenderer"
 		add_child(bonus_renderer)
 
+	if bullet_renderer == null:
+		bullet_renderer = BulletRendererScript.new()
+		bullet_renderer.name = "BulletRenderer"
+		add_child(bullet_renderer)
+
 	if hud_renderer == null:
 		hud_renderer = GameHudScript.new()
 		hud_renderer.name = "GameHud"
@@ -178,6 +185,7 @@ func _ensure_gameplay_nodes() -> void:
 	racket_renderer.set_session(gameplay_session)
 	ball_renderer.set_session(gameplay_session)
 	bonus_renderer.set_session(gameplay_session)
+	bullet_renderer.set_session(gameplay_session)
 	hud_renderer.set_session(gameplay_session)
 
 
@@ -188,6 +196,8 @@ func _refresh_actor_renderers() -> void:
 		ball_renderer.queue_redraw()
 	if bonus_renderer != null:
 		bonus_renderer.queue_redraw()
+	if bullet_renderer != null:
+		bullet_renderer.queue_redraw()
 
 
 func _refresh_hud() -> void:
