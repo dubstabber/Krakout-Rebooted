@@ -69,6 +69,15 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - `KrakoutApp` now starts on a Godot `Control` main menu, routes `Start Game`
   into an episode browser backed by decoded episode metadata, and starts the
   selected episode at its first level.
+- The main menu now routes every original icon into a Godot-native screen:
+  episode selection, game rules, high score, options, credits, and exit.
+- `KrakoutAudio` owns manifest-backed music/SFX playback through a music player
+  and small SFX pool. The options screen persists music/SFX enable flags and
+  volumes through `KrakoutProfile`.
+- `theme1` is exposed only as a provisional music preview until the exact
+  original menu/game track routing is verified. Numbered `effNN.wav` effects
+  remain unmapped to gameplay events until runtime or IDA evidence proves their
+  meaning.
 
 ## Validation
 

@@ -9,11 +9,19 @@ const BALL_TRACKS_VISIBLE_KEY := "ball_tracks_visible"
 const FPS_VISIBLE_KEY := "fps_visible"
 const BACKGROUND_MOVABLE_KEY := "background_movable"
 const BACKGROUND_TYPE_KEY := "background_type"
+const MUSIC_ENABLED_KEY := "music_enabled"
+const SFX_ENABLED_KEY := "sfx_enabled"
+const MUSIC_VOLUME_KEY := "music_volume"
+const SFX_VOLUME_KEY := "sfx_volume"
 const DEFAULT_BONUS_STACK_VISIBLE := true
 const DEFAULT_BALL_TRACKS_VISIBLE := true
 const DEFAULT_FPS_VISIBLE := false
 const DEFAULT_BACKGROUND_MOVABLE := true
 const DEFAULT_BACKGROUND_TYPE := 2
+const DEFAULT_MUSIC_ENABLED := true
+const DEFAULT_SFX_ENABLED := true
+const DEFAULT_MUSIC_VOLUME := 80
+const DEFAULT_SFX_VOLUME := 85
 
 @export var save_path := DEFAULT_SAVE_PATH
 
@@ -23,6 +31,10 @@ var _ball_tracks_visible := DEFAULT_BALL_TRACKS_VISIBLE
 var _fps_visible := DEFAULT_FPS_VISIBLE
 var _background_movable := DEFAULT_BACKGROUND_MOVABLE
 var _background_type := DEFAULT_BACKGROUND_TYPE
+var _music_enabled := DEFAULT_MUSIC_ENABLED
+var _sfx_enabled := DEFAULT_SFX_ENABLED
+var _music_volume := DEFAULT_MUSIC_VOLUME
+var _sfx_volume := DEFAULT_SFX_VOLUME
 var _loaded := false
 
 
@@ -116,6 +128,60 @@ func set_background_type(type_id: int) -> bool:
 	return save_profile()
 
 
+func music_enabled() -> bool:
+	_ensure_loaded()
+	return _music_enabled
+
+
+func set_music_enabled(is_enabled: bool) -> bool:
+	_ensure_loaded()
+	if _music_enabled == is_enabled:
+		return false
+	_music_enabled = is_enabled
+	return save_profile()
+
+
+func sfx_enabled() -> bool:
+	_ensure_loaded()
+	return _sfx_enabled
+
+
+func set_sfx_enabled(is_enabled: bool) -> bool:
+	_ensure_loaded()
+	if _sfx_enabled == is_enabled:
+		return false
+	_sfx_enabled = is_enabled
+	return save_profile()
+
+
+func music_volume() -> int:
+	_ensure_loaded()
+	return _music_volume
+
+
+func set_music_volume(volume: int) -> bool:
+	_ensure_loaded()
+	var normalized_volume := clampi(volume, 0, 100)
+	if _music_volume == normalized_volume:
+		return false
+	_music_volume = normalized_volume
+	return save_profile()
+
+
+func sfx_volume() -> int:
+	_ensure_loaded()
+	return _sfx_volume
+
+
+func set_sfx_volume(volume: int) -> bool:
+	_ensure_loaded()
+	var normalized_volume := clampi(volume, 0, 100)
+	if _sfx_volume == normalized_volume:
+		return false
+	_sfx_volume = normalized_volume
+	return save_profile()
+
+
 func load_profile() -> bool:
 	_loaded = true
 	_reset_profile_state()
@@ -134,6 +200,10 @@ func load_profile() -> bool:
 	_fps_visible = bool(config.get_value(SETTINGS_SECTION, FPS_VISIBLE_KEY, DEFAULT_FPS_VISIBLE))
 	_background_movable = bool(config.get_value(SETTINGS_SECTION, BACKGROUND_MOVABLE_KEY, DEFAULT_BACKGROUND_MOVABLE))
 	_background_type = maxi(0, int(config.get_value(SETTINGS_SECTION, BACKGROUND_TYPE_KEY, DEFAULT_BACKGROUND_TYPE)))
+	_music_enabled = bool(config.get_value(SETTINGS_SECTION, MUSIC_ENABLED_KEY, DEFAULT_MUSIC_ENABLED))
+	_sfx_enabled = bool(config.get_value(SETTINGS_SECTION, SFX_ENABLED_KEY, DEFAULT_SFX_ENABLED))
+	_music_volume = clampi(int(config.get_value(SETTINGS_SECTION, MUSIC_VOLUME_KEY, DEFAULT_MUSIC_VOLUME)), 0, 100)
+	_sfx_volume = clampi(int(config.get_value(SETTINGS_SECTION, SFX_VOLUME_KEY, DEFAULT_SFX_VOLUME)), 0, 100)
 	return true
 
 
@@ -145,6 +215,10 @@ func save_profile() -> bool:
 	config.set_value(SETTINGS_SECTION, FPS_VISIBLE_KEY, _fps_visible)
 	config.set_value(SETTINGS_SECTION, BACKGROUND_MOVABLE_KEY, _background_movable)
 	config.set_value(SETTINGS_SECTION, BACKGROUND_TYPE_KEY, _background_type)
+	config.set_value(SETTINGS_SECTION, MUSIC_ENABLED_KEY, _music_enabled)
+	config.set_value(SETTINGS_SECTION, SFX_ENABLED_KEY, _sfx_enabled)
+	config.set_value(SETTINGS_SECTION, MUSIC_VOLUME_KEY, _music_volume)
+	config.set_value(SETTINGS_SECTION, SFX_VOLUME_KEY, _sfx_volume)
 	var error := config.save(save_path)
 	if error != OK:
 		push_warning("Unable to save Krakout profile: %s" % save_path)
@@ -172,3 +246,7 @@ func _reset_profile_state() -> void:
 	_fps_visible = DEFAULT_FPS_VISIBLE
 	_background_movable = DEFAULT_BACKGROUND_MOVABLE
 	_background_type = DEFAULT_BACKGROUND_TYPE
+	_music_enabled = DEFAULT_MUSIC_ENABLED
+	_sfx_enabled = DEFAULT_SFX_ENABLED
+	_music_volume = DEFAULT_MUSIC_VOLUME
+	_sfx_volume = DEFAULT_SFX_VOLUME

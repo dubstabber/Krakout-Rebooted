@@ -3,6 +3,7 @@ extends SceneTree
 const AssetsScript := preload("res://src/autoloads/krakout_assets.gd")
 const LevelsScript := preload("res://src/autoloads/krakout_levels.gd")
 const ProfileScript := preload("res://src/autoloads/krakout_profile.gd")
+const AudioScript := preload("res://src/autoloads/krakout_audio.gd")
 const LevelDataScript := preload("res://src/data/krakout_level_data.gd")
 const LevelGridRendererScript := preload("res://src/render/level_grid_renderer.gd")
 const BrickAtlasMappingScript := preload("res://src/render/brick_atlas_mapping.gd")
@@ -22,6 +23,10 @@ const GameScreenScript := preload("res://src/game/game_screen.gd")
 const BitmapTextScript := preload("res://src/render/krakout_bitmap_text.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
+const RulesScreenScene := preload("res://scenes/menu/rules_screen.tscn")
+const HighScoreScreenScene := preload("res://scenes/menu/high_score_screen.tscn")
+const OptionsScreenScene := preload("res://scenes/menu/options_screen.tscn")
+const CreditsScreenScene := preload("res://scenes/menu/credits_screen.tscn")
 const GameScreenScene := preload("res://scenes/game/game_screen.tscn")
 const AppScene := preload("res://scenes/app/app.tscn")
 
@@ -29,6 +34,7 @@ var _failures := 0
 var _assets: Node
 var _levels: Node
 var _profile: Node
+var _audio: Node
 
 
 func _init() -> void:
@@ -78,6 +84,7 @@ func _run() -> void:
 	_validate_project_presentation_settings()
 	_validate_project_input_map()
 	_validate_profile_service()
+	await _validate_audio_service()
 	_validate_playfield_renderer_shell()
 	_validate_brick_semantics()
 	_validate_original_rng()
@@ -88,6 +95,8 @@ func _run() -> void:
 	_validate_gameplay_sheet_catalog()
 	_validate_manifest_paths()
 	await _validate_menu_and_game_scenes()
+	_shutdown_test_audio()
+	await process_frame
 
 	if _failures == 0:
 		print("Krakout foundation tests passed.")
@@ -117,6 +126,12 @@ func _ensure_test_autoloads() -> void:
 		root.add_child(_profile)
 	if _profile.has_method("set_save_path"):
 		_profile.call("set_save_path", _test_profile_path("autoload"), false)
+
+	_audio = root.get_node_or_null("KrakoutAudio")
+	if _audio == null:
+		_audio = AudioScript.new()
+		_audio.name = "KrakoutAudio"
+		root.add_child(_audio)
 
 
 func _validate_manifest_paths() -> void:
@@ -709,6 +724,10 @@ func _validate_profile_service() -> void:
 	_assert(not profile.fps_visible(), "profile defaults FPS hidden")
 	_assert(profile.background_movable(), "profile defaults background movable from original config")
 	_assert(profile.background_type() == 2, "profile defaults to original BgType")
+	_assert(profile.music_enabled(), "profile defaults music enabled")
+	_assert(profile.sfx_enabled(), "profile defaults SFX enabled")
+	_assert(profile.music_volume() == 80, "profile defaults music volume")
+	_assert(profile.sfx_volume() == 85, "profile defaults SFX volume")
 	_assert(profile.record_score(885), "profile records a new high score")
 	_assert(profile.best_score() == 885, "profile exposes recorded high score")
 	_assert(not profile.record_score(120), "profile ignores lower scores")
@@ -718,6 +737,10 @@ func _validate_profile_service() -> void:
 	_assert(profile.set_fps_visible(true), "profile persists visible FPS setting")
 	_assert(profile.set_background_movable(false), "profile persists static background setting")
 	_assert(profile.set_background_type(1), "profile persists background type setting")
+	_assert(profile.set_music_enabled(false), "profile persists disabled music setting")
+	_assert(profile.set_sfx_enabled(false), "profile persists disabled SFX setting")
+	_assert(profile.set_music_volume(35), "profile persists music volume setting")
+	_assert(profile.set_sfx_volume(120), "profile clamps and persists SFX volume setting")
 
 	var reloaded_profile = ProfileScript.new()
 	reloaded_profile.set_save_path(save_path, true)
@@ -727,16 +750,50 @@ func _validate_profile_service() -> void:
 	_assert(reloaded_profile.fps_visible(), "profile reloads FPS setting")
 	_assert(not reloaded_profile.background_movable(), "profile reloads background movable setting")
 	_assert(reloaded_profile.background_type() == 1, "profile reloads background type setting")
+	_assert(not reloaded_profile.music_enabled(), "profile reloads music enabled setting")
+	_assert(not reloaded_profile.sfx_enabled(), "profile reloads SFX enabled setting")
+	_assert(reloaded_profile.music_volume() == 35, "profile reloads music volume setting")
+	_assert(reloaded_profile.sfx_volume() == 100, "profile reloads clamped SFX volume setting")
 	_assert(reloaded_profile.set_best_score(1200), "profile can replace high score with a higher value")
 
 	var final_profile = ProfileScript.new()
 	final_profile.set_save_path(save_path, true)
 	_assert(final_profile.best_score() == 1200, "profile persists updated high score")
 	_assert(final_profile.background_type() == 1, "profile keeps presentation settings when high score changes")
+	_assert(final_profile.music_volume() == 35, "profile keeps audio settings when high score changes")
 
 	profile.free()
 	reloaded_profile.free()
 	final_profile.free()
+
+
+func _validate_audio_service() -> void:
+	_assert(_audio != null, "audio autoload exists")
+	if _audio == null:
+		return
+
+	await process_frame
+	_assert(_audio.has_method("play_music"), "audio service exposes music playback")
+	_assert(_audio.has_method("play_sfx"), "audio service exposes SFX playback")
+	_assert(bool(_audio.call("music_stream_exists", "theme1")), "audio service resolves extracted music track")
+	_assert(bool(_audio.call("sfx_stream_exists", "eff01")), "audio service resolves extracted SFX")
+	_assert(not bool(_audio.call("music_stream_exists", "missing_track")), "audio service rejects unknown music track")
+	_assert(not bool(_audio.call("sfx_stream_exists", "missing_sfx")), "audio service rejects unknown SFX")
+
+	_audio.call("set_music_enabled", true)
+	_audio.call("set_music_volume", 50)
+	_assert(int(_audio.call("music_volume")) == 50, "audio service clamps and exposes music volume")
+	_audio.call("set_music_enabled", false)
+	_assert(bool(_audio.call("play_music", "theme1", true)), "audio service accepts known disabled music track")
+	_assert(String(_audio.call("current_music_name")) == "theme1", "audio service records current music track")
+	_assert(not bool(_audio.call("is_music_playing")), "audio service does not play music when disabled")
+
+	_audio.call("set_sfx_enabled", true)
+	_audio.call("set_sfx_volume", -20)
+	_assert(int(_audio.call("sfx_volume")) == 0, "audio service clamps minimum SFX volume")
+	_assert(not bool(_audio.call("play_sfx", "eff01")), "audio service suppresses muted SFX")
+	_audio.call("set_sfx_volume", 65)
+	_audio.call("set_sfx_enabled", false)
 
 
 func _validate_bitmap_text_metrics() -> void:
@@ -875,6 +932,10 @@ func _validate_gameplay_sheet_catalog() -> void:
 func _validate_menu_and_game_scenes() -> void:
 	_assert(ResourceLoader.exists("res://scenes/menu/main_menu_screen.tscn"), "main menu scene exists")
 	_assert(ResourceLoader.exists("res://scenes/menu/episode_select_screen.tscn"), "episode select scene exists")
+	_assert(ResourceLoader.exists("res://scenes/menu/rules_screen.tscn"), "rules scene exists")
+	_assert(ResourceLoader.exists("res://scenes/menu/high_score_screen.tscn"), "high score scene exists")
+	_assert(ResourceLoader.exists("res://scenes/menu/options_screen.tscn"), "options scene exists")
+	_assert(ResourceLoader.exists("res://scenes/menu/credits_screen.tscn"), "credits scene exists")
 	_assert(ResourceLoader.exists("res://scenes/game/game_screen.tscn"), "game screen scene exists")
 
 	var menu := MainMenuScreenScene.instantiate()
@@ -927,7 +988,111 @@ func _validate_menu_and_game_scenes() -> void:
 		rules_button.emit_signal("pressed")
 		await process_frame
 		_assert(rules_signal_state["did_request_rules"], "rules button emits stub request")
+	var high_score_button := menu.find_child("HighScoreButton", true, false) as TextureButton
+	if high_score_button != null:
+		var high_score_signal_state := {"did_request_high_score": false}
+		menu.high_score_requested.connect(func() -> void: high_score_signal_state["did_request_high_score"] = true)
+		high_score_button.emit_signal("pressed")
+		await process_frame
+		_assert(high_score_signal_state["did_request_high_score"], "high-score button emits request")
+	var options_button := menu.find_child("OptionsButton", true, false) as TextureButton
+	if options_button != null:
+		var options_signal_state := {"did_request_options": false}
+		menu.options_requested.connect(func() -> void: options_signal_state["did_request_options"] = true)
+		options_button.emit_signal("pressed")
+		await process_frame
+		_assert(options_signal_state["did_request_options"], "options button emits request")
+	var credits_button := menu.find_child("CreditsButton", true, false) as TextureButton
+	if credits_button != null:
+		var credits_signal_state := {"did_request_credits": false}
+		menu.credits_requested.connect(func() -> void: credits_signal_state["did_request_credits"] = true)
+		credits_button.emit_signal("pressed")
+		await process_frame
+		_assert(credits_signal_state["did_request_credits"], "credits button emits request")
 	menu.queue_free()
+
+	if _profile != null and _profile.has_method("set_save_path"):
+		_profile.call("set_save_path", _test_profile_path("menu_screens"), false)
+	if _profile != null and _profile.has_method("set_best_score"):
+		_profile.call("set_best_score", 321)
+
+	var rules_screen := RulesScreenScene.instantiate()
+	root.add_child(rules_screen)
+	await process_frame
+	_assert(rules_screen.has_signal("back_requested"), "rules screen exposes back signal")
+	_assert(rules_screen.find_child("BackButton", true, false) != null, "rules screen creates back button")
+	_assert(String(rules_screen.call("screen_title")) == "Game Rules", "rules screen exposes title")
+	rules_screen.queue_free()
+
+	var credits_screen := CreditsScreenScene.instantiate()
+	root.add_child(credits_screen)
+	await process_frame
+	_assert(credits_screen.has_signal("back_requested"), "credits screen exposes back signal")
+	_assert(credits_screen.find_child("BackButton", true, false) != null, "credits screen creates back button")
+	_assert(String(credits_screen.call("screen_title")) == "Credits", "credits screen exposes title")
+	credits_screen.queue_free()
+
+	var high_score_screen := HighScoreScreenScene.instantiate()
+	root.add_child(high_score_screen)
+	await process_frame
+	_assert(high_score_screen.has_signal("back_requested"), "high score screen exposes back signal")
+	_assert(high_score_screen.find_child("BackButton", true, false) != null, "high score screen creates back button")
+	_assert(int(high_score_screen.call("best_score")) == 321, "high score screen reads persisted high score")
+	high_score_screen.queue_free()
+
+	if _profile != null:
+		_profile.call("set_music_enabled", false)
+		_profile.call("set_sfx_enabled", false)
+		_profile.call("set_music_volume", 25)
+		_profile.call("set_sfx_volume", 45)
+		_profile.call("set_bonus_stack_visible", false)
+		_profile.call("set_ball_tracks_visible", false)
+		_profile.call("set_fps_visible", true)
+		_profile.call("set_background_movable", false)
+		_profile.call("set_background_type", 1)
+
+	var options_screen := OptionsScreenScene.instantiate()
+	root.add_child(options_screen)
+	await process_frame
+	_assert(options_screen.has_signal("back_requested"), "options screen exposes back signal")
+	_assert(options_screen.find_child("SoundSliderArt", true, false) != null, "options screen loads original sound slider art")
+	_assert(options_screen.find_child("BackButton", true, false) != null, "options screen creates back button")
+	var options_snapshot: Dictionary = options_screen.call("settings_snapshot")
+	_assert(not bool(options_snapshot["music_enabled"]), "options screen loads music enabled setting")
+	_assert(not bool(options_snapshot["sfx_enabled"]), "options screen loads SFX enabled setting")
+	_assert(int(options_snapshot["music_volume"]) == 25, "options screen loads music volume")
+	_assert(int(options_snapshot["sfx_volume"]) == 45, "options screen loads SFX volume")
+	_assert(not bool(options_snapshot["bonus_stack_visible"]), "options screen loads bonus-stack setting")
+	_assert(not bool(options_snapshot["ball_tracks_visible"]), "options screen loads ball-track setting")
+	_assert(bool(options_snapshot["fps_visible"]), "options screen loads FPS setting")
+	_assert(not bool(options_snapshot["background_movable"]), "options screen loads background-movable setting")
+	_assert(int(options_snapshot["background_type"]) == 1, "options screen loads background type")
+	options_screen.call("set_music_enabled", true)
+	options_screen.call("set_sfx_enabled", true)
+	options_screen.call("set_music_volume", 55)
+	options_screen.call("set_sfx_volume", 65)
+	options_screen.call("set_bonus_stack_visible", true)
+	options_screen.call("set_ball_tracks_visible", true)
+	options_screen.call("set_fps_visible", false)
+	options_screen.call("set_background_movable", true)
+	options_screen.call("set_background_type", 2)
+	await process_frame
+	if _profile != null:
+		_assert(bool(_profile.call("music_enabled")), "options screen persists enabled music")
+		_assert(bool(_profile.call("sfx_enabled")), "options screen persists enabled SFX")
+		_assert(int(_profile.call("music_volume")) == 55, "options screen persists music volume")
+		_assert(int(_profile.call("sfx_volume")) == 65, "options screen persists SFX volume")
+		_assert(bool(_profile.call("bonus_stack_visible")), "options screen persists bonus-stack setting")
+		_assert(bool(_profile.call("ball_tracks_visible")), "options screen persists ball-track setting")
+		_assert(not bool(_profile.call("fps_visible")), "options screen persists FPS setting")
+		_assert(bool(_profile.call("background_movable")), "options screen persists background-movable setting")
+		_assert(int(_profile.call("background_type")) == 2, "options screen persists background type")
+	if _audio != null:
+		_assert(bool(_audio.call("music_enabled")), "options screen syncs audio music enabled")
+		_assert(bool(_audio.call("sfx_enabled")), "options screen syncs audio SFX enabled")
+		_assert(int(_audio.call("music_volume")) == 55, "options screen syncs audio music volume")
+		_assert(int(_audio.call("sfx_volume")) == 65, "options screen syncs audio SFX volume")
+	options_screen.queue_free()
 
 	var episode_select := EpisodeSelectScreenScene.instantiate()
 	root.add_child(episode_select)
@@ -1088,12 +1253,61 @@ func _validate_menu_and_game_scenes() -> void:
 				_assert(game_over_summary != null and game_over_summary.text == "Your Level #3, and Score 45", "game hud shows game over run summary")
 	game.queue_free()
 
+	if _profile != null and _profile.has_method("set_music_enabled"):
+		_profile.call("set_music_enabled", false)
+	if _audio != null and _audio.has_method("apply_profile_settings"):
+		_audio.call("apply_profile_settings")
+
 	var app := AppScene.instantiate()
 	root.add_child(app)
 	await process_frame
 
 	var app_menu := app.find_child("MainMenuScreen", true, false)
 	_assert(app_menu != null, "app starts on main menu screen")
+	if app_menu != null:
+		app_menu.emit_signal("rules_requested")
+		await process_frame
+		var app_rules := app.find_child("RulesScreen", true, false)
+		_assert(app_rules != null, "app switches from menu to rules screen")
+		if app_rules != null:
+			app_rules.emit_signal("back_requested")
+			await process_frame
+		app_menu = app.find_child("MainMenuScreen", true, false)
+		_assert(app_menu != null, "app returns from rules screen to main menu")
+
+	if app_menu != null:
+		app_menu.emit_signal("high_score_requested")
+		await process_frame
+		var app_high_score := app.find_child("HighScoreScreen", true, false)
+		_assert(app_high_score != null, "app switches from menu to high-score screen")
+		if app_high_score != null:
+			app_high_score.emit_signal("back_requested")
+			await process_frame
+		app_menu = app.find_child("MainMenuScreen", true, false)
+		_assert(app_menu != null, "app returns from high-score screen to main menu")
+
+	if app_menu != null:
+		app_menu.emit_signal("options_requested")
+		await process_frame
+		var app_options := app.find_child("OptionsScreen", true, false)
+		_assert(app_options != null, "app switches from menu to options screen")
+		if app_options != null:
+			app_options.emit_signal("back_requested")
+			await process_frame
+		app_menu = app.find_child("MainMenuScreen", true, false)
+		_assert(app_menu != null, "app returns from options screen to main menu")
+
+	if app_menu != null:
+		app_menu.emit_signal("credits_requested")
+		await process_frame
+		var app_credits := app.find_child("CreditsScreen", true, false)
+		_assert(app_credits != null, "app switches from menu to credits screen")
+		if app_credits != null:
+			app_credits.emit_signal("back_requested")
+			await process_frame
+		app_menu = app.find_child("MainMenuScreen", true, false)
+		_assert(app_menu != null, "app returns from credits screen to main menu")
+
 	if app_menu != null:
 		app_menu.emit_signal("start_game_requested")
 		await process_frame
@@ -1111,6 +1325,7 @@ func _validate_menu_and_game_scenes() -> void:
 				await process_frame
 				_assert(app.find_child("MainMenuScreen", true, false) != null, "app returns from game over to main menu")
 	app.queue_free()
+	await process_frame
 
 
 func _load_level_from_path(path: String):
@@ -1222,6 +1437,11 @@ func _action_has_mouse_button(action_name: String, button_index: MouseButton) ->
 
 func _test_profile_path(label: String) -> String:
 	return "user://krakout_%s_profile_%d.cfg" % [label, Time.get_ticks_usec()]
+
+
+func _shutdown_test_audio() -> void:
+	if _audio != null and _audio.has_method("stop_all"):
+		_audio.call("stop_all", true)
 
 
 func _is_runtime_path(entry: Dictionary) -> bool:
