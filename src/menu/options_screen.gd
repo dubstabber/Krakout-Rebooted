@@ -155,14 +155,6 @@ func _build_scene() -> void:
 	back_button.pressed.connect(func() -> void: back_requested.emit())
 	add_child(back_button)
 
-	var music_button := Button.new()
-	music_button.name = "StartMusicButton"
-	music_button.text = "Start Music"
-	music_button.position = Vector2(405, 405)
-	music_button.size = Vector2(130, 34)
-	music_button.pressed.connect(_start_provisional_music)
-	add_child(music_button)
-
 	_music_toggle.toggled.connect(_on_music_toggled)
 	_sfx_toggle.toggled.connect(_on_sfx_toggled)
 	_music_slider.value_changed.connect(_on_music_volume_changed)
@@ -308,12 +300,6 @@ func _sync_audio_from_profile() -> void:
 	var audio := _audio_service()
 	if audio != null and audio.has_method("apply_profile_settings"):
 		audio.call("apply_profile_settings")
-
-
-func _start_provisional_music() -> void:
-	var audio := _audio_service()
-	if audio != null and audio.has_method("play_music"):
-		audio.call("play_music", "theme1", true)
 
 
 func _profile_service() -> Node:

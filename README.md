@@ -74,10 +74,12 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - `KrakoutAudio` owns manifest-backed music/SFX playback through a music player
   and small SFX pool. The options screen persists music/SFX enable flags and
   volumes through `KrakoutProfile`.
-- `theme1` is exposed only as a provisional music preview until the exact
-  original menu/game track routing is verified. Numbered `effNN.wav` effects
-  remain unmapped to gameplay events until runtime or IDA evidence proves their
-  meaning.
+- `KrakoutAudioCueCatalog` maps the first IDA-backed music contexts into Godot
+  scene flow: main menu/rules/options use `Abnormal`, high score uses `theme2`,
+  credits uses `theme5`, episode select uses `theme1`, gameplay uses `theme4`,
+  and name entry is cataloged as `theme3` for the later score entry route.
+  Numbered `effNN.wav` effects remain unmapped to gameplay events until runtime
+  or IDA evidence proves their meaning.
 
 ## Validation
 

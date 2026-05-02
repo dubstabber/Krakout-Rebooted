@@ -4,6 +4,7 @@ const AssetsScript := preload("res://src/autoloads/krakout_assets.gd")
 const LevelsScript := preload("res://src/autoloads/krakout_levels.gd")
 const ProfileScript := preload("res://src/autoloads/krakout_profile.gd")
 const AudioScript := preload("res://src/autoloads/krakout_audio.gd")
+const AudioCueCatalogScript := preload("res://src/audio/krakout_audio_cue_catalog.gd")
 const LevelDataScript := preload("res://src/data/krakout_level_data.gd")
 const LevelGridRendererScript := preload("res://src/render/level_grid_renderer.gd")
 const BrickAtlasMappingScript := preload("res://src/render/brick_atlas_mapping.gd")
@@ -84,6 +85,7 @@ func _run() -> void:
 	_validate_project_presentation_settings()
 	_validate_project_input_map()
 	_validate_profile_service()
+	_validate_audio_cue_catalog()
 	await _validate_audio_service()
 	_validate_playfield_renderer_shell()
 	_validate_brick_semantics()
@@ -767,6 +769,28 @@ func _validate_profile_service() -> void:
 	final_profile.free()
 
 
+func _validate_audio_cue_catalog() -> void:
+	_assert(AudioCueCatalogScript.has_music_context(AudioCueCatalogScript.CONTEXT_MAIN_MENU), "audio cue catalog exposes main-menu music context")
+	_assert(AudioCueCatalogScript.has_music_context(AudioCueCatalogScript.CONTEXT_RULES), "audio cue catalog exposes rules music context")
+	_assert(AudioCueCatalogScript.has_music_context(AudioCueCatalogScript.CONTEXT_HIGH_SCORE), "audio cue catalog exposes high-score music context")
+	_assert(AudioCueCatalogScript.has_music_context(AudioCueCatalogScript.CONTEXT_OPTIONS), "audio cue catalog exposes options music context")
+	_assert(AudioCueCatalogScript.has_music_context(AudioCueCatalogScript.CONTEXT_CREDITS), "audio cue catalog exposes credits music context")
+	_assert(AudioCueCatalogScript.has_music_context(AudioCueCatalogScript.CONTEXT_EPISODE_SELECT), "audio cue catalog exposes episode-select music context")
+	_assert(AudioCueCatalogScript.has_music_context(AudioCueCatalogScript.CONTEXT_GAMEPLAY), "audio cue catalog exposes gameplay music context")
+	_assert(AudioCueCatalogScript.has_music_context(AudioCueCatalogScript.CONTEXT_NAME_ENTRY), "audio cue catalog exposes name-entry music context")
+	_assert(AudioCueCatalogScript.music_name_for_context(AudioCueCatalogScript.CONTEXT_MAIN_MENU) == "Abnormal", "audio cue catalog maps main menu to original-backed Abnormal module")
+	_assert(AudioCueCatalogScript.music_name_for_context(AudioCueCatalogScript.CONTEXT_RULES) == "Abnormal", "audio cue catalog keeps rules on original main-menu module")
+	_assert(AudioCueCatalogScript.music_name_for_context(AudioCueCatalogScript.CONTEXT_HIGH_SCORE) == "theme2", "audio cue catalog maps high score to original-backed theme2")
+	_assert(AudioCueCatalogScript.music_name_for_context(AudioCueCatalogScript.CONTEXT_OPTIONS) == "Abnormal", "audio cue catalog keeps options on original main-menu module")
+	_assert(AudioCueCatalogScript.music_name_for_context(AudioCueCatalogScript.CONTEXT_CREDITS) == "theme5", "audio cue catalog maps credits to original-backed theme5")
+	_assert(AudioCueCatalogScript.music_name_for_context(AudioCueCatalogScript.CONTEXT_EPISODE_SELECT) == "theme1", "audio cue catalog maps episode select to original-backed theme1")
+	_assert(AudioCueCatalogScript.music_name_for_context(AudioCueCatalogScript.CONTEXT_GAMEPLAY) == "theme4", "audio cue catalog maps gameplay to original-backed theme4")
+	_assert(AudioCueCatalogScript.music_name_for_context(AudioCueCatalogScript.CONTEXT_NAME_ENTRY) == "theme3", "audio cue catalog maps name entry to original-backed theme3")
+	_assert(AudioCueCatalogScript.music_name_for_context("missing_context") == "", "audio cue catalog rejects unknown contexts")
+	var contexts: Array[String] = AudioCueCatalogScript.known_contexts()
+	_assert(contexts == ["credits", "episode_select", "gameplay", "high_score", "main_menu", "name_entry", "options", "rules"], "audio cue catalog exposes sorted known contexts")
+
+
 func _validate_audio_service() -> void:
 	_assert(_audio != null, "audio autoload exists")
 	if _audio == null:
@@ -774,11 +798,25 @@ func _validate_audio_service() -> void:
 
 	await process_frame
 	_assert(_audio.has_method("play_music"), "audio service exposes music playback")
+	_assert(_audio.has_method("play_music_context"), "audio service exposes music-context playback")
+	_assert(_audio.has_method("music_name_for_context"), "audio service exposes music context lookup")
 	_assert(_audio.has_method("play_sfx"), "audio service exposes SFX playback")
 	_assert(bool(_audio.call("music_stream_exists", "theme1")), "audio service resolves extracted music track")
+	_assert(bool(_audio.call("music_stream_exists", "theme2")), "audio service resolves high-score music track")
+	_assert(bool(_audio.call("music_stream_exists", "theme5")), "audio service resolves credits music track")
+	_assert(bool(_audio.call("music_stream_exists", "theme3")), "audio service resolves name-entry music track")
+	_assert(bool(_audio.call("music_stream_exists", "theme4")), "audio service resolves gameplay music track")
+	_assert(bool(_audio.call("music_stream_exists", "Abnormal")), "audio service resolves abnormal music track")
 	_assert(bool(_audio.call("sfx_stream_exists", "eff01")), "audio service resolves extracted SFX")
 	_assert(not bool(_audio.call("music_stream_exists", "missing_track")), "audio service rejects unknown music track")
 	_assert(not bool(_audio.call("sfx_stream_exists", "missing_sfx")), "audio service rejects unknown SFX")
+	_assert(String(_audio.call("music_name_for_context", AudioCueCatalogScript.CONTEXT_MAIN_MENU)) == "Abnormal", "audio service maps main-menu music context")
+	_assert(String(_audio.call("music_name_for_context", AudioCueCatalogScript.CONTEXT_HIGH_SCORE)) == "theme2", "audio service maps high-score music context")
+	_assert(String(_audio.call("music_name_for_context", AudioCueCatalogScript.CONTEXT_CREDITS)) == "theme5", "audio service maps credits music context")
+	_assert(String(_audio.call("music_name_for_context", AudioCueCatalogScript.CONTEXT_EPISODE_SELECT)) == "theme1", "audio service maps episode-select music context")
+	_assert(String(_audio.call("music_name_for_context", AudioCueCatalogScript.CONTEXT_GAMEPLAY)) == "theme4", "audio service maps gameplay music context")
+	_assert(String(_audio.call("music_name_for_context", AudioCueCatalogScript.CONTEXT_NAME_ENTRY)) == "theme3", "audio service maps name-entry music context")
+	_assert(String(_audio.call("music_name_for_context", "missing_context")) == "", "audio service rejects unknown music context")
 
 	_audio.call("set_music_enabled", true)
 	_audio.call("set_music_volume", 50)
@@ -786,6 +824,10 @@ func _validate_audio_service() -> void:
 	_audio.call("set_music_enabled", false)
 	_assert(bool(_audio.call("play_music", "theme1", true)), "audio service accepts known disabled music track")
 	_assert(String(_audio.call("current_music_name")) == "theme1", "audio service records current music track")
+	_assert(String(_audio.call("current_music_context")) == "", "direct music playback clears current music context")
+	_assert(bool(_audio.call("play_music_context", AudioCueCatalogScript.CONTEXT_GAMEPLAY, true)), "audio service accepts known disabled music context")
+	_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_GAMEPLAY, "audio service records current music context")
+	_assert(String(_audio.call("current_music_name")) == "theme4", "audio service records context music track")
 	_assert(not bool(_audio.call("is_music_playing")), "audio service does not play music when disabled")
 
 	_audio.call("set_sfx_enabled", true)
@@ -1057,6 +1099,7 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(options_screen.has_signal("back_requested"), "options screen exposes back signal")
 	_assert(options_screen.find_child("SoundSliderArt", true, false) != null, "options screen loads original sound slider art")
 	_assert(options_screen.find_child("BackButton", true, false) != null, "options screen creates back button")
+	_assert(options_screen.find_child("StartMusicButton", true, false) == null, "options screen does not expose provisional music preview")
 	var options_snapshot: Dictionary = options_screen.call("settings_snapshot")
 	_assert(not bool(options_snapshot["music_enabled"]), "options screen loads music enabled setting")
 	_assert(not bool(options_snapshot["sfx_enabled"]), "options screen loads SFX enabled setting")
@@ -1264,22 +1307,33 @@ func _validate_menu_and_game_scenes() -> void:
 
 	var app_menu := app.find_child("MainMenuScreen", true, false)
 	_assert(app_menu != null, "app starts on main menu screen")
+	if _audio != null and _audio.has_method("current_music_context"):
+		_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_MAIN_MENU, "app starts main-menu music context")
+		_assert(String(_audio.call("current_music_name")) == "Abnormal", "app starts original main-menu music")
 	if app_menu != null:
 		app_menu.emit_signal("rules_requested")
 		await process_frame
 		var app_rules := app.find_child("RulesScreen", true, false)
 		_assert(app_rules != null, "app switches from menu to rules screen")
+		if _audio != null and _audio.has_method("current_music_context"):
+			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_RULES, "rules screen uses rules music context")
+			_assert(String(_audio.call("current_music_name")) == "Abnormal", "rules screen keeps original main-menu music")
 		if app_rules != null:
 			app_rules.emit_signal("back_requested")
 			await process_frame
 		app_menu = app.find_child("MainMenuScreen", true, false)
 		_assert(app_menu != null, "app returns from rules screen to main menu")
+		if _audio != null and _audio.has_method("current_music_context"):
+			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_MAIN_MENU, "rules back restores main-menu music context")
 
 	if app_menu != null:
 		app_menu.emit_signal("high_score_requested")
 		await process_frame
 		var app_high_score := app.find_child("HighScoreScreen", true, false)
 		_assert(app_high_score != null, "app switches from menu to high-score screen")
+		if _audio != null and _audio.has_method("current_music_context"):
+			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_HIGH_SCORE, "high-score screen uses high-score music context")
+			_assert(String(_audio.call("current_music_name")) == "theme2", "high-score screen uses original theme2 music")
 		if app_high_score != null:
 			app_high_score.emit_signal("back_requested")
 			await process_frame
@@ -1291,6 +1345,9 @@ func _validate_menu_and_game_scenes() -> void:
 		await process_frame
 		var app_options := app.find_child("OptionsScreen", true, false)
 		_assert(app_options != null, "app switches from menu to options screen")
+		if _audio != null and _audio.has_method("current_music_context"):
+			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_OPTIONS, "options screen uses options music context")
+			_assert(String(_audio.call("current_music_name")) == "Abnormal", "options screen keeps original main-menu music")
 		if app_options != null:
 			app_options.emit_signal("back_requested")
 			await process_frame
@@ -1302,6 +1359,9 @@ func _validate_menu_and_game_scenes() -> void:
 		await process_frame
 		var app_credits := app.find_child("CreditsScreen", true, false)
 		_assert(app_credits != null, "app switches from menu to credits screen")
+		if _audio != null and _audio.has_method("current_music_context"):
+			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_CREDITS, "credits screen uses credits music context")
+			_assert(String(_audio.call("current_music_name")) == "theme5", "credits screen uses original theme5 music")
 		if app_credits != null:
 			app_credits.emit_signal("back_requested")
 			await process_frame
@@ -1313,17 +1373,26 @@ func _validate_menu_and_game_scenes() -> void:
 		await process_frame
 		var app_episode_select := app.find_child("EpisodeSelectScreen", true, false)
 		_assert(app_episode_select != null, "app switches from menu to episode select screen")
+		if _audio != null and _audio.has_method("current_music_context"):
+			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_EPISODE_SELECT, "episode select uses episode-select music context")
+			_assert(String(_audio.call("current_music_name")) == "theme1", "episode select uses original theme1 music")
 		if app_episode_select != null:
 			app_episode_select.emit_signal("episode_selected", "Retro", 1)
 			await process_frame
 			var app_game := app.find_child("GameScreen", true, false)
 			_assert(app_game != null, "app switches from episode select to game screen")
+			if _audio != null and _audio.has_method("current_music_context"):
+				_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_GAMEPLAY, "game screen uses gameplay music context")
+				_assert(String(_audio.call("current_music_name")) == "theme4", "game screen uses original theme4 music")
 			if app_game != null:
 				_assert(app_game.episode_slug == "Retro", "app starts selected episode")
 				_assert(app_game.level_number == 1, "app starts selected episode at first level")
 				app_game.emit_signal("return_to_menu_requested")
 				await process_frame
 				_assert(app.find_child("MainMenuScreen", true, false) != null, "app returns from game over to main menu")
+				if _audio != null and _audio.has_method("current_music_context"):
+					_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_MAIN_MENU, "game return restores main-menu music context")
+					_assert(String(_audio.call("current_music_name")) == "Abnormal", "game return restores original main-menu music")
 	app.queue_free()
 	await process_frame
 

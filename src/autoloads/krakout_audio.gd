@@ -1,6 +1,9 @@
 extends Node
 
-const DEFAULT_PROVISIONAL_MUSIC := "theme1"
+const AudioCueCatalogScript := preload("res://src/audio/krakout_audio_cue_catalog.gd")
+
+const DEFAULT_MUSIC_CONTEXT := "main_menu"
+const DEFAULT_MUSIC_NAME := "Abnormal"
 const SFX_POOL_SIZE := 8
 const MIN_VOLUME_DB := -80.0
 
@@ -11,6 +14,7 @@ var _sfx_enabled := true
 var _music_volume := 80
 var _sfx_volume := 85
 var _current_music_name := ""
+var _current_music_context := ""
 
 
 func _ready() -> void:
@@ -22,7 +26,34 @@ func _exit_tree() -> void:
 	stop_all(true)
 
 
-func play_music(name: String = DEFAULT_PROVISIONAL_MUSIC, restart := false) -> bool:
+func play_music(name: String = DEFAULT_MUSIC_NAME, restart := false) -> bool:
+	var did_play := _play_music_name(name, restart)
+	if did_play:
+		_current_music_context = ""
+	return did_play
+
+
+func play_music_context(context_name: String = DEFAULT_MUSIC_CONTEXT, restart := false) -> bool:
+	var music_name := music_name_for_context(context_name)
+	if music_name.is_empty():
+		push_warning("Unknown Krakout music context: %s" % context_name)
+		return false
+
+	var did_play := _play_music_name(music_name, restart)
+	if did_play:
+		_current_music_context = context_name
+	return did_play
+
+
+func music_name_for_context(context_name: String) -> String:
+	return AudioCueCatalogScript.music_name_for_context(context_name)
+
+
+func current_music_context() -> String:
+	return _current_music_context
+
+
+func _play_music_name(name: String, restart := false) -> bool:
 	_ensure_players()
 	var path := _music_path(name)
 	if path.is_empty():
@@ -92,7 +123,7 @@ func set_music_enabled(is_enabled: bool) -> void:
 	_music_enabled = is_enabled
 	_apply_volume_settings()
 	if _music_enabled and not _current_music_name.is_empty():
-		play_music(_current_music_name)
+		_play_music_name(_current_music_name)
 	else:
 		stop_music()
 
@@ -116,7 +147,7 @@ func set_music_volume(volume: int) -> void:
 	_music_volume = clampi(volume, 0, 100)
 	_apply_volume_settings()
 	if _music_enabled and _music_volume > 0 and not _current_music_name.is_empty() and not _music_player.playing:
-		play_music(_current_music_name)
+		_play_music_name(_current_music_name)
 
 
 func sfx_volume() -> int:
