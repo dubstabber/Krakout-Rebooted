@@ -234,6 +234,10 @@ func _validate_board_state(default_level: KrakoutLevelData) -> void:
 
 
 func _validate_game_session(default_level: KrakoutLevelData) -> void:
+	_assert(GameSessionScript.BONUS_TYPE_NAMES.size() == GameSessionScript.BONUS_TYPE_COUNT, "bonus catalog names every original type")
+	_assert(GameSessionScript.bonus_type_name(0) == "Add standard Ball", "bonus catalog preserves first original type")
+	_assert(GameSessionScript.bonus_type_name(20) == "Jump to Next Level", "bonus catalog preserves jump-to-level type")
+
 	var session = GameSessionScript.new()
 	session.load_level(default_level)
 	_assert(session.state == GameSessionScript.STATE_READY, "game session starts ready")
@@ -409,6 +413,89 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	chain_selector_session.update(0.031)
 	_assert(chain_selector_session.board_state.tile_at(0, 0) == 0, "converted chain tile clears after delay")
 	_assert(chain_selector_session.score == GameSessionScript.BRICK_SCORE, "converted chain explosion awards brick score")
+
+	var inactive_bonus_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(inactive_bonus_session, GameSessionScript.BONUS_EXTRA_LIFE)
+	var inactive_bonus_result: Dictionary = inactive_bonus_session.activate_next_bonus()
+	_assert(inactive_bonus_result["status"] == "inactive", "bonus activation waits for playing state")
+	_assert(inactive_bonus_session.bonus_stack_entries().size() == 1, "inactive bonus activation preserves stack")
+
+	var empty_bonus_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	var empty_bonus_result: Dictionary = empty_bonus_session.activate_next_bonus()
+	_assert(empty_bonus_result["status"] == "empty", "empty bonus stack reports empty activation")
+
+	var unsupported_bonus_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(unsupported_bonus_session, GameSessionScript.BONUS_ADD_FIREBALL)
+	var unsupported_bonus_result: Dictionary = unsupported_bonus_session.activate_next_bonus()
+	_assert(unsupported_bonus_result["status"] == "unsupported", "unsupported bonus reports explicit status")
+	_assert(unsupported_bonus_session.bonus_stack_entries().size() == 1, "unsupported bonus remains stacked")
+
+	var repeated_unsupported_result: Dictionary = unsupported_bonus_session.activate_next_bonus()
+	_assert(repeated_unsupported_result["status"] == "unsupported", "unsupported bonus remains first after rejected activation")
+
+	var add_ball_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(add_ball_session, GameSessionScript.BONUS_ADD_STANDARD_BALL)
+	var add_ball_result: Dictionary = add_ball_session.activate_next_bonus()
+	_assert(add_ball_result["status"] == "applied", "standard-ball bonus applies")
+	_assert(add_ball_result["effect"] == "add_standard_ball", "standard-ball bonus reports effect")
+	_assert(add_ball_session.active_ball_count() == 2, "standard-ball bonus adds an active ball")
+	_assert(add_ball_session.bonus_stack_entries().is_empty(), "applied bonus consumes first stack entry")
+
+	var stack_shift_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(stack_shift_session, GameSessionScript.BONUS_EXTRA_LIFE)
+	_stack_bonus(stack_shift_session, GameSessionScript.BONUS_JUMP_TO_NEXT_LEVEL)
+	stack_shift_session.activate_next_bonus()
+	_assert(stack_shift_session.bonus_stack_entries().size() == 1, "applied bonus shifts stack left")
+	_assert(int(stack_shift_session.bonus_stack_entries()[0]["type_id"]) == GameSessionScript.BONUS_JUMP_TO_NEXT_LEVEL, "stack shift preserves next bonus")
+
+	var ball_size_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(ball_size_session, GameSessionScript.BONUS_INCREASE_BALL_SIZE)
+	ball_size_session.activate_next_bonus()
+	_assert(ball_size_session.ball_size == 24.0, "increase-size bonus grows current ball size by original step")
+	_assert(ball_size_session.ball_rect(ball_size_session.visible_balls()[0]).size == Vector2(24, 24), "increase-size bonus updates live ball rect")
+	for size_index in range(3):
+		_stack_bonus(ball_size_session, GameSessionScript.BONUS_DECREASE_BALL_SIZE)
+		ball_size_session.activate_next_bonus()
+	_assert(ball_size_session.ball_size == GameSessionScript.BALL_MIN_SIZE, "decrease-size bonus clamps at original minimum")
+
+	var ball_speed_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	ball_speed_session.force_ball(Vector2(300, 200), Vector2(-200, 0))
+	_stack_bonus(ball_speed_session, GameSessionScript.BONUS_INCREASE_BALL_SPEED)
+	ball_speed_session.activate_next_bonus()
+	_assert(ball_speed_session.ball_speed_scale == 3.0, "increase-speed bonus increments original speed scalar")
+	_assert(is_equal_approx(ball_speed_session.first_ball_velocity().length(), 300.0), "increase-speed bonus scales live velocity")
+	for speed_index in range(2):
+		_stack_bonus(ball_speed_session, GameSessionScript.BONUS_DECREASE_BALL_SPEED)
+		ball_speed_session.activate_next_bonus()
+	_assert(ball_speed_session.ball_speed_scale == GameSessionScript.BALL_MIN_SPEED_SCALE, "decrease-speed bonus clamps at original minimum")
+	_assert(is_equal_approx(ball_speed_session.first_ball_velocity().length(), 200.0), "decrease-speed bonus restores minimum velocity scale")
+
+	var racket_size_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(racket_size_session, GameSessionScript.BONUS_EXPAND_PADDLE)
+	racket_size_session.activate_next_bonus()
+	_assert(racket_size_session.racket_segment_count == GameSessionScript.RACKET_DEFAULT_SEGMENTS + GameSessionScript.RACKET_BONUS_STEP_SEGMENTS, "expand-paddle bonus uses original segment step")
+	_assert(racket_size_session.current_racket_height() == 179.0, "expand-paddle bonus updates racket height from segment count")
+	_stack_bonus(racket_size_session, GameSessionScript.BONUS_SHRINK_PADDLE)
+	racket_size_session.activate_next_bonus()
+	_assert(racket_size_session.current_racket_height() == GameSessionScript.RACKET_HEIGHT, "shrink-paddle bonus can return to default height")
+
+	var extra_life_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(extra_life_session, GameSessionScript.BONUS_EXTRA_LIFE)
+	extra_life_session.activate_next_bonus()
+	_assert(extra_life_session.lives_remaining == GameSessionScript.INITIAL_LIVES + 1, "extra-life bonus increments spare balls")
+
+	var destroy_ball_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(destroy_ball_session, GameSessionScript.BONUS_ADD_STANDARD_BALL)
+	destroy_ball_session.activate_next_bonus()
+	_stack_bonus(destroy_ball_session, GameSessionScript.BONUS_DESTROY_ONE_BALL)
+	var destroy_ball_result: Dictionary = destroy_ball_session.activate_next_bonus()
+	_assert(destroy_ball_result["effect"] == "destroy_one_ball", "destroy-ball bonus reports effect")
+	_assert(destroy_ball_session.active_ball_count() == 1, "destroy-ball bonus removes one active ball")
+
+	var jump_level_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(jump_level_session, GameSessionScript.BONUS_JUMP_TO_NEXT_LEVEL)
+	jump_level_session.activate_next_bonus()
+	_assert(jump_level_session.state == GameSessionScript.STATE_LEVEL_COMPLETE, "jump-level bonus routes through level-complete state")
 
 
 func _validate_brick_atlas_mapping() -> void:
@@ -619,6 +706,13 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(gameplay.racket_rect().end.y == GameSessionScript.RACKET_MAX_BOTTOM, "game screen routes racket movement")
 			_assert(game.call("launch_ready_ball"), "game screen routes ball launch")
 			_assert(gameplay.state == GameSessionScript.STATE_PLAYING, "game screen launch enters playing state")
+			_stack_bonus(gameplay, GameSessionScript.BONUS_EXTRA_LIFE)
+			var space_event := InputEventKey.new()
+			space_event.keycode = KEY_SPACE
+			space_event.pressed = true
+			game.call("_input", space_event)
+			await process_frame
+			_assert(gameplay.lives_remaining == GameSessionScript.INITIAL_LIVES + 1, "game screen routes Space to bonus activation")
 			if hud != null:
 				gameplay.state = GameSessionScript.STATE_GAME_OVER
 				gameplay.lives_remaining = -1
@@ -709,6 +803,20 @@ func _game_session_from_level(level: KrakoutLevelData):
 	var session = GameSessionScript.new()
 	session.load_level(level)
 	return session
+
+
+func _playing_session_from_level(level: KrakoutLevelData):
+	var session = _game_session_from_level(level)
+	session.force_ball(Vector2(300, 200), Vector2(-200, 0))
+	return session
+
+
+func _stack_bonus(session, type_id: int) -> void:
+	session.bonus_stack.append({
+		"type_id": type_id,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+	})
 
 
 func _is_runtime_path(entry: Dictionary) -> bool:

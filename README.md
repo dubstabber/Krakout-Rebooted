@@ -28,7 +28,12 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   bonus stock, uses the original RNG constants, applies the 3-second drop gate
   and stock-weighted drop chance, spawns falling bonuses, converts random
   selector hits into chain tiles, and stacks collected bonuses up to the original
-  16-entry cap. Individual collected-bonus effects are still pending parity work.
+  16-entry cap.
+- Pressing Space now activates the first collected bonus in the original stack
+  order. The current supported effects are standard ball, ball size/speed,
+  paddle size, extra life, destroy one ball, and jump to next level; projectile,
+  fireball, magnet, back wall, random, and explosion-family effects remain
+  explicit pending parity work.
 - `KrakoutBonusRenderer` draws falling bonuses, collected stack entries, and the
   stack pointer from the extracted `Bonuses_a`, `Bonuses_aa`, and
   `PointToBonusInStack` sheets.

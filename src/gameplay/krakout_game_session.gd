@@ -19,9 +19,22 @@ const EXTRA_LIFE_SCORE_STEP := 20000
 const RACKET_X := 570.0
 const RACKET_WIDTH := 16.0
 const RACKET_HEIGHT := 164.0
+const RACKET_SEGMENT_PIXEL_STEP := 5.0
+const RACKET_SEGMENT_MARGIN := 9.0
+const RACKET_DEFAULT_SEGMENTS := 31
+const RACKET_MIN_SEGMENTS := 3
+const RACKET_MAX_SEGMENTS := 36
+const RACKET_BONUS_STEP_SEGMENTS := 3
 const RACKET_MIN_Y := 63.0
 const RACKET_MAX_BOTTOM := 453.0
 const BALL_SIZE := 16.0
+const BALL_MIN_SIZE := 12.0
+const BALL_MAX_SIZE := 44.0
+const BALL_SIZE_STEP := 8.0
+const BALL_DEFAULT_SPEED_SCALE := 2.0
+const BALL_MIN_SPEED_SCALE := 2.0
+const BALL_MAX_SPEED_SCALE := 6.0
+const BALL_SPEED_STEP := 1.0
 const BALL_TOP_Y := 41.0
 const BALL_BOTTOM_Y := 453.0
 const BALL_LEFT_X := 5.0
@@ -44,6 +57,64 @@ const BONUS_ANIMATION_FRAME_COUNT := 10
 const BONUS_FALLING_FRAME_SECONDS := 0.1
 const BONUS_STACK_FRAME_SECONDS := 0.07
 const BONUS_POINTER_FRAME_SECONDS := 0.05
+const BONUS_ADD_STANDARD_BALL := 0
+const BONUS_ADD_FIREBALL := 1
+const BONUS_NON_STRICKED_BALLS := 2
+const BONUS_DECREASE_BALL_SIZE := 3
+const BONUS_INCREASE_BALL_SIZE := 4
+const BONUS_INCREASE_BALL_SPEED := 5
+const BONUS_DECREASE_BALL_SPEED := 6
+const BONUS_SHOOTING_PADDLE_TIMED := 7
+const BONUS_SHOOTING_PADDLE_CONTINUOUS := 8
+const BONUS_SHRINK_PADDLE := 9
+const BONUS_EXPAND_PADDLE := 10
+const BONUS_DOUBLE_PADDLE := 11
+const BONUS_MAGNET_PADDLE := 12
+const BONUS_BACK_WALL := 13
+const BONUS_EXTRA_LIFE := 14
+const BONUS_DESTROY_ONE_BALL := 15
+const BONUS_RANDOM_BONUS := 16
+const BONUS_ONE_STRIKE_BRICKS := 17
+const BONUS_DRUNK_PADDLE := 18
+const BONUS_EXPAND_EXPLODING := 19
+const BONUS_JUMP_TO_NEXT_LEVEL := 20
+const BONUS_EXPLODE_ALL_EXPLODINGS := 21
+const BONUS_TYPE_NAMES := [
+	"Add standard Ball",
+	"Add FireBall",
+	"All Balls non stricked (8 sec)",
+	"Decrease all Ball size",
+	"Increase all Ball size",
+	"Increase all Ball speed",
+	"Decrease all Ball speed",
+	"Shooting Paddle (on time shoot)",
+	"Shooting Paddle (continiously)",
+	"Shrink Paddle size",
+	"Expand Paddle size",
+	"Double Paddle",
+	"Magnet Paddle",
+	"Back Wall (30 sec)",
+	"Extra Life",
+	"Destroy one Ball",
+	"Random Bonus",
+	"All Bricks destroy by one strike",
+	"Drunk Paddle",
+	"Expand Exploding",
+	"Jump to Next Level",
+	"Explode all Explodings",
+]
+const SUPPORTED_BONUS_EFFECTS := {
+	BONUS_ADD_STANDARD_BALL: true,
+	BONUS_DECREASE_BALL_SIZE: true,
+	BONUS_INCREASE_BALL_SIZE: true,
+	BONUS_INCREASE_BALL_SPEED: true,
+	BONUS_DECREASE_BALL_SPEED: true,
+	BONUS_SHRINK_PADDLE: true,
+	BONUS_EXPAND_PADDLE: true,
+	BONUS_EXTRA_LIFE: true,
+	BONUS_DESTROY_ONE_BALL: true,
+	BONUS_JUMP_TO_NEXT_LEVEL: true,
+}
 const CHAIN_SELECTOR_TILE_IDS := [68, 43]
 const BONUS_DISPLAY_INCREMENT_IDS := {
 	1: true,
@@ -61,6 +132,9 @@ var board_state
 var state := STATE_READY
 var balls: Array[Dictionary] = []
 var racket_y := RACKET_MIN_Y
+var racket_segment_count := RACKET_DEFAULT_SEGMENTS
+var ball_size := BALL_SIZE
+var ball_speed_scale := BALL_DEFAULT_SPEED_SCALE
 var board_changed := false
 var score := 0
 var displayed_score := 0
@@ -98,6 +172,7 @@ func start_run(level: KrakoutLevelData, selected_display_level_number: int = 1, 
 	points_to_next_extra_life = EXTRA_LIFE_SCORE_STEP
 	display_level_number = max(1, selected_display_level_number)
 	_clear_bonus_run_state()
+	_reset_bonus_effect_state()
 	_load_board_for_level(level)
 	reset_round()
 
@@ -150,7 +225,8 @@ func _load_board_for_level(level: KrakoutLevelData) -> void:
 
 
 func move_racket_to(mouse_y: float) -> void:
-	racket_y = clampf(mouse_y - RACKET_HEIGHT * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - RACKET_HEIGHT)
+	var current_height := current_racket_height()
+	racket_y = clampf(mouse_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
 	if state == STATE_READY or state == STATE_BALL_LOST:
 		_attach_ready_balls()
 
@@ -164,7 +240,7 @@ func launch_ready_ball() -> bool:
 
 	var ball := balls[0]
 	ball["active"] = true
-	ball["velocity"] = DEFAULT_BALL_VELOCITY
+	ball["velocity"] = _velocity_for_current_speed(DEFAULT_BALL_VELOCITY)
 	balls[0] = ball
 	state = STATE_PLAYING
 	return true
@@ -241,6 +317,35 @@ func bonus_stack_entries() -> Array[Dictionary]:
 	return entries
 
 
+func activate_next_bonus() -> Dictionary:
+	if bonus_stack.is_empty():
+		return {"status": "empty"}
+
+	if state != STATE_PLAYING:
+		return {"status": "inactive", "type_id": int(bonus_stack[0].get("type_id", -1))}
+
+	var type_id := int(bonus_stack[0].get("type_id", -1))
+	if not SUPPORTED_BONUS_EFFECTS.has(type_id):
+		return {
+			"status": "unsupported",
+			"type_id": type_id,
+			"name": bonus_type_name(type_id),
+		}
+
+	var result := _apply_bonus_effect(type_id)
+	_consume_next_bonus()
+	result["status"] = "applied"
+	result["type_id"] = type_id
+	result["name"] = bonus_type_name(type_id)
+	return result
+
+
+static func bonus_type_name(type_id: int) -> String:
+	if type_id >= 0 and type_id < BONUS_TYPE_NAMES.size():
+		return String(BONUS_TYPE_NAMES[type_id])
+	return "Unknown Bonus"
+
+
 func set_bonus_rng_seed(seed_value: int) -> void:
 	_bonus_rng.set_seed(seed_value)
 
@@ -253,8 +358,12 @@ func active_ball_count() -> int:
 	return visible_balls().size()
 
 
+func current_racket_height() -> float:
+	return RACKET_SEGMENT_PIXEL_STEP * float(racket_segment_count) + RACKET_SEGMENT_MARGIN
+
+
 func racket_rect() -> Rect2:
-	return Rect2(Vector2(RACKET_X, racket_y), Vector2(RACKET_WIDTH, RACKET_HEIGHT))
+	return Rect2(Vector2(RACKET_X, racket_y), Vector2(RACKET_WIDTH, current_racket_height()))
 
 
 func ball_rect(ball: Dictionary) -> Rect2:
@@ -280,20 +389,30 @@ func force_ball(position: Vector2, velocity: Vector2, size: float = BALL_SIZE) -
 		"position": position,
 		"velocity": velocity,
 		"size": size,
+		"speed_scale": ball_speed_scale,
 	}]
 	state = STATE_PLAYING
 
 
 func _add_ready_ball() -> void:
-	if balls.size() >= MAX_BALLS:
-		return
+	_add_ball(_ready_ball_position(), Vector2.ZERO, true)
 
+
+func _add_ball(position: Vector2, velocity: Vector2, active := true) -> bool:
+	if balls.size() >= MAX_BALLS:
+		return false
 	balls.append({
-		"active": true,
-		"position": _ready_ball_position(),
-		"velocity": Vector2.ZERO,
-		"size": BALL_SIZE,
+		"active": active,
+		"position": position,
+		"velocity": velocity,
+		"size": ball_size,
+		"speed_scale": ball_speed_scale,
 	})
+	return true
+
+
+func _add_active_standard_ball() -> bool:
+	return _add_ball(_ready_ball_position(), _velocity_for_current_speed(DEFAULT_BALL_VELOCITY), true)
 
 
 func _attach_ready_balls() -> void:
@@ -302,13 +421,15 @@ func _attach_ready_balls() -> void:
 		ball["active"] = true
 		ball["position"] = _ready_ball_position()
 		ball["velocity"] = Vector2.ZERO
+		ball["size"] = ball_size
+		ball["speed_scale"] = ball_speed_scale
 		balls[index] = ball
 
 
 func _ready_ball_position() -> Vector2:
 	return Vector2(
-		RACKET_X - BALL_SIZE - READY_BALL_GAP,
-		racket_y + RACKET_HEIGHT * 0.5 - BALL_SIZE * 0.5
+		RACKET_X - ball_size - READY_BALL_GAP,
+		racket_y + current_racket_height() * 0.5 - ball_size * 0.5
 	)
 
 
@@ -355,9 +476,10 @@ func _collide_with_racket(ball: Dictionary) -> bool:
 	rect.position.x = RACKET_X - rect.size.x
 	velocity.x = -absf(velocity.x)
 
-	var racket_center := racket_y + RACKET_HEIGHT * 0.5
+	var racket_height := current_racket_height()
+	var racket_center := racket_y + racket_height * 0.5
 	var ball_center := rect.position.y + rect.size.y * 0.5
-	var normalized_hit := clampf((ball_center - racket_center) / (RACKET_HEIGHT * 0.5), -1.0, 1.0)
+	var normalized_hit := clampf((ball_center - racket_center) / (racket_height * 0.5), -1.0, 1.0)
 	velocity.y = normalized_hit * 180.0
 
 	ball["position"] = rect.position
@@ -524,6 +646,13 @@ func _clear_bonus_run_state() -> void:
 	_reset_bonus_drop_gate()
 
 
+func _reset_bonus_effect_state() -> void:
+	racket_segment_count = RACKET_DEFAULT_SEGMENTS
+	ball_size = BALL_SIZE
+	ball_speed_scale = BALL_DEFAULT_SPEED_SCALE
+	racket_y = clampf(racket_y, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_racket_height())
+
+
 func _reset_bonus_drop_gate() -> void:
 	_bonus_drop_cooldown = BONUS_DROP_GATE_SECONDS
 
@@ -610,6 +739,12 @@ func _push_bonus_stack(type_id: int) -> bool:
 	return true
 
 
+func _consume_next_bonus() -> void:
+	if bonus_stack.is_empty():
+		return
+	bonus_stack.remove_at(0)
+
+
 func _update_bonus_stack(delta: float) -> void:
 	if bonus_stack.is_empty():
 		bonus_pointer_frame = 0
@@ -637,6 +772,84 @@ func _visible_bonus_type_for_stock_id(stock_id: int) -> int:
 	if BONUS_DISPLAY_INCREMENT_IDS.has(stock_id):
 		return (stock_id + 1) % BONUS_TYPE_COUNT
 	return stock_id
+
+
+func _apply_bonus_effect(type_id: int) -> Dictionary:
+	match type_id:
+		BONUS_ADD_STANDARD_BALL:
+			return {"effect": "add_standard_ball", "applied": _add_active_standard_ball()}
+		BONUS_DECREASE_BALL_SIZE:
+			return _adjust_ball_size(-BALL_SIZE_STEP)
+		BONUS_INCREASE_BALL_SIZE:
+			return _adjust_ball_size(BALL_SIZE_STEP)
+		BONUS_INCREASE_BALL_SPEED:
+			return _adjust_ball_speed(BALL_SPEED_STEP)
+		BONUS_DECREASE_BALL_SPEED:
+			return _adjust_ball_speed(-BALL_SPEED_STEP)
+		BONUS_SHRINK_PADDLE:
+			return _adjust_racket_segments(-RACKET_BONUS_STEP_SEGMENTS)
+		BONUS_EXPAND_PADDLE:
+			return _adjust_racket_segments(RACKET_BONUS_STEP_SEGMENTS)
+		BONUS_EXTRA_LIFE:
+			lives_remaining += 1
+			return {"effect": "extra_life", "lives_remaining": lives_remaining}
+		BONUS_DESTROY_ONE_BALL:
+			return {"effect": "destroy_one_ball", "applied": _destroy_one_active_ball()}
+		BONUS_JUMP_TO_NEXT_LEVEL:
+			state = STATE_LEVEL_COMPLETE
+			return {"effect": "jump_to_next_level"}
+	return {"effect": "unsupported"}
+
+
+func _adjust_ball_size(delta_size: float) -> Dictionary:
+	ball_size = clampf(ball_size + delta_size, BALL_MIN_SIZE, BALL_MAX_SIZE)
+	for index in range(balls.size()):
+		var ball := balls[index]
+		ball["size"] = ball_size
+		balls[index] = ball
+	return {"effect": "ball_size", "ball_size": ball_size}
+
+
+func _adjust_ball_speed(delta_speed: float) -> Dictionary:
+	var previous_speed_scale := ball_speed_scale
+	ball_speed_scale = clampf(ball_speed_scale + delta_speed, BALL_MIN_SPEED_SCALE, BALL_MAX_SPEED_SCALE)
+	if previous_speed_scale <= 0.0:
+		previous_speed_scale = ball_speed_scale
+
+	var ratio := ball_speed_scale / previous_speed_scale
+	for index in range(balls.size()):
+		var ball := balls[index]
+		var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
+		if not velocity.is_zero_approx():
+			ball["velocity"] = velocity * ratio
+		ball["speed_scale"] = ball_speed_scale
+		balls[index] = ball
+	return {"effect": "ball_speed", "ball_speed_scale": ball_speed_scale}
+
+
+func _adjust_racket_segments(delta_segments: int) -> Dictionary:
+	racket_segment_count = clampi(racket_segment_count + delta_segments, RACKET_MIN_SEGMENTS, RACKET_MAX_SEGMENTS)
+	racket_y = clampf(racket_y, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_racket_height())
+	if state == STATE_READY or state == STATE_BALL_LOST:
+		_attach_ready_balls()
+	return {
+		"effect": "racket_size",
+		"racket_segment_count": racket_segment_count,
+		"racket_height": current_racket_height(),
+	}
+
+
+func _destroy_one_active_ball() -> bool:
+	for index in range(balls.size()):
+		var ball := balls[index]
+		if bool(ball.get("active", false)):
+			balls.remove_at(index)
+			return true
+	return false
+
+
+func _velocity_for_current_speed(base_velocity: Vector2) -> Vector2:
+	return base_velocity * (ball_speed_scale / BALL_DEFAULT_SPEED_SCALE)
 
 
 func _handle_round_lost() -> void:

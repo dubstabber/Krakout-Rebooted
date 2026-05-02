@@ -54,6 +54,13 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		gameplay_session.move_racket_to(event.position.y)
 		_refresh_actor_renderers()
+	elif event is InputEventKey:
+		if event.keycode == KEY_SPACE and event.pressed and not event.echo:
+			var bonus_result: Dictionary = gameplay_session.activate_next_bonus()
+			if String(bonus_result.get("status", "")) != "empty":
+				_refresh_actor_renderers()
+				_refresh_hud()
+				get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 			if gameplay_session.state == GameSessionScript.STATE_GAME_OVER:
@@ -94,6 +101,15 @@ func launch_ready_ball() -> bool:
 	_refresh_actor_renderers()
 	_refresh_hud()
 	return launched
+
+
+func activate_next_bonus() -> Dictionary:
+	if gameplay_session == null:
+		return {"status": "missing_session"}
+	var result: Dictionary = gameplay_session.activate_next_bonus()
+	_refresh_actor_renderers()
+	_refresh_hud()
+	return result
 
 
 func _fit_to_baseline_viewport() -> void:
