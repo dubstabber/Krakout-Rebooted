@@ -42,6 +42,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   loop: 15-point brick scoring, gradual displayed-score catch-up, three spare
   balls, a 20,000-point extra-ball threshold, wrapped episode progression, and
   an original-layout gameplay HUD/game-over route back to the menu.
+- The gameplay presentation keeps the original 640x480 aspect ratio, uses the
+  source `Statistic` header strip, and draws dynamic HUD digits through the
+  IDA-backed original bitmap width tables instead of heuristic glyph cropping.
 - `KrakoutApp` now starts on a Godot `Control` main menu, routes `Start Game`
   into an episode browser backed by decoded episode metadata, and starts the
   selected episode at its first level.

@@ -16,6 +16,7 @@ const RacketRendererScript := preload("res://src/render/racket_renderer.gd")
 const BallRendererScript := preload("res://src/render/ball_renderer.gd")
 const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
+const BitmapTextScript := preload("res://src/render/krakout_bitmap_text.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 const GameScreenScene := preload("res://scenes/game/game_screen.tscn")
@@ -70,10 +71,12 @@ func _run() -> void:
 		_validate_game_session(level)
 
 	_validate_playfield_spec()
+	_validate_project_presentation_settings()
 	_validate_playfield_renderer_shell()
 	_validate_brick_semantics()
 	_validate_original_rng()
 	_validate_brick_atlas_mapping()
+	_validate_bitmap_text_metrics()
 	_validate_level_grid_renderer_defaults()
 	_validate_game_hud_presentation()
 	_validate_gameplay_sheet_catalog()
@@ -264,6 +267,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.lives_remaining == GameSessionScript.INITIAL_LIVES, "game session starts with original spare ball count")
 	_assert(session.points_to_next_extra_life == GameSessionScript.EXTRA_LIFE_SCORE_STEP, "game session starts with original extra life threshold")
 	_assert(session.display_level_number == 1, "game session displays source level number")
+	_assert(session.active_bonus_indicators().is_empty(), "game session exposes no active status indicators before timed effects exist")
 
 	session.move_racket_to(-100.0)
 	_assert(session.racket_rect().position.y == GameSessionScript.RACKET_MIN_Y, "racket clamps to top bound")
@@ -535,16 +539,62 @@ func _validate_level_grid_renderer_defaults() -> void:
 	renderer.free()
 
 
+func _validate_project_presentation_settings() -> void:
+	_assert(ProjectSettings.get_setting("display/window/size/viewport_width") == 640, "project keeps original viewport width")
+	_assert(ProjectSettings.get_setting("display/window/size/viewport_height") == 480, "project keeps original viewport height")
+	_assert(ProjectSettings.get_setting("display/window/stretch/mode") == "canvas_items", "project stretches the original canvas")
+	_assert(ProjectSettings.get_setting("display/window/stretch/aspect") == "keep", "project keeps the original 4:3 aspect ratio")
+
+
+func _validate_bitmap_text_metrics() -> void:
+	var font_text = BitmapTextScript.new()
+	font_text.configure(
+		load(_assets.texture_path("Font")) as Texture2D,
+		BitmapTextScript.FONT_CHARSET,
+		BitmapTextScript.FONT_CELL_SIZE,
+		BitmapTextScript.FONT_ADVANCES,
+		BitmapTextScript.FONT_SPACE_ADVANCE
+	)
+	_assert(font_text.measure_text("Your Score") == 173, "bitmap font measures original Your Score width")
+	_assert(font_text.measure_text("Balls Left") == 153, "bitmap font measures original Balls Left width")
+	_assert(font_text.measure_text("Level") == 84, "bitmap font measures original Level width")
+	_assert(font_text.measure_text("High Score") == 164, "bitmap font measures original High Score width")
+	_assert(font_text.bounds_for_text("Level", Vector2(320, 0), HORIZONTAL_ALIGNMENT_CENTER) == Rect2(Vector2(278, 0), Vector2(84, 24)), "bitmap font supports centered bounds")
+
+	var digit_text = BitmapTextScript.new()
+	digit_text.configure(
+		load(_assets.texture_path("Digits")) as Texture2D,
+		BitmapTextScript.DIGIT_CHARSET,
+		BitmapTextScript.DIGIT_CELL_SIZE,
+		BitmapTextScript.DIGIT_ADVANCES,
+		BitmapTextScript.DIGIT_SPACE_ADVANCE
+	)
+	_assert(digit_text.measure_text("0") == 15, "bitmap digits use original zero width")
+	_assert(digit_text.measure_text("1") == 13, "bitmap digits use original one width")
+	_assert(digit_text.measure_text("885") == 45, "bitmap digits measure multi-digit high score")
+	_assert(digit_text.bounds_for_text("885", Vector2(615, 18), HORIZONTAL_ALIGNMENT_RIGHT) == Rect2(Vector2(570, 18), Vector2(45, 20)), "bitmap digits support right-aligned bounds")
+
+
 func _validate_game_hud_presentation() -> void:
 	var hud: KrakoutGameHud = GameHudScript.new()
 
 	_assert(hud.caption_texts() == ["Your Score", "Balls Left", "Level", "High Score"], "game hud exposes original status captions")
-	_assert(hud.caption_positions() == [Vector2(24, 0), Vector2(190, 0), Vector2(370, 0), Vector2(500, 0)], "game hud captions use fixed original-screen anchors")
+	_assert(hud.statistic_source_rect() == Rect2(Vector2.ZERO, Vector2(640, 39)), "game hud uses original Statistic header strip")
 	var anchors: Dictionary = hud.value_anchor_positions()
 	_assert(anchors["score_right"] == Vector2(137, 18), "game hud anchors score value under original caption")
 	_assert(anchors["lives_center"] == Vector2(278, 18), "game hud anchors balls-left value under original caption")
 	_assert(anchors["level_center"] == Vector2(420, 18), "game hud anchors level value under original caption")
 	_assert(anchors["best_score_right"] == Vector2(615, 18), "game hud anchors high-score value under original caption")
+	_assert(hud.digit_text_bounds(0, anchors["score_right"], HORIZONTAL_ALIGNMENT_RIGHT) == Rect2(Vector2(122, 18), Vector2(15, 20)), "game hud right-aligns score digits with original metrics")
+	_assert(hud.digit_text_bounds(3, anchors["lives_center"], HORIZONTAL_ALIGNMENT_CENTER) == Rect2(Vector2(270.5, 18), Vector2(15, 20)), "game hud centers balls-left digits with original metrics")
+	_assert(hud.digit_text_bounds(1, anchors["level_center"], HORIZONTAL_ALIGNMENT_CENTER) == Rect2(Vector2(413.5, 18), Vector2(13, 20)), "game hud centers level digits with original metrics")
+	_assert(hud.digit_text_bounds(885, anchors["best_score_right"], HORIZONTAL_ALIGNMENT_RIGHT) == Rect2(Vector2(570, 18), Vector2(45, 20)), "game hud right-aligns high-score digits with original metrics")
+	var first_status_layout: Dictionary = hud.status_indicator_layout(0)
+	_assert(first_status_layout["icon_position"] == Vector2(543, 69), "game hud status icon starts at original x/y")
+	_assert(first_status_layout["value_position"] == Vector2(576, 73), "game hud status value starts at original x/y")
+	var second_status_layout: Dictionary = hud.status_indicator_layout(1)
+	_assert(second_status_layout["icon_position"] == Vector2(543, 99), "game hud status icons step by original row height")
+	_assert(hud.status_indicator_slots() == 6, "game hud exposes every InfoIcons status slot")
 	var values: Dictionary = hud.status_values()
 	_assert(values["score"] == 0, "game hud defaults score to zero")
 	_assert(values["lives"] == 0, "game hud defaults spare balls to zero without a session")

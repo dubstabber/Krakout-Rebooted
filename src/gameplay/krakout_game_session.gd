@@ -317,6 +317,10 @@ func bonus_stack_entries() -> Array[Dictionary]:
 	return entries
 
 
+func active_bonus_indicators() -> Array[Dictionary]:
+	return []
+
+
 func activate_next_bonus() -> Dictionary:
 	if bonus_stack.is_empty():
 		return {"status": "empty"}
