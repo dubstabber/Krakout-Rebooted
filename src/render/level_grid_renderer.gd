@@ -12,6 +12,7 @@ const ANIMATION_STEP_SECONDS := 0.1
 @export var default_level_number := PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER
 
 var level_data: KrakoutLevelData
+var board_state
 var brick_texture: Texture2D
 var atlas_mapping: BrickAtlasMapping = BrickAtlasMappingScript.new()
 var _animation_frame := 0
@@ -26,13 +27,21 @@ func _ready() -> void:
 	if brick_texture == null:
 		brick_texture = _load_asset_texture("Bricks")
 
-	if level_data == null:
+	if level_data == null and board_state == null:
 		set_level(_load_default_level())
 
 
 func set_level(data: KrakoutLevelData) -> void:
 	level_data = data
-	_has_animated_tiles = _level_has_animated_tiles(data)
+	board_state = null
+	_has_animated_tiles = _source_has_animated_tiles(data)
+	queue_redraw()
+
+
+func set_board_state(state) -> void:
+	board_state = state
+	level_data = state.source_level if state != null else null
+	_has_animated_tiles = _source_has_animated_tiles(state)
 	queue_redraw()
 
 
@@ -56,12 +65,13 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	if level_data == null or brick_texture == null:
+	var draw_source = _current_draw_source()
+	if draw_source == null or brick_texture == null:
 		return
 
-	for row in range(level_data.rows_count):
-		for column in range(level_data.columns):
-			var tile_id := level_data.tile_at(column, row)
+	for row in range(int(draw_source.rows_count)):
+		for column in range(int(draw_source.columns)):
+			var tile_id := int(draw_source.tile_at(column, row))
 			if atlas_mapping.is_empty_tile(tile_id):
 				continue
 
@@ -92,11 +102,17 @@ func _load_default_level():
 	return levels.call("load_level", default_episode, default_level_number)
 
 
-func _level_has_animated_tiles(data: KrakoutLevelData) -> bool:
-	if data == null:
+func _current_draw_source() -> Variant:
+	if board_state != null:
+		return board_state
+	return level_data
+
+
+func _source_has_animated_tiles(source: Variant) -> bool:
+	if source == null:
 		return false
 
-	for row: Array in data.tile_ids:
+	for row: Array in source.tile_ids:
 		for value: Variant in row:
 			if atlas_mapping.is_animated_tile(int(value)):
 				return true

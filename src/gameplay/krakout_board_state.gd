@@ -1,0 +1,155 @@
+extends RefCounted
+class_name KrakoutBoardState
+
+const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantics.gd")
+
+const CHAIN_EXPLOSION_DELAY_SECONDS := 0.03
+
+var source_level: KrakoutLevelData
+var columns := KrakoutLevelData.COLUMNS
+var rows_count := KrakoutLevelData.ROWS
+var tile_ids: Array = []
+var active_tile_count := 0
+var remaining_required_bricks := 0
+
+var _pending_chain_explosions: Array[Dictionary] = []
+
+
+func load_level(level: KrakoutLevelData) -> void:
+	source_level = level
+	tile_ids.clear()
+	_pending_chain_explosions.clear()
+	active_tile_count = 0
+	remaining_required_bricks = 0
+	if level == null:
+		return
+
+	columns = level.columns
+	rows_count = level.rows_count
+	for row_index in range(level.rows_count):
+		var source_row: Array = level.tile_ids[row_index]
+		var row: Array[int] = []
+		for value: Variant in source_row:
+			row.append(int(value))
+		tile_ids.append(row)
+	_recount_tiles()
+
+
+func tile_at(column: int, row: int) -> int:
+	if not _is_in_bounds(column, row):
+		return 0
+	return int(tile_ids[row][column])
+
+
+func set_tile(column: int, row: int, tile_id: int) -> bool:
+	if not _is_in_bounds(column, row):
+		return false
+
+	var previous_tile_id := tile_at(column, row)
+	if previous_tile_id == tile_id:
+		return false
+
+	_update_counts_for_change(previous_tile_id, tile_id)
+	tile_ids[row][column] = tile_id
+	return true
+
+
+func clear_tile(column: int, row: int) -> bool:
+	return set_tile(column, row, 0)
+
+
+func is_complete() -> bool:
+	return remaining_required_bricks <= 0
+
+
+func explode_at(column: int, row: int) -> int:
+	if not _is_in_bounds(column, row):
+		return 0
+
+	var cleared_tiles := 0
+	if clear_tile(column, row):
+		cleared_tiles += 1
+
+	for scan_row in range(row - 1, row + 2):
+		for scan_column in range(column - 1, column + 2):
+			if not _is_in_bounds(scan_column, scan_row):
+				continue
+
+			var tile_id := tile_at(scan_column, scan_row)
+			if not BrickSemanticsScript.is_active_tile(tile_id):
+				continue
+
+			if BrickSemanticsScript.is_chain_explosion_tile(tile_id):
+				_schedule_chain_explosion(scan_column, scan_row)
+			elif clear_tile(scan_column, scan_row):
+				cleared_tiles += 1
+
+	return cleared_tiles
+
+
+func process_chain_explosions(delta: float) -> int:
+	if _pending_chain_explosions.is_empty():
+		return 0
+
+	var pending := _pending_chain_explosions
+	_pending_chain_explosions = []
+	var fired_count := 0
+	for entry: Dictionary in pending:
+		var remaining := float(entry.get("remaining", 0.0)) - delta
+		if remaining > 0.0:
+			entry["remaining"] = remaining
+			_pending_chain_explosions.append(entry)
+			continue
+
+		var column := int(entry.get("column", -1))
+		var row := int(entry.get("row", -1))
+		if BrickSemanticsScript.is_chain_explosion_tile(tile_at(column, row)):
+			explode_at(column, row)
+			fired_count += 1
+
+	return fired_count
+
+
+func pending_chain_explosion_count() -> int:
+	return _pending_chain_explosions.size()
+
+
+func _recount_tiles() -> void:
+	active_tile_count = 0
+	remaining_required_bricks = 0
+	for row: Array in tile_ids:
+		for value: Variant in row:
+			var tile_id := int(value)
+			if BrickSemanticsScript.is_active_tile(tile_id):
+				active_tile_count += 1
+			if BrickSemanticsScript.is_required_tile(tile_id):
+				remaining_required_bricks += 1
+
+
+func _update_counts_for_change(previous_tile_id: int, next_tile_id: int) -> void:
+	if BrickSemanticsScript.is_active_tile(previous_tile_id):
+		active_tile_count -= 1
+	if BrickSemanticsScript.is_required_tile(previous_tile_id):
+		remaining_required_bricks -= 1
+
+	if BrickSemanticsScript.is_active_tile(next_tile_id):
+		active_tile_count += 1
+	if BrickSemanticsScript.is_required_tile(next_tile_id):
+		remaining_required_bricks += 1
+
+
+func _schedule_chain_explosion(column: int, row: int) -> void:
+	for entry: Dictionary in _pending_chain_explosions:
+		if int(entry.get("column", -1)) == column and int(entry.get("row", -1)) == row:
+			entry["remaining"] = CHAIN_EXPLOSION_DELAY_SECONDS
+			return
+
+	_pending_chain_explosions.append({
+		"column": column,
+		"row": row,
+		"remaining": CHAIN_EXPLOSION_DELAY_SECONDS,
+	})
+
+
+func _is_in_bounds(column: int, row: int) -> bool:
+	return column >= 0 and column < columns and row >= 0 and row < rows_count

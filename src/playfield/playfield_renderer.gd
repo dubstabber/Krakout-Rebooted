@@ -3,6 +3,7 @@ class_name PlayfieldRenderer
 
 const LevelGridRendererScript := preload("res://src/render/level_grid_renderer.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
+const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
 
 const BACKGROUND_TILE_SIZE := Vector2(50, 50)
 const WALL_REPEAT_STEP := 45
@@ -24,6 +25,7 @@ const WALL_SIDE_START_Y := 81
 @export var walls_texture_name := "Walls"
 
 var level_data: KrakoutLevelData
+var board_state
 var grid_renderer: LevelGridRenderer
 var background_texture: Texture2D
 var walls_texture: Texture2D
@@ -41,7 +43,14 @@ func _ready() -> void:
 
 func set_level(data: KrakoutLevelData) -> void:
 	level_data = data
+	board_state = BoardStateScript.new() if data != null else null
+	if board_state != null:
+		board_state.load_level(data)
 	_apply_level()
+
+
+func current_board_state():
+	return board_state
 
 
 func _build_scene() -> void:
@@ -99,10 +108,10 @@ func _draw_walls() -> void:
 
 
 func _apply_level() -> void:
-	if grid_renderer == null or level_data == null:
+	if grid_renderer == null or board_state == null:
 		return
 
-	grid_renderer.set_level(level_data)
+	grid_renderer.set_board_state(board_state)
 
 
 func _load_asset_texture(texture_name: String) -> Texture2D:

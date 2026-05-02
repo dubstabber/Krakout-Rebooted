@@ -7,6 +7,8 @@ const LevelGridRendererScript := preload("res://src/render/level_grid_renderer.g
 const BrickAtlasMappingScript := preload("res://src/render/brick_atlas_mapping.gd")
 const GameplaySheetCatalogScript := preload("res://src/playfield/krakout_gameplay_sheet_catalog.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
+const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantics.gd")
+const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 const GameScreenScene := preload("res://scenes/game/game_screen.tscn")
@@ -54,8 +56,10 @@ func _run() -> void:
 		_assert(level.level_tail_bytes[14] == 5, "Default level tail non-zero data is preserved")
 		_assert(level.tile_semantics == "unmapped", "Default level tile semantics stay unmapped")
 		_assert(level.populated_tile_count() > 0, "Default level contains non-empty raw tiles")
+		_validate_board_state(level)
 
 	_validate_playfield_spec()
+	_validate_brick_semantics()
 	_validate_brick_atlas_mapping()
 	_validate_level_grid_renderer_defaults()
 	_validate_gameplay_sheet_catalog()
@@ -129,6 +133,65 @@ func _validate_playfield_spec() -> void:
 	_assert(PlayfieldSpecScript.GRID_SIZE == Vector2(400, 390), "playfield grid size derives from 20x13 bricks")
 	_assert(PlayfieldSpecScript.grid_rect() == Rect2(Vector2(47, 63), Vector2(400, 390)), "playfield grid rect is stable")
 	_assert(PlayfieldSpecScript.brick_rect(19, 12) == Rect2(Vector2(427, 423), Vector2(20, 30)), "playfield brick rect maps final cell")
+
+
+func _validate_brick_semantics() -> void:
+	_assert(not BrickSemanticsScript.is_active_tile(0), "tile 0 is inactive")
+	_assert(not BrickSemanticsScript.is_active_tile(162), "tile 162 starts inactive range")
+	_assert(BrickSemanticsScript.is_active_tile(161), "tile 161 remains active")
+	_assert(not BrickSemanticsScript.is_required_tile(8), "tile 8 is active but not completion-counting")
+	_assert(not BrickSemanticsScript.is_required_tile(39), "tile 39 is active but not completion-counting")
+	_assert(not BrickSemanticsScript.is_required_tile(40), "tile 40 is active but not completion-counting")
+	_assert(not BrickSemanticsScript.is_required_tile(69), "tile 69 is active but not completion-counting")
+	_assert(BrickSemanticsScript.is_required_tile(43), "tile 43 counts before chain explosion")
+	_assert(BrickSemanticsScript.is_chain_explosion_tile(43), "tile 43 is a chain explosion tile")
+	_assert(BrickSemanticsScript.is_chain_explosion_tile(68), "tile 68 is a chain explosion tile")
+
+
+func _validate_board_state(default_level: KrakoutLevelData) -> void:
+	var default_state = _board_state_from_level(default_level)
+	_assert(default_state.columns == LevelDataScript.COLUMNS, "board state preserves column count")
+	_assert(default_state.rows_count == LevelDataScript.ROWS, "board state preserves row count")
+	_assert(default_state.active_tile_count == 143, "Default level 1 active tile count is IDA-backed")
+	_assert(default_state.remaining_required_bricks == 143, "Default level 1 required brick count is IDA-backed")
+	_assert(not default_state.is_complete(), "Default level 1 starts incomplete")
+
+	var original_first_tile := default_level.tile_at(0, 0)
+	_assert(default_state.clear_tile(0, 0), "board state clears a populated tile")
+	_assert(default_state.tile_at(0, 0) == 0, "board state tile is mutable")
+	_assert(default_state.remaining_required_bricks == 142, "clearing a required tile decrements completion count")
+	_assert(default_level.tile_at(0, 0) == original_first_tile, "board state does not mutate source level data")
+
+	var semantic_state = _board_state_from_level(_make_level_from_rows([[8, 39, 40, 69, 162, 0, 1]]))
+	_assert(semantic_state.active_tile_count == 5, "board state counts active non-empty gameplay tiles")
+	_assert(semantic_state.remaining_required_bricks == 1, "board state excludes proven non-required tile IDs")
+	_assert(semantic_state.clear_tile(0, 0), "board state clears non-required active tile")
+	_assert(semantic_state.remaining_required_bricks == 1, "clearing non-required active tile preserves completion count")
+	_assert(semantic_state.clear_tile(6, 0), "board state clears required tile")
+	_assert(semantic_state.remaining_required_bricks == 0, "clearing final required tile completes board")
+	_assert(semantic_state.is_complete(), "board state reports completion at zero required bricks")
+
+	var explosive_state = _board_state_from_level(_make_level_from_rows([
+		[1, 2, 3],
+		[4, 43, 68],
+		[5, 6, 7],
+	]))
+	_assert(explosive_state.explode_at(1, 1) == 8, "chain explosion clears center and non-chain neighbors")
+	_assert(explosive_state.tile_at(2, 1) == 68, "chain explosion leaves neighboring chain tile pending")
+	_assert(explosive_state.pending_chain_explosion_count() == 1, "chain explosion schedules delayed neighbor")
+	_assert(explosive_state.remaining_required_bricks == 1, "pending chain tile still counts until it fires")
+	_assert(explosive_state.process_chain_explosions(0.029) == 0, "chain explosion waits for original 30ms delay")
+	_assert(explosive_state.tile_at(2, 1) == 68, "chain tile remains before delay completes")
+	_assert(explosive_state.process_chain_explosions(0.002) == 1, "chain explosion fires after original delay")
+	_assert(explosive_state.tile_at(2, 1) == 0, "delayed chain tile clears when fired")
+	_assert(explosive_state.remaining_required_bricks == 0, "delayed chain explosion updates completion count")
+
+	var edge_state = _board_state_from_level(_make_level_from_rows([
+		[43, 1],
+		[2, 3],
+	]))
+	_assert(edge_state.explode_at(0, 0) == 4, "corner explosion clamps to board bounds")
+	_assert(edge_state.remaining_required_bricks == 0, "corner explosion clears only valid neighbors")
 
 
 func _validate_brick_atlas_mapping() -> void:
@@ -320,6 +383,7 @@ func _validate_menu_and_game_scenes() -> void:
 		_assert(playfield.default_episode == PlayfieldSpecScript.DEFAULT_EPISODE, "game screen configures playfield episode")
 		_assert(playfield.default_level_number == PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER, "game screen configures playfield level")
 		_assert(playfield.level_data != null, "game screen loads default level data")
+		_assert(playfield.board_state != null, "game screen creates mutable board state")
 	game.queue_free()
 
 	var app := AppScene.instantiate()
@@ -354,6 +418,28 @@ func _load_level_from_path(path: String):
 		return null
 
 	return LevelDataScript.from_dictionary(parsed, path)
+
+
+func _make_level_from_rows(source_rows: Array) -> KrakoutLevelData:
+	var level: KrakoutLevelData = LevelDataScript.new()
+	level.columns = LevelDataScript.COLUMNS
+	level.rows_count = LevelDataScript.ROWS
+	for row_index in range(LevelDataScript.ROWS):
+		var source_row: Array = source_rows[row_index] if row_index < source_rows.size() else []
+		var row: Array[int] = []
+		for column in range(LevelDataScript.COLUMNS):
+			var value := 0
+			if column < source_row.size():
+				value = int(source_row[column])
+			row.append(value)
+		level.tile_ids.append(row)
+	return level
+
+
+func _board_state_from_level(level: KrakoutLevelData):
+	var state = BoardStateScript.new()
+	state.load_level(level)
+	return state
 
 
 func _is_runtime_path(entry: Dictionary) -> bool:

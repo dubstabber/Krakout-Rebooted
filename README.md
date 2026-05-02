@@ -15,9 +15,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - `KrakoutGameplaySheetCatalog` records the IDA-backed gameplay texture sheets
   and verified dimensions without guessing unknown animation/frame semantics.
 - `LevelGridRenderer` renders raw visual board IDs through an isolated IDA-backed
-  brick atlas mapping. Tile gameplay semantics are intentionally still unmapped.
+  brick atlas mapping. Most tile gameplay semantics remain intentionally unmapped.
 - `PlayfieldRenderer` composes the 640x480 playfield shell from `Backgr`, `Walls`,
-  and the selected level board.
+  and the selected level board, then creates a mutable board state for gameplay.
+- `KrakoutBrickSemantics` and `KrakoutBoardState` preserve the original brick
+  active/completion rules plus delayed 3x3 chain explosions for tile IDs 43/68.
 - `KrakoutApp` now starts on a Godot `Control` main menu, routes `Start Game`
   into an episode browser backed by decoded episode metadata, and starts the
   selected episode at its first level.
