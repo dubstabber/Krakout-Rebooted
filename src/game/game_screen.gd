@@ -12,6 +12,14 @@ const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
 const BulletRendererScript := preload("res://src/render/bullet_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
 
+const ACTION_LAUNCH_BALL := "krakout_launch_ball"
+const ACTION_USE_BONUS := "krakout_use_bonus"
+const ACTION_TOGGLE_BONUS_STACK := "krakout_toggle_bonus_stack"
+const ACTION_TOGGLE_BALL_TRACKS := "krakout_toggle_ball_tracks"
+const ACTION_TOGGLE_FPS := "krakout_toggle_fps"
+const ACTION_PAUSE := "krakout_pause"
+const ACTION_CYCLE_BACKGROUND := "krakout_cycle_background"
+
 @export var episode_slug := PlayfieldSpecScript.DEFAULT_EPISODE
 @export var level_number := PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER
 
@@ -24,17 +32,34 @@ var bonus_renderer
 var bullet_renderer
 var hud_renderer
 var _run_started := false
+var _bonus_stack_visible := true
+var _ball_tracks_visible := true
+var _fps_visible := false
+var _background_movable := true
+var _background_type := 2
+var _paused := false
+var _pause_label: Label
+var _fps_label: Label
+var _fps_elapsed := 0.0
+var _fps_frames := 0
+var _fps_value := 0
 
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_fit_to_baseline_viewport()
 	_ensure_gameplay_nodes()
+	_load_presentation_settings()
 	_apply_level()
+	_apply_presentation_settings()
 
 
 func _process(delta: float) -> void:
+	_update_fps_overlay(delta)
 	if gameplay_session == null:
+		return
+	if _paused:
+		_refresh_hud()
 		return
 
 	gameplay_session.update(delta)
@@ -58,31 +83,48 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		gameplay_session.move_racket_to(event.position.y)
 		_refresh_actor_renderers()
-	elif event is InputEventKey:
-		if event.keycode == KEY_SPACE and event.pressed and not event.echo:
-			var bonus_result: Dictionary = gameplay_session.activate_next_bonus()
-			if String(bonus_result.get("status", "")) != "empty":
-				_refresh_playfield_effects()
-				_refresh_actor_renderers()
-				_refresh_hud()
-				get_viewport().set_input_as_handled()
-	elif event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-			if gameplay_session.state == GameSessionScript.STATE_GAME_OVER:
-				return_to_menu_requested.emit()
-				get_viewport().set_input_as_handled()
-				return
-			gameplay_session.launch_ready_ball()
-			_refresh_playfield_effects()
-			_refresh_actor_renderers()
-			_refresh_hud()
+		return
+
+	if _is_repeated_key_event(event):
+		return
+
+	if event.is_action_pressed(ACTION_TOGGLE_FPS):
+		toggle_fps_visible()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(ACTION_TOGGLE_BONUS_STACK):
+		toggle_bonus_stack_visible()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(ACTION_TOGGLE_BALL_TRACKS):
+		toggle_ball_tracks_visible()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(ACTION_CYCLE_BACKGROUND):
+		cycle_background_type()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(ACTION_PAUSE):
+		toggle_pause()
+		get_viewport().set_input_as_handled()
+	elif _paused:
+		return
+	elif event.is_action_pressed(ACTION_USE_BONUS):
+		var bonus_result: Dictionary = activate_next_bonus()
+		if String(bonus_result.get("status", "")) != "empty":
+			get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(ACTION_LAUNCH_BALL):
+		if gameplay_session.state == GameSessionScript.STATE_GAME_OVER:
+			return_to_menu_requested.emit()
+			get_viewport().set_input_as_handled()
+			return
+		launch_ready_ball()
+		get_viewport().set_input_as_handled()
 
 
 func start_game(selected_episode_slug: String, selected_level_number: int) -> void:
 	episode_slug = selected_episode_slug
 	level_number = max(1, selected_level_number)
 	_run_started = false
+	_paused = false
 	_apply_level()
+	_apply_pause_overlay()
 
 
 func current_game_session():
@@ -113,9 +155,103 @@ func activate_next_bonus() -> Dictionary:
 	if gameplay_session == null:
 		return {"status": "missing_session"}
 	var result: Dictionary = gameplay_session.activate_next_bonus()
+	_refresh_playfield_effects()
 	_refresh_actor_renderers()
 	_refresh_hud()
 	return result
+
+
+func toggle_bonus_stack_visible() -> bool:
+	set_bonus_stack_visible(not _bonus_stack_visible)
+	return _bonus_stack_visible
+
+
+func set_bonus_stack_visible(is_visible: bool) -> void:
+	_bonus_stack_visible = is_visible
+	var profile := _profile_service()
+	if profile != null and profile.has_method("set_bonus_stack_visible"):
+		profile.call("set_bonus_stack_visible", is_visible)
+	_apply_presentation_settings()
+
+
+func is_bonus_stack_visible() -> bool:
+	return _bonus_stack_visible
+
+
+func toggle_ball_tracks_visible() -> bool:
+	set_ball_tracks_visible(not _ball_tracks_visible)
+	return _ball_tracks_visible
+
+
+func set_ball_tracks_visible(is_visible: bool) -> void:
+	_ball_tracks_visible = is_visible
+	var profile := _profile_service()
+	if profile != null and profile.has_method("set_ball_tracks_visible"):
+		profile.call("set_ball_tracks_visible", is_visible)
+	_apply_presentation_settings()
+
+
+func are_ball_tracks_visible() -> bool:
+	return _ball_tracks_visible
+
+
+func toggle_fps_visible() -> bool:
+	set_fps_visible(not _fps_visible)
+	return _fps_visible
+
+
+func set_fps_visible(is_visible: bool) -> void:
+	_fps_visible = is_visible
+	var profile := _profile_service()
+	if profile != null and profile.has_method("set_fps_visible"):
+		profile.call("set_fps_visible", is_visible)
+	_apply_presentation_settings()
+
+
+func is_fps_visible() -> bool:
+	return _fps_visible
+
+
+func cycle_background_type() -> int:
+	var next_type := (_background_type + 1) % PlayfieldRendererScript.BACKGROUND_TYPE_COUNT
+	set_background_type(next_type)
+	return _background_type
+
+
+func set_background_type(type_id: int) -> void:
+	_background_type = clampi(type_id, 0, PlayfieldRendererScript.BACKGROUND_TYPE_COUNT - 1)
+	var profile := _profile_service()
+	if profile != null and profile.has_method("set_background_type"):
+		profile.call("set_background_type", _background_type)
+	_apply_presentation_settings()
+
+
+func current_background_type() -> int:
+	return _background_type
+
+
+func set_background_movable(is_movable: bool) -> void:
+	_background_movable = is_movable
+	var profile := _profile_service()
+	if profile != null and profile.has_method("set_background_movable"):
+		profile.call("set_background_movable", is_movable)
+	_apply_presentation_settings()
+
+
+func is_background_movable() -> bool:
+	return _background_movable
+
+
+func toggle_pause() -> bool:
+	if gameplay_session != null and gameplay_session.state == GameSessionScript.STATE_GAME_OVER:
+		return _paused
+	_paused = not _paused
+	_apply_pause_overlay()
+	return _paused
+
+
+func is_game_paused() -> bool:
+	return _paused
 
 
 func _fit_to_baseline_viewport() -> void:
@@ -189,6 +325,8 @@ func _ensure_gameplay_nodes() -> void:
 	bonus_renderer.set_session(gameplay_session)
 	bullet_renderer.set_session(gameplay_session)
 	hud_renderer.set_session(gameplay_session)
+	_ensure_overlay_nodes()
+	_apply_presentation_settings()
 
 
 func _refresh_actor_renderers() -> void:
@@ -230,6 +368,37 @@ func _profile_service() -> Node:
 	return get_node_or_null("/root/KrakoutProfile")
 
 
+func _load_presentation_settings() -> void:
+	var profile := _profile_service()
+	if profile == null:
+		return
+	if profile.has_method("bonus_stack_visible"):
+		_bonus_stack_visible = bool(profile.call("bonus_stack_visible"))
+	if profile.has_method("ball_tracks_visible"):
+		_ball_tracks_visible = bool(profile.call("ball_tracks_visible"))
+	if profile.has_method("fps_visible"):
+		_fps_visible = bool(profile.call("fps_visible"))
+	if profile.has_method("background_movable"):
+		_background_movable = bool(profile.call("background_movable"))
+	if profile.has_method("background_type"):
+		_background_type = clampi(int(profile.call("background_type")), 0, PlayfieldRendererScript.BACKGROUND_TYPE_COUNT - 1)
+
+
+func _apply_presentation_settings() -> void:
+	if bonus_renderer != null and bonus_renderer.has_method("set_stack_visible"):
+		bonus_renderer.call("set_stack_visible", _bonus_stack_visible)
+	if ball_renderer != null and ball_renderer.has_method("set_tracks_visible"):
+		ball_renderer.call("set_tracks_visible", _ball_tracks_visible)
+	if playfield_renderer != null:
+		if playfield_renderer.has_method("set_background_type"):
+			playfield_renderer.call("set_background_type", _background_type)
+		if playfield_renderer.has_method("set_background_movable"):
+			playfield_renderer.call("set_background_movable", _background_movable)
+	if _fps_label != null:
+		_fps_label.visible = _fps_visible
+	_apply_pause_overlay()
+
+
 func _refresh_playfield_effects() -> void:
 	if playfield_renderer == null or gameplay_session == null:
 		return
@@ -249,3 +418,54 @@ func _source_level_number() -> int:
 		if wrapped_number > 0:
 			return wrapped_number
 	return level_number
+
+
+func _ensure_overlay_nodes() -> void:
+	if _pause_label == null:
+		_pause_label = Label.new()
+		_pause_label.name = "PauseOverlay"
+		_pause_label.position = Vector2(0, 212)
+		_pause_label.size = Vector2(640, 40)
+		_pause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_pause_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_pause_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_pause_label.add_theme_color_override("font_color", Color.WHITE)
+		_pause_label.add_theme_font_size_override("font_size", 22)
+		_pause_label.text = "Pause"
+		_pause_label.visible = false
+		add_child(_pause_label)
+
+	if _fps_label == null:
+		_fps_label = Label.new()
+		_fps_label.name = "FpsOverlay"
+		_fps_label.position = Vector2(8, 40)
+		_fps_label.size = Vector2(120, 22)
+		_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		_fps_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_fps_label.add_theme_color_override("font_color", Color.WHITE)
+		_fps_label.add_theme_font_size_override("font_size", 14)
+		_fps_label.visible = _fps_visible
+		add_child(_fps_label)
+
+
+func _apply_pause_overlay() -> void:
+	if _pause_label != null:
+		_pause_label.visible = _paused
+
+
+func _update_fps_overlay(delta: float) -> void:
+	if not _fps_visible or _fps_label == null:
+		return
+	_fps_elapsed += delta
+	_fps_frames += 1
+	if _fps_elapsed >= 0.25:
+		_fps_value = int(round(float(_fps_frames) / _fps_elapsed))
+		_fps_elapsed = 0.0
+		_fps_frames = 0
+	_fps_label.text = "Fps: %d" % _fps_value
+
+
+func _is_repeated_key_event(event: InputEvent) -> bool:
+	var key_event := event as InputEventKey
+	return key_event != null and key_event.echo

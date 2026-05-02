@@ -18,6 +18,7 @@ const BallRendererScript := preload("res://src/render/ball_renderer.gd")
 const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
 const BulletRendererScript := preload("res://src/render/bullet_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
+const GameScreenScript := preload("res://src/game/game_screen.gd")
 const BitmapTextScript := preload("res://src/render/krakout_bitmap_text.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
@@ -75,6 +76,7 @@ func _run() -> void:
 
 	_validate_playfield_spec()
 	_validate_project_presentation_settings()
+	_validate_project_input_map()
 	_validate_profile_service()
 	_validate_playfield_renderer_shell()
 	_validate_brick_semantics()
@@ -176,6 +178,14 @@ func _validate_playfield_spec() -> void:
 func _validate_playfield_renderer_shell() -> void:
 	var renderer: PlayfieldRenderer = PlayfieldRendererScript.new()
 	_assert(renderer.gameplay_background_source_rect() == Rect2(Vector2(100, 0), Vector2(50, 50)), "playfield renderer uses original lattice background tile")
+	_assert(renderer.background_type == PlayfieldRendererScript.DEFAULT_BACKGROUND_TYPE, "playfield renderer defaults to original background type")
+	_assert(renderer.is_background_movable(), "playfield renderer preserves movable background setting")
+	_assert(renderer.background_source_rect_for_type(0) == Rect2(Vector2.ZERO, Vector2(50, 50)), "playfield renderer maps first background source tile")
+	renderer.set_background_type(1)
+	_assert(renderer.gameplay_background_source_rect() == Rect2(Vector2(50, 0), Vector2(50, 50)), "playfield renderer can switch background source tile")
+	_assert(renderer.cycle_background_type() == 2, "playfield renderer cycles background source tiles")
+	renderer.set_background_movable(false)
+	_assert(not renderer.is_background_movable(), "playfield renderer records background movable setting")
 	_assert(PlayfieldRendererScript.WALL_LEFT_X == 2, "left wall x remains original-screen aligned")
 	_assert(PlayfieldRendererScript.WALL_RIGHT_X == 613, "right wall x remains original-screen aligned")
 	_assert(PlayfieldRendererScript.WALL_TOP_Y == 36, "top wall y remains original-screen aligned")
@@ -643,24 +653,62 @@ func _validate_project_presentation_settings() -> void:
 	_assert(ProjectSettings.get_setting("display/window/stretch/aspect") == "keep", "project keeps the original 4:3 aspect ratio")
 
 
+func _validate_project_input_map() -> void:
+	var expected_actions: Array[String] = [
+		GameScreenScript.ACTION_LAUNCH_BALL,
+		GameScreenScript.ACTION_USE_BONUS,
+		GameScreenScript.ACTION_TOGGLE_BONUS_STACK,
+		GameScreenScript.ACTION_TOGGLE_BALL_TRACKS,
+		GameScreenScript.ACTION_TOGGLE_FPS,
+		GameScreenScript.ACTION_PAUSE,
+		GameScreenScript.ACTION_CYCLE_BACKGROUND,
+	]
+	for action_name: String in expected_actions:
+		_assert(InputMap.has_action(action_name), "project input action exists: %s" % action_name)
+
+	_assert(_action_has_mouse_button(GameScreenScript.ACTION_LAUNCH_BALL, MOUSE_BUTTON_LEFT), "launch action binds left mouse button")
+	_assert(_action_has_key(GameScreenScript.ACTION_USE_BONUS, KEY_SPACE), "use-bonus action binds Space")
+	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_BONUS_STACK, KEY_TAB), "bonus-stack action binds Tab")
+	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_BALL_TRACKS, KEY_T, true), "ball-tracks action binds Ctrl+T")
+	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_FPS, KEY_F5), "FPS action binds F5")
+	_assert(_action_has_key(GameScreenScript.ACTION_PAUSE, KEY_P), "pause action binds P")
+	_assert(_action_has_key(GameScreenScript.ACTION_CYCLE_BACKGROUND, KEY_B), "background-cycle action binds B")
+
+
 func _validate_profile_service() -> void:
 	var save_path := _test_profile_path("profile_service")
 	var profile = ProfileScript.new()
 	profile.set_save_path(save_path, false)
 	_assert(profile.best_score() == 0, "profile defaults high score to zero")
+	_assert(profile.bonus_stack_visible(), "profile defaults bonus stack visible")
+	_assert(profile.ball_tracks_visible(), "profile defaults ball tracks visible")
+	_assert(not profile.fps_visible(), "profile defaults FPS hidden")
+	_assert(profile.background_movable(), "profile defaults background movable from original config")
+	_assert(profile.background_type() == 2, "profile defaults to original BgType")
 	_assert(profile.record_score(885), "profile records a new high score")
 	_assert(profile.best_score() == 885, "profile exposes recorded high score")
 	_assert(not profile.record_score(120), "profile ignores lower scores")
 	_assert(profile.best_score() == 885, "profile preserves higher score")
+	_assert(profile.set_bonus_stack_visible(false), "profile persists hidden bonus stack setting")
+	_assert(profile.set_ball_tracks_visible(false), "profile persists hidden ball tracks setting")
+	_assert(profile.set_fps_visible(true), "profile persists visible FPS setting")
+	_assert(profile.set_background_movable(false), "profile persists static background setting")
+	_assert(profile.set_background_type(1), "profile persists background type setting")
 
 	var reloaded_profile = ProfileScript.new()
 	reloaded_profile.set_save_path(save_path, true)
 	_assert(reloaded_profile.best_score() == 885, "profile reloads persisted high score")
+	_assert(not reloaded_profile.bonus_stack_visible(), "profile reloads bonus stack setting")
+	_assert(not reloaded_profile.ball_tracks_visible(), "profile reloads ball tracks setting")
+	_assert(reloaded_profile.fps_visible(), "profile reloads FPS setting")
+	_assert(not reloaded_profile.background_movable(), "profile reloads background movable setting")
+	_assert(reloaded_profile.background_type() == 1, "profile reloads background type setting")
 	_assert(reloaded_profile.set_best_score(1200), "profile can replace high score with a higher value")
 
 	var final_profile = ProfileScript.new()
 	final_profile.set_save_path(save_path, true)
 	_assert(final_profile.best_score() == 1200, "profile persists updated high score")
+	_assert(final_profile.background_type() == 1, "profile keeps presentation settings when high score changes")
 
 	profile.free()
 	reloaded_profile.free()
@@ -883,6 +931,12 @@ func _validate_menu_and_game_scenes() -> void:
 		_profile.call("set_save_path", _test_profile_path("game_scene"), false)
 	if _profile != null and _profile.has_method("record_score"):
 		_assert(bool(_profile.call("record_score", 885)), "test profile accepts seeded high score")
+	if _profile != null and _profile.has_method("set_bonus_stack_visible"):
+		_profile.call("set_bonus_stack_visible", false)
+		_profile.call("set_ball_tracks_visible", false)
+		_profile.call("set_fps_visible", true)
+		_profile.call("set_background_movable", false)
+		_profile.call("set_background_type", 1)
 
 	var game := GameScreenScene.instantiate()
 	_assert(game.episode_slug == PlayfieldSpecScript.DEFAULT_EPISODE, "game screen defaults to shared episode")
@@ -906,6 +960,21 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(game.find_child("BallRenderer", true, false) != null, "game screen creates ball renderer")
 			_assert(game.find_child("BonusRenderer", true, false) != null, "game screen creates bonus renderer")
 			_assert(game.find_child("BulletRenderer", true, false) != null, "game screen creates bullet renderer")
+			_assert(game.call("is_bonus_stack_visible") == false, "game screen loads bonus-stack visibility setting")
+			_assert(game.call("are_ball_tracks_visible") == false, "game screen loads ball-track visibility setting")
+			_assert(game.call("is_fps_visible"), "game screen loads FPS visibility setting")
+			_assert(game.call("current_background_type") == 1, "game screen loads background type setting")
+			_assert(game.call("is_background_movable") == false, "game screen loads background movable setting")
+			var game_bonus_renderer := game.find_child("BonusRenderer", true, false)
+			if game_bonus_renderer != null:
+				_assert(not game_bonus_renderer.call("is_stack_visible"), "bonus renderer applies hidden stack setting")
+			var game_ball_renderer := game.find_child("BallRenderer", true, false)
+			if game_ball_renderer != null:
+				_assert(not game_ball_renderer.call("are_tracks_visible"), "ball renderer applies hidden tracks setting")
+			_assert(playfield.background_type == 1, "playfield applies loaded background type")
+			_assert(not playfield.call("is_background_movable"), "playfield applies loaded background movable setting")
+			var fps_overlay := game.find_child("FpsOverlay", true, false) as Label
+			_assert(fps_overlay != null and fps_overlay.visible, "game screen shows FPS overlay when enabled")
 			var hud = game.call("current_hud")
 			_assert(hud != null, "game screen creates gameplay hud")
 			if hud != null:
@@ -920,15 +989,36 @@ func _validate_menu_and_game_scenes() -> void:
 				_assert(int(_profile.call("best_score")) == 1000, "game screen records new persisted high score")
 			game.call("move_racket_to", 10000.0)
 			_assert(gameplay.racket_rect().end.y == GameSessionScript.RACKET_MAX_BOTTOM, "game screen routes racket movement")
-			_assert(game.call("launch_ready_ball"), "game screen routes ball launch")
+			game.call("_input", _action_event(GameScreenScript.ACTION_LAUNCH_BALL))
+			await process_frame
 			_assert(gameplay.state == GameSessionScript.STATE_PLAYING, "game screen launch enters playing state")
 			_stack_bonus(gameplay, GameSessionScript.BONUS_EXTRA_LIFE)
-			var space_event := InputEventKey.new()
-			space_event.keycode = KEY_SPACE
-			space_event.pressed = true
-			game.call("_input", space_event)
+			game.call("_input", _action_event(GameScreenScript.ACTION_USE_BONUS))
 			await process_frame
-			_assert(gameplay.lives_remaining == GameSessionScript.INITIAL_LIVES + 1, "game screen routes Space to bonus activation")
+			_assert(gameplay.lives_remaining == GameSessionScript.INITIAL_LIVES + 1, "game screen routes use-bonus action to bonus activation")
+			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_BONUS_STACK))
+			await process_frame
+			_assert(game.call("is_bonus_stack_visible"), "game screen routes bonus-stack toggle")
+			if _profile != null and _profile.has_method("bonus_stack_visible"):
+				_assert(bool(_profile.call("bonus_stack_visible")), "bonus-stack toggle persists to profile")
+			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_BALL_TRACKS))
+			await process_frame
+			_assert(game.call("are_ball_tracks_visible"), "game screen routes ball-track toggle")
+			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_FPS))
+			await process_frame
+			_assert(not game.call("is_fps_visible"), "game screen routes FPS toggle")
+			game.call("_input", _action_event(GameScreenScript.ACTION_CYCLE_BACKGROUND))
+			await process_frame
+			_assert(game.call("current_background_type") == 2, "game screen routes background-cycle action")
+			_assert(playfield.background_type == 2, "background-cycle action updates playfield")
+			game.call("_input", _action_event(GameScreenScript.ACTION_PAUSE))
+			await process_frame
+			_assert(game.call("is_game_paused"), "game screen routes pause action")
+			var pause_overlay := game.find_child("PauseOverlay", true, false) as Label
+			_assert(pause_overlay != null and pause_overlay.visible, "game screen shows pause overlay")
+			game.call("_input", _action_event(GameScreenScript.ACTION_PAUSE))
+			await process_frame
+			_assert(not game.call("is_game_paused"), "game screen routes pause resume action")
 			_stack_bonus(gameplay, GameSessionScript.BONUS_BACK_WALL)
 			game.call("activate_next_bonus")
 			await process_frame
@@ -1054,6 +1144,32 @@ func _projectile(projectile_type: int, position: Vector2) -> Dictionary:
 		"trail_frame": 0,
 		"trail_frame_elapsed": 0.0,
 	}
+
+
+func _action_event(action_name: String) -> InputEventAction:
+	var event := InputEventAction.new()
+	event.action = action_name
+	event.pressed = true
+	return event
+
+
+func _action_has_key(action_name: String, keycode: Key, ctrl_pressed := false) -> bool:
+	for event: InputEvent in InputMap.action_get_events(action_name):
+		var key_event := event as InputEventKey
+		if key_event == null:
+			continue
+		var matches_key := key_event.keycode == keycode or key_event.physical_keycode == keycode
+		if matches_key and key_event.ctrl_pressed == ctrl_pressed:
+			return true
+	return false
+
+
+func _action_has_mouse_button(action_name: String, button_index: MouseButton) -> bool:
+	for event: InputEvent in InputMap.action_get_events(action_name):
+		var button_event := event as InputEventMouseButton
+		if button_event != null and button_event.button_index == button_index:
+			return true
+	return false
 
 
 func _test_profile_path(label: String) -> String:

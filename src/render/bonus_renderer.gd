@@ -13,6 +13,7 @@ var session
 var falling_bonus_texture: Texture2D
 var stacked_bonus_texture: Texture2D
 var pointer_texture: Texture2D
+var stack_visible := true
 
 
 func _ready() -> void:
@@ -28,6 +29,17 @@ func _ready() -> void:
 func set_session(value) -> void:
 	session = value
 	queue_redraw()
+
+
+func set_stack_visible(is_visible: bool) -> void:
+	if stack_visible == is_visible:
+		return
+	stack_visible = is_visible
+	queue_redraw()
+
+
+func is_stack_visible() -> bool:
+	return stack_visible
 
 
 func _draw() -> void:
@@ -53,6 +65,8 @@ func _draw_falling_bonuses() -> void:
 
 
 func _draw_bonus_stack() -> void:
+	if not stack_visible:
+		return
 	if stacked_bonus_texture == null or not session.has_method("bonus_stack_entries"):
 		return
 

@@ -5,6 +5,7 @@ const SOURCE_RECT := Rect2(Vector2(0, 0), Vector2(16, 16))
 
 var session
 var ball_texture: Texture2D
+var tracks_visible := true
 
 
 func _ready() -> void:
@@ -16,6 +17,17 @@ func _ready() -> void:
 func set_session(value) -> void:
 	session = value
 	queue_redraw()
+
+
+func set_tracks_visible(is_visible: bool) -> void:
+	if tracks_visible == is_visible:
+		return
+	tracks_visible = is_visible
+	queue_redraw()
+
+
+func are_tracks_visible() -> bool:
+	return tracks_visible
 
 
 func _draw() -> void:

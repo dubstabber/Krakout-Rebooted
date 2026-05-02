@@ -6,7 +6,9 @@ const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec
 const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
 
 const BACKGROUND_TILE_SIZE := Vector2(50, 50)
-const GAMEPLAY_BACKGROUND_SOURCE := Rect2(Vector2(100, 0), BACKGROUND_TILE_SIZE)
+const DEFAULT_BACKGROUND_TYPE := 2
+const BACKGROUND_TYPE_COUNT := 3
+const GAMEPLAY_BACKGROUND_SOURCE := Rect2(Vector2(DEFAULT_BACKGROUND_TYPE * BACKGROUND_TILE_SIZE.x, 0), BACKGROUND_TILE_SIZE)
 const WALL_REPEAT_STEP := 45
 const WALL_TOP_SOURCE := Rect2(Vector2(0, 45), Vector2(45, 25))
 const WALL_SIDE_SOURCE := Rect2(Vector2(11, 0), Vector2(25, 45))
@@ -24,6 +26,8 @@ const WALL_SIDE_START_Y := 81
 @export var default_level_number := PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER
 @export var background_texture_name := "Backgr"
 @export var walls_texture_name := "Walls"
+@export var background_type := DEFAULT_BACKGROUND_TYPE
+@export var background_movable := true
 
 var level_data: KrakoutLevelData
 var board_state
@@ -62,7 +66,32 @@ func current_board_state():
 
 
 func gameplay_background_source_rect() -> Rect2:
-	return GAMEPLAY_BACKGROUND_SOURCE
+	return background_source_rect_for_type(background_type)
+
+
+func background_source_rect_for_type(type_id: int) -> Rect2:
+	return Rect2(Vector2(clampi(type_id, 0, BACKGROUND_TYPE_COUNT - 1) * BACKGROUND_TILE_SIZE.x, 0), BACKGROUND_TILE_SIZE)
+
+
+func set_background_type(type_id: int) -> void:
+	var clamped_type := clampi(type_id, 0, BACKGROUND_TYPE_COUNT - 1)
+	if background_type == clamped_type:
+		return
+	background_type = clamped_type
+	queue_redraw()
+
+
+func cycle_background_type() -> int:
+	set_background_type((background_type + 1) % BACKGROUND_TYPE_COUNT)
+	return background_type
+
+
+func set_background_movable(is_movable: bool) -> void:
+	background_movable = is_movable
+
+
+func is_background_movable() -> bool:
+	return background_movable
 
 
 func refresh_board() -> void:
@@ -112,7 +141,7 @@ func _draw_background_tiles() -> void:
 			draw_texture_rect_region(
 				background_texture,
 				Rect2(Vector2(x, y), BACKGROUND_TILE_SIZE),
-				GAMEPLAY_BACKGROUND_SOURCE
+				gameplay_background_source_rect()
 			)
 
 
