@@ -15,14 +15,23 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - `KrakoutGameplaySheetCatalog` records the IDA-backed gameplay texture sheets
   and verified dimensions without guessing unknown animation/frame semantics.
 - `LevelGridRenderer` renders raw visual board IDs through an isolated IDA-backed
-  brick atlas mapping. Most tile gameplay semantics remain intentionally unmapped.
+  brick atlas mapping, keeping gameplay meaning out of the visual loader.
 - `PlayfieldRenderer` composes the 640x480 playfield shell from `Backgr`, `Walls`,
   and the selected level board, then creates a mutable board state for gameplay.
 - `KrakoutBrickSemantics` and `KrakoutBoardState` preserve the original brick
-  active/completion rules plus delayed 3x3 chain explosions for tile IDs 43/68.
+  active/completion rules, the IDA-backed behavior-case table, and delayed 3x3
+  chain explosions for tile IDs 43/68.
 - `KrakoutGameSession` adds the first playable ball/racket loop around that
   board state: mouse-following right-side racket, ready/launch/play/lost/complete
   states, wall/racket/brick collision, and redraw signaling.
+- `KrakoutGameSession` now consumes the first 22 level-tail bytes as original
+  bonus stock, uses the original RNG constants, applies the 3-second drop gate
+  and stock-weighted drop chance, spawns falling bonuses, converts random
+  selector hits into chain tiles, and stacks collected bonuses up to the original
+  16-entry cap. Individual collected-bonus effects are still pending parity work.
+- `KrakoutBonusRenderer` draws falling bonuses, collected stack entries, and the
+  stack pointer from the extracted `Bonuses_a`, `Bonuses_aa`, and
+  `PointToBonusInStack` sheets.
 - The gameplay loop now tracks the original-backed run counters around that
   loop: 15-point brick scoring, gradual displayed-score catch-up, three spare
   balls, a 20,000-point extra-ball threshold, wrapped episode progression, and

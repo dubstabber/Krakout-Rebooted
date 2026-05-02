@@ -3,6 +3,7 @@ class_name KrakoutGameSession
 
 const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
 const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantics.gd")
+const RandomScript := preload("res://src/gameplay/krakout_random.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 
 const STATE_READY := "ready"
@@ -27,6 +28,34 @@ const BALL_LEFT_X := 5.0
 const BALL_LOST_X := 575.0
 const READY_BALL_GAP := 10.0
 const DEFAULT_BALL_VELOCITY := Vector2(-260.0, -90.0)
+const BONUS_TYPE_COUNT := 22
+const BONUS_SELECTOR_COUNT := 23
+const MAX_FALLING_BONUSES := 20
+const MAX_STACKED_BONUSES := 16
+const BONUS_DROP_GATE_SECONDS := 3.0
+const BONUS_SIZE := 32.0
+const BONUS_STEP_X := 1.5
+const BONUS_WAVE_SCALE := 1.0 / 12.0
+const BONUS_ANGLE_STEP := 3
+const BONUS_MIN_Y := 10.0
+const BONUS_MAX_Y := 438.0
+const BONUS_EXPIRE_X := 600.0
+const BONUS_ANIMATION_FRAME_COUNT := 10
+const BONUS_FALLING_FRAME_SECONDS := 0.1
+const BONUS_STACK_FRAME_SECONDS := 0.07
+const BONUS_POINTER_FRAME_SECONDS := 0.05
+const CHAIN_SELECTOR_TILE_IDS := [68, 43]
+const BONUS_DISPLAY_INCREMENT_IDS := {
+	1: true,
+	11: true,
+	14: true,
+	16: true,
+	17: true,
+	18: true,
+	19: true,
+	20: true,
+	21: true,
+}
 
 var board_state
 var state := STATE_READY
@@ -39,6 +68,19 @@ var best_score := 0
 var lives_remaining := INITIAL_LIVES
 var points_to_next_extra_life := EXTRA_LIFE_SCORE_STEP
 var display_level_number := 1
+var bonus_stock_counts: Array[int] = []
+var remaining_bonus_stock := 0
+var falling_bonuses: Array[Dictionary] = []
+var bonus_stack: Array[Dictionary] = []
+var bonus_pointer_frame := 0
+var _bonus_rng = RandomScript.new()
+var _bonus_animation_rng = RandomScript.new(31415)
+var _bonus_drop_cooldown := BONUS_DROP_GATE_SECONDS
+var _bonus_pointer_elapsed := 0.0
+
+
+func _init() -> void:
+	_bonus_rng.set_seed(Time.get_ticks_msec())
 
 
 func load_level(level: KrakoutLevelData) -> void:
@@ -55,18 +97,24 @@ func start_run(level: KrakoutLevelData, selected_display_level_number: int = 1, 
 	lives_remaining = INITIAL_LIVES
 	points_to_next_extra_life = EXTRA_LIFE_SCORE_STEP
 	display_level_number = max(1, selected_display_level_number)
+	_clear_bonus_run_state()
 	_load_board_for_level(level)
 	reset_round()
 
 
 func advance_to_level(level: KrakoutLevelData, next_display_level_number: int) -> void:
 	display_level_number = max(1, next_display_level_number)
+	falling_bonuses.clear()
+	_reset_bonus_drop_gate()
 	_load_board_for_level(level)
 	reset_round()
 
 
 func set_board_state(state_value) -> void:
 	board_state = state_value
+	_load_bonus_stock_from_level(board_state.source_level if board_state != null else null)
+	falling_bonuses.clear()
+	_reset_bonus_drop_gate()
 	reset_round()
 
 
@@ -74,6 +122,8 @@ func reset_round() -> void:
 	state = STATE_READY
 	board_changed = false
 	balls.clear()
+	falling_bonuses.clear()
+	_reset_bonus_drop_gate()
 	_add_ready_ball()
 
 
@@ -96,6 +146,7 @@ func _load_board_for_level(level: KrakoutLevelData) -> void:
 	board_state = BoardStateScript.new() if level != null else null
 	if board_state != null:
 		board_state.load_level(level)
+	_load_bonus_stock_from_level(level)
 
 
 func move_racket_to(mouse_y: float) -> void:
@@ -122,6 +173,8 @@ func launch_ready_ball() -> bool:
 func update(delta: float) -> void:
 	board_changed = false
 	_update_displayed_score()
+	_update_bonus_timers(delta)
+	_update_bonus_stack(delta)
 
 	if board_state != null:
 		var chain_cleared_count: int = board_state.process_chain_explosions(delta)
@@ -139,6 +192,8 @@ func update(delta: float) -> void:
 	if state != STATE_PLAYING:
 		_attach_ready_balls()
 		return
+
+	_update_falling_bonuses(delta)
 
 	var active_count := 0
 	for index in range(balls.size()):
@@ -169,6 +224,29 @@ func visible_balls() -> Array[Dictionary]:
 		if bool(ball.get("active", false)):
 			visible.append(ball)
 	return visible
+
+
+func visible_falling_bonuses() -> Array[Dictionary]:
+	var visible: Array[Dictionary] = []
+	for bonus: Dictionary in falling_bonuses:
+		if bool(bonus.get("active", false)):
+			visible.append(bonus.duplicate())
+	return visible
+
+
+func bonus_stack_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for entry: Dictionary in bonus_stack:
+		entries.append(entry.duplicate())
+	return entries
+
+
+func set_bonus_rng_seed(seed_value: int) -> void:
+	_bonus_rng.set_seed(seed_value)
+
+
+func force_bonus_drop_ready() -> void:
+	_bonus_drop_cooldown = 0.0
 
 
 func active_ball_count() -> int:
@@ -300,17 +378,89 @@ func _collide_with_board(ball: Dictionary, previous_position: Vector2) -> bool:
 	var row := int(hit["row"])
 	var tile_id := int(hit["tile_id"])
 	var cleared_count := 0
+	var did_change_board := false
 	if BrickSemanticsScript.is_chain_explosion_tile(tile_id):
 		cleared_count = board_state.explode_at(column, row)
-	elif board_state.clear_tile(column, row):
-		cleared_count = 1
+		did_change_board = cleared_count > 0
+	else:
+		var regular_hit_result := _resolve_regular_brick_hit(column, row, tile_id)
+		cleared_count = int(regular_hit_result.get("cleared_count", 0))
+		did_change_board = bool(regular_hit_result.get("changed", false))
 
-	if cleared_count > 0:
+	if did_change_board:
 		board_changed = true
+	if cleared_count > 0:
 		award_score(cleared_count * BRICK_SCORE)
 
 	_reflect_from_tile(ball, previous_position, PlayfieldSpecScript.brick_rect(column, row))
 	return true
+
+
+func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictionary:
+	var bonus_result := _try_resolve_bonus_drop(column, row, tile_id)
+	var action := String(bonus_result.get("action", "clear"))
+	if action == "chain":
+		return {
+			"changed": true,
+			"cleared_count": 0,
+		}
+
+	var cleared_count := 0
+	if board_state.clear_tile(column, row):
+		cleared_count = 1
+
+	if action == "spawn":
+		_spawn_falling_bonus(
+			int(bonus_result.get("type_id", 0)),
+			PlayfieldSpecScript.brick_rect(column, row).position
+		)
+
+	return {
+		"changed": cleared_count > 0,
+		"cleared_count": cleared_count,
+	}
+
+
+func _try_resolve_bonus_drop(column: int, row: int, tile_id: int) -> Dictionary:
+	if not BrickSemanticsScript.can_spawn_bonus(tile_id):
+		return {"action": "clear"}
+	if _bonus_drop_cooldown > 0.0:
+		return {"action": "clear"}
+
+	_reset_bonus_drop_gate()
+	if remaining_bonus_stock <= 0:
+		return {"action": "clear"}
+	if board_state == null or board_state.remaining_required_bricks <= 0:
+		return {"action": "clear"}
+
+	var chance_denominator: int = int((2 * board_state.remaining_required_bricks) / remaining_bonus_stock)
+	if chance_denominator <= 0:
+		return {"action": "clear"}
+	if _bonus_rng.next_mod(chance_denominator) != 0:
+		return {"action": "clear"}
+
+	var selector := _bonus_rng.next_mod(BONUS_SELECTOR_COUNT)
+	var attempts := BONUS_SELECTOR_COUNT
+	while attempts > 0:
+		if selector >= BONUS_TYPE_COUNT:
+			var tile_selector := _bonus_rng.next_mod(CHAIN_SELECTOR_TILE_IDS.size())
+			var chain_tile_id := int(CHAIN_SELECTOR_TILE_IDS[tile_selector])
+			if board_state.convert_to_chain_explosion_tile(column, row, chain_tile_id):
+				return {"action": "chain"}
+			return {"action": "clear"}
+
+		if selector < bonus_stock_counts.size() and int(bonus_stock_counts[selector]) > 0:
+			bonus_stock_counts[selector] = int(bonus_stock_counts[selector]) - 1
+			remaining_bonus_stock -= 1
+			return {
+				"action": "spawn",
+				"type_id": _visible_bonus_type_for_stock_id(selector),
+			}
+
+		selector = (selector + 1) % BONUS_TYPE_COUNT
+		attempts -= 1
+
+	return {"action": "clear"}
 
 
 func _first_board_hit(rect: Rect2) -> Dictionary:
@@ -349,11 +499,152 @@ func _reflect_from_tile(ball: Dictionary, previous_position: Vector2, tile_rect:
 	ball["velocity"] = velocity
 
 
+func _load_bonus_stock_from_level(level: KrakoutLevelData) -> void:
+	bonus_stock_counts.clear()
+	remaining_bonus_stock = 0
+	if level == null:
+		for index in range(BONUS_TYPE_COUNT):
+			bonus_stock_counts.append(0)
+		return
+
+	var source_counts: Array[int] = level.bonus_stock_counts()
+	for index in range(BONUS_TYPE_COUNT):
+		var count := 0
+		if index < source_counts.size():
+			count = max(0, int(source_counts[index]))
+		bonus_stock_counts.append(count)
+		remaining_bonus_stock += count
+
+
+func _clear_bonus_run_state() -> void:
+	falling_bonuses.clear()
+	bonus_stack.clear()
+	bonus_pointer_frame = 0
+	_bonus_pointer_elapsed = 0.0
+	_reset_bonus_drop_gate()
+
+
+func _reset_bonus_drop_gate() -> void:
+	_bonus_drop_cooldown = BONUS_DROP_GATE_SECONDS
+
+
+func _update_bonus_timers(delta: float) -> void:
+	if _bonus_drop_cooldown > 0.0:
+		_bonus_drop_cooldown = maxf(0.0, _bonus_drop_cooldown - delta)
+
+
+func _spawn_falling_bonus(type_id: int, position: Vector2) -> bool:
+	if falling_bonuses.size() >= MAX_FALLING_BONUSES:
+		return false
+
+	falling_bonuses.append({
+		"active": true,
+		"type_id": clampi(type_id, 0, BONUS_TYPE_COUNT - 1),
+		"position": position,
+		"base_y": position.y,
+		"angle": 0,
+		"frame": _bonus_animation_rng.next_mod(BONUS_ANIMATION_FRAME_COUNT),
+		"frame_elapsed": 0.0,
+	})
+	return true
+
+
+func _update_falling_bonuses(delta: float) -> void:
+	for index in range(falling_bonuses.size()):
+		var bonus := falling_bonuses[index]
+		if not bool(bonus.get("active", false)):
+			continue
+
+		_advance_falling_bonus(bonus, delta)
+		if bonus_rect(bonus).intersects(racket_rect()) and _push_bonus_stack(int(bonus.get("type_id", 0))):
+			bonus["active"] = false
+
+		falling_bonuses[index] = bonus
+
+	_compact_falling_bonuses()
+
+
+func _advance_falling_bonus(bonus: Dictionary, delta: float) -> void:
+	var position: Vector2 = bonus.get("position", Vector2.ZERO)
+	var next_x := position.x + BONUS_STEP_X
+	var next_angle := (int(bonus.get("angle", 0)) + BONUS_ANGLE_STEP) % 360
+	var base_y := float(bonus.get("base_y", position.y))
+	var next_y := base_y + next_x * BONUS_WAVE_SCALE * cos(deg_to_rad(float(next_angle)))
+	next_y = clampf(next_y, BONUS_MIN_Y, BONUS_MAX_Y)
+
+	var frame_elapsed := float(bonus.get("frame_elapsed", 0.0)) + delta
+	var frame := int(bonus.get("frame", 0))
+	while frame_elapsed >= BONUS_FALLING_FRAME_SECONDS:
+		frame = (frame + 1) % BONUS_ANIMATION_FRAME_COUNT
+		frame_elapsed -= BONUS_FALLING_FRAME_SECONDS
+
+	bonus["position"] = Vector2(next_x, next_y)
+	bonus["angle"] = next_angle
+	bonus["frame"] = frame
+	bonus["frame_elapsed"] = frame_elapsed
+	if next_x > BONUS_EXPIRE_X:
+		bonus["active"] = false
+
+
+func _compact_falling_bonuses() -> void:
+	var compacted: Array[Dictionary] = []
+	for bonus: Dictionary in falling_bonuses:
+		if bool(bonus.get("active", false)):
+			compacted.append(bonus)
+	falling_bonuses = compacted
+
+
+func bonus_rect(bonus: Dictionary) -> Rect2:
+	return Rect2(bonus.get("position", Vector2.ZERO), Vector2(BONUS_SIZE, BONUS_SIZE))
+
+
+func _push_bonus_stack(type_id: int) -> bool:
+	if bonus_stack.size() >= MAX_STACKED_BONUSES:
+		return false
+
+	bonus_stack.append({
+		"type_id": clampi(type_id, 0, BONUS_TYPE_COUNT - 1),
+		"frame": 0,
+		"frame_elapsed": 0.0,
+	})
+	return true
+
+
+func _update_bonus_stack(delta: float) -> void:
+	if bonus_stack.is_empty():
+		bonus_pointer_frame = 0
+		_bonus_pointer_elapsed = 0.0
+		return
+
+	_bonus_pointer_elapsed += delta
+	while _bonus_pointer_elapsed >= BONUS_POINTER_FRAME_SECONDS:
+		bonus_pointer_frame = (bonus_pointer_frame + 1) % BONUS_ANIMATION_FRAME_COUNT
+		_bonus_pointer_elapsed -= BONUS_POINTER_FRAME_SECONDS
+
+	for index in range(bonus_stack.size()):
+		var entry := bonus_stack[index]
+		var frame_elapsed := float(entry.get("frame_elapsed", 0.0)) + delta
+		var frame := int(entry.get("frame", 0))
+		while frame_elapsed >= BONUS_STACK_FRAME_SECONDS:
+			frame = (frame + 1) % BONUS_ANIMATION_FRAME_COUNT
+			frame_elapsed -= BONUS_STACK_FRAME_SECONDS
+		entry["frame"] = frame
+		entry["frame_elapsed"] = frame_elapsed
+		bonus_stack[index] = entry
+
+
+func _visible_bonus_type_for_stock_id(stock_id: int) -> int:
+	if BONUS_DISPLAY_INCREMENT_IDS.has(stock_id):
+		return (stock_id + 1) % BONUS_TYPE_COUNT
+	return stock_id
+
+
 func _handle_round_lost() -> void:
 	lives_remaining -= 1
 	if lives_remaining < 0:
 		state = STATE_GAME_OVER
 		balls.clear()
+		falling_bonuses.clear()
 		return
 
 	reset_round()

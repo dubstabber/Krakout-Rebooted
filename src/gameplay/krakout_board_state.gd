@@ -87,6 +87,17 @@ func explode_at(column: int, row: int) -> int:
 	return cleared_tiles
 
 
+func convert_to_chain_explosion_tile(column: int, row: int, tile_id: int) -> bool:
+	if not _is_in_bounds(column, row):
+		return false
+	if not BrickSemanticsScript.is_chain_explosion_tile(tile_id):
+		return false
+
+	set_tile(column, row, tile_id)
+	_schedule_chain_explosion(column, row)
+	return true
+
+
 func process_chain_explosions(delta: float) -> int:
 	if _pending_chain_explosions.is_empty():
 		return 0

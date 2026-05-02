@@ -4,6 +4,7 @@ class_name KrakoutLevelData
 const COLUMNS := 20
 const ROWS := 13
 const LEVEL_TAIL_SIZE := 50
+const BONUS_STOCK_COUNT_SIZE := 22
 
 var source_path := ""
 var source_episode := ""
@@ -84,3 +85,13 @@ func populated_tile_count() -> int:
 			if tile_id != 0:
 				count += 1
 	return count
+
+
+func bonus_stock_counts() -> Array[int]:
+	var counts: Array[int] = []
+	for index in range(BONUS_STOCK_COUNT_SIZE):
+		var value := 0
+		if index < level_tail_bytes.size():
+			value = int(level_tail_bytes[index])
+		counts.append(value)
+	return counts

@@ -10,8 +10,10 @@ const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec
 const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantics.gd")
 const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
 const GameSessionScript := preload("res://src/gameplay/krakout_game_session.gd")
+const RandomScript := preload("res://src/gameplay/krakout_random.gd")
 const RacketRendererScript := preload("res://src/render/racket_renderer.gd")
 const BallRendererScript := preload("res://src/render/ball_renderer.gd")
+const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 const GameScreenScene := preload("res://scenes/game/game_screen.tscn")
@@ -57,6 +59,9 @@ func _run() -> void:
 		_assert(level.level_tail_bytes.size() == LevelDataScript.LEVEL_TAIL_SIZE, "Default level preserves 50 tail bytes")
 		_assert(level.level_tail_bytes[0] == 0, "Default level tail byte 0 is preserved")
 		_assert(level.level_tail_bytes[14] == 5, "Default level tail non-zero data is preserved")
+		var default_bonus_counts: Array[int] = level.bonus_stock_counts()
+		_assert(default_bonus_counts.size() == LevelDataScript.BONUS_STOCK_COUNT_SIZE, "Default level exposes 22 bonus stock counters")
+		_assert(default_bonus_counts[14] == 5, "Default level bonus stock mirrors preserved tail bytes")
 		_assert(level.tile_semantics == "unmapped", "Default level tile semantics stay unmapped")
 		_assert(level.populated_tile_count() > 0, "Default level contains non-empty raw tiles")
 		_validate_board_state(level)
@@ -64,6 +69,7 @@ func _run() -> void:
 
 	_validate_playfield_spec()
 	_validate_brick_semantics()
+	_validate_original_rng()
 	_validate_brick_atlas_mapping()
 	_validate_level_grid_renderer_defaults()
 	_validate_gameplay_sheet_catalog()
@@ -159,6 +165,21 @@ func _validate_brick_semantics() -> void:
 	_assert(BrickSemanticsScript.is_required_tile(43), "tile 43 counts before chain explosion")
 	_assert(BrickSemanticsScript.is_chain_explosion_tile(43), "tile 43 is a chain explosion tile")
 	_assert(BrickSemanticsScript.is_chain_explosion_tile(68), "tile 68 is a chain explosion tile")
+	_assert(BrickSemanticsScript.behavior_case(1) == 0, "tile 1 uses the bonus-eligible brick behavior case")
+	_assert(BrickSemanticsScript.can_spawn_bonus(1), "tile 1 can route through original bonus spawn logic")
+	_assert(BrickSemanticsScript.behavior_case(8) == 1, "tile 8 keeps its non-clear behavior case")
+	_assert(BrickSemanticsScript.behavior_case(39) == 1, "tile 39 keeps its non-clear behavior case")
+	_assert(BrickSemanticsScript.behavior_case(40) == 1, "tile 40 keeps its non-clear behavior case")
+	_assert(BrickSemanticsScript.behavior_case(43) == 4, "tile 43 keeps its chain behavior case")
+	_assert(BrickSemanticsScript.behavior_case(68) == 4, "tile 68 keeps its chain behavior case")
+	_assert(BrickSemanticsScript.behavior_case(69) == 1, "tile 69 keeps its non-clear behavior case")
+	_assert(not BrickSemanticsScript.can_spawn_bonus(43), "chain tiles do not route through bonus spawn logic")
+
+
+func _validate_original_rng() -> void:
+	var rng = RandomScript.new(17)
+	_assert(rng.next_mod(2) == 0, "original RNG produces deterministic modulo values")
+	_assert(rng.next_mod(23) == 0, "original RNG advances state between calls")
 
 
 func _validate_board_state(default_level: KrakoutLevelData) -> void:
@@ -205,6 +226,11 @@ func _validate_board_state(default_level: KrakoutLevelData) -> void:
 	]))
 	_assert(edge_state.explode_at(0, 0) == 4, "corner explosion clamps to board bounds")
 	_assert(edge_state.remaining_required_bricks == 0, "corner explosion clears only valid neighbors")
+
+	var converted_chain_state = _board_state_from_level(_make_level_from_rows([[1]]))
+	_assert(converted_chain_state.convert_to_chain_explosion_tile(0, 0, 68), "board state can convert a tile into a delayed chain explosion")
+	_assert(converted_chain_state.tile_at(0, 0) == 68, "converted chain tile is stored in board state")
+	_assert(converted_chain_state.pending_chain_explosion_count() == 1, "converted chain tile is scheduled")
 
 
 func _validate_game_session(default_level: KrakoutLevelData) -> void:
@@ -295,6 +321,94 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(advance_session.lives_remaining == 2, "level advance preserves spare balls")
 	_assert(advance_session.display_level_number == 15, "level advance preserves displayed level")
 	_assert(advance_session.state == GameSessionScript.STATE_READY, "level advance resets round to ready")
+
+	var bonus_spawn_session = _game_session_from_level(_make_level_from_rows([[1]], _make_bonus_tail([1])))
+	bonus_spawn_session.set_bonus_rng_seed(17)
+	bonus_spawn_session.force_bonus_drop_ready()
+	bonus_spawn_session.force_ball(PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2), Vector2(-80, 0))
+	bonus_spawn_session.update(0.01)
+	_assert(bonus_spawn_session.board_state.tile_at(0, 0) == 0, "bonus-eligible brick hit still clears the source tile")
+	_assert(bonus_spawn_session.score == GameSessionScript.BRICK_SCORE, "bonus-eligible brick hit still awards brick score")
+	_assert(bonus_spawn_session.remaining_bonus_stock == 0, "bonus spawn consumes one original stock counter")
+	_assert(bonus_spawn_session.bonus_stock_counts[0] == 0, "bonus spawn decrements selected stock")
+	var spawned_bonuses: Array = bonus_spawn_session.visible_falling_bonuses()
+	_assert(spawned_bonuses.size() == 1, "eligible brick hit can spawn a falling bonus")
+	if spawned_bonuses.size() == 1:
+		_assert(int(spawned_bonuses[0]["type_id"]) == 0, "spawned bonus keeps selected original type")
+		_assert(spawned_bonuses[0]["position"] == PlayfieldSpecScript.GRID_ORIGIN, "spawned bonus starts at source brick position")
+
+	var moving_bonus_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	var moving_bonuses: Array[Dictionary] = [{
+		"active": true,
+		"type_id": 2,
+		"position": Vector2(100, 100),
+		"base_y": 100.0,
+		"angle": 0,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+	}]
+	moving_bonus_session.falling_bonuses = moving_bonuses
+	moving_bonus_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	moving_bonus_session.update(0.1)
+	var moved_bonuses: Array = moving_bonus_session.visible_falling_bonuses()
+	_assert(moved_bonuses.size() == 1, "falling bonus remains active while in bounds")
+	if moved_bonuses.size() == 1:
+		_assert(is_equal_approx(moved_bonuses[0]["position"].x, 101.5), "falling bonus advances by original x step")
+		_assert(int(moved_bonuses[0]["angle"]) == 3, "falling bonus advances by original angle step")
+		_assert(int(moved_bonuses[0]["frame"]) == 1, "falling bonus animation advances at original cadence")
+
+	var collect_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	collect_session.move_racket_to(220.0)
+	var collect_bonuses: Array[Dictionary] = [{
+		"active": true,
+		"type_id": 2,
+		"position": Vector2(GameSessionScript.RACKET_X - 5.0, collect_session.racket_rect().position.y + 20.0),
+		"base_y": collect_session.racket_rect().position.y + 20.0,
+		"angle": 0,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+	}]
+	collect_session.falling_bonuses = collect_bonuses
+	collect_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	collect_session.update(0.01)
+	_assert(collect_session.visible_falling_bonuses().is_empty(), "racket collects overlapping falling bonus")
+	_assert(collect_session.bonus_stack_entries().size() == 1, "collected bonus enters stack")
+	_assert(int(collect_session.bonus_stack_entries()[0]["type_id"]) == 2, "stack preserves collected bonus type")
+
+	var full_stack_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	full_stack_session.move_racket_to(220.0)
+	for stack_index in range(GameSessionScript.MAX_STACKED_BONUSES):
+		full_stack_session.bonus_stack.append({
+			"type_id": stack_index % GameSessionScript.BONUS_TYPE_COUNT,
+			"frame": 0,
+			"frame_elapsed": 0.0,
+		})
+	var full_stack_bonuses: Array[Dictionary] = [{
+		"active": true,
+		"type_id": 3,
+		"position": Vector2(GameSessionScript.RACKET_X - 5.0, full_stack_session.racket_rect().position.y + 20.0),
+		"base_y": full_stack_session.racket_rect().position.y + 20.0,
+		"angle": 0,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+	}]
+	full_stack_session.falling_bonuses = full_stack_bonuses
+	full_stack_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	full_stack_session.update(0.01)
+	_assert(full_stack_session.bonus_stack_entries().size() == GameSessionScript.MAX_STACKED_BONUSES, "bonus stack enforces original cap")
+	_assert(full_stack_session.visible_falling_bonuses().size() == 1, "full stack does not consume overlapping falling bonus")
+
+	var chain_selector_session = _game_session_from_level(_make_level_from_rows([[1]], _make_bonus_tail([1])))
+	chain_selector_session.set_bonus_rng_seed(23)
+	chain_selector_session.force_bonus_drop_ready()
+	chain_selector_session.force_ball(PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2), Vector2(-80, 0))
+	chain_selector_session.update(0.01)
+	_assert(chain_selector_session.board_state.tile_at(0, 0) == 68, "random bonus selector can convert a hit brick into a chain tile")
+	_assert(chain_selector_session.board_state.pending_chain_explosion_count() == 1, "converted random chain tile is scheduled")
+	_assert(chain_selector_session.score == 0, "converted chain tile waits for delayed explosion scoring")
+	chain_selector_session.update(0.031)
+	_assert(chain_selector_session.board_state.tile_at(0, 0) == 0, "converted chain tile clears after delay")
+	_assert(chain_selector_session.score == GameSessionScript.BRICK_SCORE, "converted chain explosion awards brick score")
 
 
 func _validate_brick_atlas_mapping() -> void:
@@ -493,6 +607,7 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(gameplay.board_state == playfield.board_state, "game screen shares gameplay board with renderer")
 			_assert(game.find_child("RacketRenderer", true, false) != null, "game screen creates racket renderer")
 			_assert(game.find_child("BallRenderer", true, false) != null, "game screen creates ball renderer")
+			_assert(game.find_child("BonusRenderer", true, false) != null, "game screen creates bonus renderer")
 			var hud = game.call("current_hud")
 			_assert(hud != null, "game screen creates gameplay hud")
 			if hud != null:
@@ -553,7 +668,7 @@ func _load_level_from_path(path: String):
 	return LevelDataScript.from_dictionary(parsed, path)
 
 
-func _make_level_from_rows(source_rows: Array) -> KrakoutLevelData:
+func _make_level_from_rows(source_rows: Array, tail_bytes: Array = []) -> KrakoutLevelData:
 	var level: KrakoutLevelData = LevelDataScript.new()
 	level.columns = LevelDataScript.COLUMNS
 	level.rows_count = LevelDataScript.ROWS
@@ -566,7 +681,22 @@ func _make_level_from_rows(source_rows: Array) -> KrakoutLevelData:
 				value = int(source_row[column])
 			row.append(value)
 		level.tile_ids.append(row)
+	for index in range(LevelDataScript.LEVEL_TAIL_SIZE):
+		var tail_value := 0
+		if index < tail_bytes.size():
+			tail_value = int(tail_bytes[index])
+		level.level_tail_bytes.append(tail_value)
 	return level
+
+
+func _make_bonus_tail(bonus_counts: Array) -> Array[int]:
+	var tail: Array[int] = []
+	for index in range(LevelDataScript.LEVEL_TAIL_SIZE):
+		var value := 0
+		if index < bonus_counts.size():
+			value = int(bonus_counts[index])
+		tail.append(value)
+	return tail
 
 
 func _board_state_from_level(level: KrakoutLevelData):
