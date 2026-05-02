@@ -38,6 +38,7 @@ func _process(delta: float) -> void:
 		return
 
 	gameplay_session.update(delta)
+	_record_best_score()
 	if gameplay_session.consume_board_changed() and playfield_renderer != null:
 		playfield_renderer.refresh_board()
 	_refresh_playfield_effects()
@@ -134,7 +135,8 @@ func _apply_level() -> void:
 		if _run_started:
 			gameplay_session.advance_to_level(level, level_number)
 		else:
-			gameplay_session.start_run(level, level_number, int(gameplay_session.best_score))
+			var starting_best_score: int = maxi(int(gameplay_session.best_score), _profile_best_score())
+			gameplay_session.start_run(level, level_number, starting_best_score)
 			_run_started = true
 		playfield_renderer.set_board_state(gameplay_session.board_state)
 		_refresh_playfield_effects()
@@ -203,6 +205,29 @@ func _refresh_actor_renderers() -> void:
 func _refresh_hud() -> void:
 	if hud_renderer != null and hud_renderer.has_method("refresh"):
 		hud_renderer.call("refresh")
+
+
+func _profile_best_score() -> int:
+	var profile := _profile_service()
+	if profile == null or not profile.has_method("best_score"):
+		return 0
+
+	return maxi(0, int(profile.call("best_score")))
+
+
+func _record_best_score() -> void:
+	if gameplay_session == null:
+		return
+
+	var profile := _profile_service()
+	if profile == null or not profile.has_method("record_score"):
+		return
+
+	profile.call("record_score", int(gameplay_session.best_score))
+
+
+func _profile_service() -> Node:
+	return get_node_or_null("/root/KrakoutProfile")
 
 
 func _refresh_playfield_effects() -> void:

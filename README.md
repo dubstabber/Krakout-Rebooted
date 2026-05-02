@@ -53,6 +53,12 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - The gameplay presentation keeps the original 640x480 aspect ratio, uses the
   source `Statistic` header strip, and draws dynamic HUD digits through the
   IDA-backed original bitmap width tables instead of heuristic glyph cropping.
+- The project stretch settings explicitly preserve the original 4:3 canvas, so
+  widescreen windows keep centered gameplay with black side bars instead of
+  stretching the playfield.
+- `KrakoutProfile` persists the current high score through a narrow `user://`
+  profile file and seeds each new run's HUD without coupling save data into
+  transient gameplay state.
 - `KrakoutApp` now starts on a Godot `Control` main menu, routes `Start Game`
   into an episode browser backed by decoded episode metadata, and starts the
   selected episode at its first level.

@@ -2,6 +2,7 @@ extends SceneTree
 
 const AssetsScript := preload("res://src/autoloads/krakout_assets.gd")
 const LevelsScript := preload("res://src/autoloads/krakout_levels.gd")
+const ProfileScript := preload("res://src/autoloads/krakout_profile.gd")
 const LevelDataScript := preload("res://src/data/krakout_level_data.gd")
 const LevelGridRendererScript := preload("res://src/render/level_grid_renderer.gd")
 const BrickAtlasMappingScript := preload("res://src/render/brick_atlas_mapping.gd")
@@ -26,6 +27,7 @@ const AppScene := preload("res://scenes/app/app.tscn")
 var _failures := 0
 var _assets: Node
 var _levels: Node
+var _profile: Node
 
 
 func _init() -> void:
@@ -73,6 +75,7 @@ func _run() -> void:
 
 	_validate_playfield_spec()
 	_validate_project_presentation_settings()
+	_validate_profile_service()
 	_validate_playfield_renderer_shell()
 	_validate_brick_semantics()
 	_validate_original_rng()
@@ -104,6 +107,14 @@ func _ensure_test_autoloads() -> void:
 		_levels = LevelsScript.new()
 		_levels.name = "KrakoutLevels"
 		root.add_child(_levels)
+
+	_profile = root.get_node_or_null("KrakoutProfile")
+	if _profile == null:
+		_profile = ProfileScript.new()
+		_profile.name = "KrakoutProfile"
+		root.add_child(_profile)
+	if _profile.has_method("set_save_path"):
+		_profile.call("set_save_path", _test_profile_path("autoload"), false)
 
 
 func _validate_manifest_paths() -> void:
@@ -632,6 +643,30 @@ func _validate_project_presentation_settings() -> void:
 	_assert(ProjectSettings.get_setting("display/window/stretch/aspect") == "keep", "project keeps the original 4:3 aspect ratio")
 
 
+func _validate_profile_service() -> void:
+	var save_path := _test_profile_path("profile_service")
+	var profile = ProfileScript.new()
+	profile.set_save_path(save_path, false)
+	_assert(profile.best_score() == 0, "profile defaults high score to zero")
+	_assert(profile.record_score(885), "profile records a new high score")
+	_assert(profile.best_score() == 885, "profile exposes recorded high score")
+	_assert(not profile.record_score(120), "profile ignores lower scores")
+	_assert(profile.best_score() == 885, "profile preserves higher score")
+
+	var reloaded_profile = ProfileScript.new()
+	reloaded_profile.set_save_path(save_path, true)
+	_assert(reloaded_profile.best_score() == 885, "profile reloads persisted high score")
+	_assert(reloaded_profile.set_best_score(1200), "profile can replace high score with a higher value")
+
+	var final_profile = ProfileScript.new()
+	final_profile.set_save_path(save_path, true)
+	_assert(final_profile.best_score() == 1200, "profile persists updated high score")
+
+	profile.free()
+	reloaded_profile.free()
+	final_profile.free()
+
+
 func _validate_bitmap_text_metrics() -> void:
 	var font_text = BitmapTextScript.new()
 	font_text.configure(
@@ -844,6 +879,11 @@ func _validate_menu_and_game_scenes() -> void:
 		_assert(episode_signal_state["level_number"] == 1, "episode selection starts at first level")
 	episode_select.queue_free()
 
+	if _profile != null and _profile.has_method("set_save_path"):
+		_profile.call("set_save_path", _test_profile_path("game_scene"), false)
+	if _profile != null and _profile.has_method("record_score"):
+		_assert(bool(_profile.call("record_score", 885)), "test profile accepts seeded high score")
+
 	var game := GameScreenScene.instantiate()
 	_assert(game.episode_slug == PlayfieldSpecScript.DEFAULT_EPISODE, "game screen defaults to shared episode")
 	_assert(game.level_number == PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER, "game screen defaults to shared level number")
@@ -861,6 +901,7 @@ func _validate_menu_and_game_scenes() -> void:
 		_assert(gameplay != null, "game screen creates gameplay session")
 		if gameplay != null:
 			_assert(gameplay.board_state == playfield.board_state, "game screen shares gameplay board with renderer")
+			_assert(gameplay.best_score == 885, "game screen starts run with persisted high score")
 			_assert(game.find_child("RacketRenderer", true, false) != null, "game screen creates racket renderer")
 			_assert(game.find_child("BallRenderer", true, false) != null, "game screen creates ball renderer")
 			_assert(game.find_child("BonusRenderer", true, false) != null, "game screen creates bonus renderer")
@@ -872,6 +913,11 @@ func _validate_menu_and_game_scenes() -> void:
 				_assert(hud_values["score"] == 0, "game hud starts with score")
 				_assert(hud_values["lives"] == GameSessionScript.INITIAL_LIVES, "game hud starts with spare balls")
 				_assert(hud_values["level"] == PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER, "game hud starts with display level")
+				_assert(hud_values["best_score"] == 885, "game hud starts with persisted high score")
+			gameplay.award_score(1000)
+			game.call("_process", 0.0)
+			if _profile != null and _profile.has_method("best_score"):
+				_assert(int(_profile.call("best_score")) == 1000, "game screen records new persisted high score")
 			game.call("move_racket_to", 10000.0)
 			_assert(gameplay.racket_rect().end.y == GameSessionScript.RACKET_MAX_BOTTOM, "game screen routes racket movement")
 			_assert(game.call("launch_ready_ball"), "game screen routes ball launch")
@@ -1008,6 +1054,10 @@ func _projectile(projectile_type: int, position: Vector2) -> Dictionary:
 		"trail_frame": 0,
 		"trail_frame_elapsed": 0.0,
 	}
+
+
+func _test_profile_path(label: String) -> String:
+	return "user://krakout_%s_profile_%d.cfg" % [label, Time.get_ticks_usec()]
 
 
 func _is_runtime_path(entry: Dictionary) -> bool:

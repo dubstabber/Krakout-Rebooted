@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 KrakoutAssets="*res://src/autoloads/krakout_assets.gd"
 KrakoutLevels="*res://src/autoloads/krakout_levels.gd"
+KrakoutProfile="*res://src/autoloads/krakout_profile.gd"
 
 [display]
 
