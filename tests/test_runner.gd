@@ -27,6 +27,7 @@ const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 const RulesScreenScene := preload("res://scenes/menu/rules_screen.tscn")
 const HighScoreScreenScene := preload("res://scenes/menu/high_score_screen.tscn")
+const NameEntryScreenScene := preload("res://scenes/menu/name_entry_screen.tscn")
 const OptionsScreenScene := preload("res://scenes/menu/options_screen.tscn")
 const CreditsScreenScene := preload("res://scenes/menu/credits_screen.tscn")
 const GameScreenScene := preload("res://scenes/game/game_screen.tscn")
@@ -794,6 +795,12 @@ func _validate_profile_service() -> void:
 	_assert(profile.sfx_volume() == 85, "profile defaults SFX volume")
 	_assert(profile.record_score(885), "profile records a new high score")
 	_assert(profile.best_score() == 885, "profile exposes recorded high score")
+	var legacy_entries: Array = profile.high_score_entries()
+	_assert(legacy_entries.size() == 1, "profile exposes legacy best score as a table entry")
+	_assert(legacy_entries[0]["name"] == "Anonymous", "profile uses original anonymous fallback for legacy scores")
+	_assert(legacy_entries[0]["score"] == 885, "profile legacy table entry mirrors best score")
+	_assert(profile.would_enter_high_score(120), "profile accepts positive scores while the high-score table has room")
+	_assert(not profile.would_enter_high_score(0), "profile rejects zero scores for high-score entry")
 	_assert(not profile.record_score(120), "profile ignores lower scores")
 	_assert(profile.best_score() == 885, "profile preserves higher score")
 	_assert(profile.set_bonus_stack_visible(false), "profile persists hidden bonus stack setting")
@@ -826,9 +833,35 @@ func _validate_profile_service() -> void:
 	_assert(final_profile.background_type() == 1, "profile keeps presentation settings when high score changes")
 	_assert(final_profile.music_volume() == 35, "profile keeps audio settings when high score changes")
 
+	var table_path := _test_profile_path("profile_table")
+	var table_profile = ProfileScript.new()
+	table_profile.set_save_path(table_path, false)
+	_assert(table_profile.submit_high_score(" Ada  ", 900, 4, "Retro"), "profile accepts named high-score entry")
+	_assert(table_profile.submit_high_score("", 800, 2, "Default"), "profile accepts empty high-score name")
+	_assert(table_profile.submit_high_score("TieOne", 700, 3, "Classic"), "profile accepts first tied score")
+	_assert(table_profile.submit_high_score("TieTwo", 700, 5, "Classic"), "profile accepts second tied score")
+	var table_entries: Array = table_profile.high_score_entries()
+	_assert(table_entries.size() == 4, "profile exposes submitted score entries")
+	_assert(table_entries[0]["name"] == "Ada", "profile trims submitted player names")
+	_assert(table_entries[0]["score"] == 900, "profile sorts high-score table by score")
+	_assert(table_entries[1]["name"] == "Anonymous", "profile defaults blank submitted names")
+	_assert(table_entries[2]["name"] == "TieOne" and table_entries[3]["name"] == "TieTwo", "profile keeps stable ordering for tied scores")
+	for index in range(12):
+		table_profile.submit_high_score("Player%d" % index, 1000 + index, index + 1, "Default")
+	table_entries = table_profile.high_score_entries()
+	_assert(table_entries.size() == ProfileScript.HIGH_SCORE_TABLE_LIMIT, "profile trims high-score table to original display size")
+	_assert(table_entries[0]["score"] == 1011, "profile keeps highest score after trimming")
+	_assert(not table_profile.would_enter_high_score(1), "profile rejects scores below a full table")
+	var reloaded_table_profile = ProfileScript.new()
+	reloaded_table_profile.set_save_path(table_path, true)
+	_assert(reloaded_table_profile.high_score_entries().size() == ProfileScript.HIGH_SCORE_TABLE_LIMIT, "profile reloads persisted high-score table")
+	_assert(reloaded_table_profile.best_score() == 1011, "profile best score follows table leader")
+
 	profile.free()
 	reloaded_profile.free()
 	final_profile.free()
+	table_profile.free()
+	reloaded_table_profile.free()
 
 
 func _validate_audio_cue_catalog() -> void:
@@ -1038,6 +1071,7 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(ResourceLoader.exists("res://scenes/menu/episode_select_screen.tscn"), "episode select scene exists")
 	_assert(ResourceLoader.exists("res://scenes/menu/rules_screen.tscn"), "rules scene exists")
 	_assert(ResourceLoader.exists("res://scenes/menu/high_score_screen.tscn"), "high score scene exists")
+	_assert(ResourceLoader.exists("res://scenes/menu/name_entry_screen.tscn"), "name entry scene exists")
 	_assert(ResourceLoader.exists("res://scenes/menu/options_screen.tscn"), "options scene exists")
 	_assert(ResourceLoader.exists("res://scenes/menu/credits_screen.tscn"), "credits scene exists")
 	_assert(ResourceLoader.exists("res://scenes/game/game_screen.tscn"), "game screen scene exists")
@@ -1142,7 +1176,50 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(high_score_screen.has_signal("back_requested"), "high score screen exposes back signal")
 	_assert(high_score_screen.find_child("BackButton", true, false) != null, "high score screen creates back button")
 	_assert(int(high_score_screen.call("best_score")) == 321, "high score screen reads persisted high score")
+	var high_score_entries: Array = high_score_screen.call("high_score_entries")
+	_assert(high_score_entries.size() == 1, "high score screen reads profile table entries")
+	_assert(high_score_entries[0]["score"] == 321, "high score screen mirrors legacy best in table view")
 	high_score_screen.queue_free()
+
+	var name_entry_screen := NameEntryScreenScene.instantiate()
+	root.add_child(name_entry_screen)
+	await process_frame
+	_assert(name_entry_screen.has_signal("score_submitted"), "name entry screen exposes score-submitted signal")
+	_assert(name_entry_screen.has_signal("cancel_requested"), "name entry screen exposes cancel signal")
+	_assert(name_entry_screen.find_child("NameLabel", true, false) != null, "name entry screen creates editable name label")
+	_assert(name_entry_screen.find_child("SubmitButton", true, false) != null, "name entry screen creates submit button")
+	name_entry_screen.call("configure", 456, 7, "Retro", "Retro")
+	name_entry_screen.call("_unhandled_input", _key_event(KEY_A, 65))
+	name_entry_screen.call("_unhandled_input", _key_event(KEY_B, 66))
+	await process_frame
+	_assert(String(name_entry_screen.call("current_player_name")) == "AB", "name entry screen accepts printable key input")
+	name_entry_screen.call("_unhandled_input", _key_event(KEY_BACKSPACE))
+	await process_frame
+	_assert(String(name_entry_screen.call("current_player_name")) == "A", "name entry screen routes Backspace editing")
+	var name_entry_signal_state := {
+		"submitted": false,
+		"name": "",
+		"score": 0,
+		"level": 0,
+		"episode": "",
+	}
+	name_entry_screen.score_submitted.connect(func(player_name: String, score: int, level_number: int, episode_slug: String) -> void:
+		name_entry_signal_state["submitted"] = true
+		name_entry_signal_state["name"] = player_name
+		name_entry_signal_state["score"] = score
+		name_entry_signal_state["level"] = level_number
+		name_entry_signal_state["episode"] = episode_slug
+	)
+	name_entry_screen.call("_unhandled_input", _key_event(KEY_ENTER))
+	await process_frame
+	_assert(name_entry_signal_state["submitted"], "name entry screen routes Enter confirmation")
+	_assert(name_entry_signal_state["name"] == "A", "name entry screen submits typed name")
+	_assert(name_entry_signal_state["score"] == 456, "name entry screen submits score")
+	_assert(name_entry_signal_state["level"] == 7, "name entry screen submits reached level")
+	_assert(name_entry_signal_state["episode"] == "Retro", "name entry screen submits episode slug")
+	name_entry_screen.call("set_player_name", "")
+	_assert(String(name_entry_screen.call("submitted_player_name")) == "Anonymous", "name entry screen defaults empty names to Anonymous")
+	name_entry_screen.queue_free()
 
 	if _profile != null:
 		_profile.call("set_music_enabled", false)
@@ -1253,6 +1330,7 @@ func _validate_menu_and_game_scenes() -> void:
 		_profile.call("set_background_type", 1)
 
 	var game := GameScreenScene.instantiate()
+	_assert(game.has_signal("game_over_confirmed"), "game screen exposes game-over confirmation signal")
 	_assert(game.episode_slug == PlayfieldSpecScript.DEFAULT_EPISODE, "game screen defaults to shared episode")
 	_assert(game.level_number == PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER, "game screen defaults to shared level number")
 	root.add_child(game)
@@ -1450,12 +1528,62 @@ func _validate_menu_and_game_scenes() -> void:
 			if app_game != null:
 				_assert(app_game.episode_slug == "Retro", "app starts selected episode")
 				_assert(app_game.level_number == 1, "app starts selected episode at first level")
-				app_game.emit_signal("return_to_menu_requested")
+				var app_gameplay = app_game.call("current_game_session")
+				if app_gameplay != null:
+					app_gameplay.state = GameSessionScript.STATE_GAME_OVER
+					app_gameplay.score = 1200
+					app_gameplay.display_level_number = 4
+					app_game.call("_input", _action_event(GameScreenScript.ACTION_LAUNCH_BALL))
+					await process_frame
+					var app_name_entry := app.find_child("NameEntryScreen", true, false)
+					_assert(app_name_entry != null, "app routes qualifying game-over score to name entry")
+					if _audio != null and _audio.has_method("current_music_context"):
+						_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_NAME_ENTRY, "name entry uses name-entry music context")
+						_assert(String(_audio.call("current_music_name")) == "theme3", "name entry uses original theme3 music")
+					if app_name_entry != null:
+						app_name_entry.call("set_player_name", "Ada")
+						app_name_entry.call("submit_name")
+						await process_frame
+						var submitted_entries: Array = _profile.call("high_score_entries") if _profile != null else []
+						_assert(not submitted_entries.is_empty() and submitted_entries[0]["name"] == "Ada", "app persists submitted high-score name")
+						_assert(not submitted_entries.is_empty() and submitted_entries[0]["score"] == 1200, "app persists submitted high-score score")
+						_assert(app.find_child("HighScoreScreen", true, false) != null, "app routes submitted score to high-score table")
+						if _audio != null and _audio.has_method("current_music_context"):
+							_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_HIGH_SCORE, "score submission routes to high-score music context")
+						var routed_high_score := app.find_child("HighScoreScreen", true, false)
+						if routed_high_score != null:
+							routed_high_score.emit_signal("back_requested")
+							await process_frame
 				await process_frame
-				_assert(app.find_child("MainMenuScreen", true, false) != null, "app returns from game over to main menu")
+				_assert(app.find_child("MainMenuScreen", true, false) != null, "app returns from submitted high-score table to main menu")
 				if _audio != null and _audio.has_method("current_music_context"):
-					_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_MAIN_MENU, "game return restores main-menu music context")
-					_assert(String(_audio.call("current_music_name")) == "Abnormal", "game return restores original main-menu music")
+					_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_MAIN_MENU, "high-score back restores main-menu music context")
+					_assert(String(_audio.call("current_music_name")) == "Abnormal", "high-score back restores original main-menu music")
+
+	if _profile != null and _profile.has_method("set_save_path"):
+		_profile.call("set_save_path", _test_profile_path("non_qualifying_route"), false)
+	if _profile != null and _profile.has_method("submit_high_score"):
+		for index in range(ProfileScript.HIGH_SCORE_TABLE_LIMIT):
+			_profile.call("submit_high_score", "Player%d" % index, 1000 - index, index + 1, "Default")
+	app_menu = app.find_child("MainMenuScreen", true, false)
+	if app_menu != null:
+		app_menu.emit_signal("start_game_requested")
+		await process_frame
+		var non_qualifying_episode_select := app.find_child("EpisodeSelectScreen", true, false)
+		if non_qualifying_episode_select != null:
+			non_qualifying_episode_select.emit_signal("episode_selected", "Default", 1)
+			await process_frame
+			var non_qualifying_game := app.find_child("GameScreen", true, false)
+			_assert(non_qualifying_game != null, "app starts non-qualifying score test game")
+			if non_qualifying_game != null:
+				var non_qualifying_session = non_qualifying_game.call("current_game_session")
+				if non_qualifying_session != null:
+					non_qualifying_session.state = GameSessionScript.STATE_GAME_OVER
+					non_qualifying_session.score = 1
+					non_qualifying_session.display_level_number = 1
+					non_qualifying_game.call("_input", _action_event(GameScreenScript.ACTION_LAUNCH_BALL))
+					await process_frame
+					_assert(app.find_child("MainMenuScreen", true, false) != null, "app returns non-qualifying game-over score to main menu")
 	app.queue_free()
 	await process_frame
 
@@ -1544,6 +1672,14 @@ func _projectile(projectile_type: int, position: Vector2) -> Dictionary:
 func _action_event(action_name: String) -> InputEventAction:
 	var event := InputEventAction.new()
 	event.action = action_name
+	event.pressed = true
+	return event
+
+
+func _key_event(keycode: Key, unicode := 0) -> InputEventKey:
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.unicode = unicode
 	event.pressed = true
 	return event
 

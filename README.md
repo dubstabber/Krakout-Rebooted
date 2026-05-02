@@ -58,7 +58,7 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - The gameplay loop now tracks the original-backed run counters around that
   loop: 15-point brick scoring, gradual displayed-score catch-up, three spare
   balls, a 20,000-point extra-ball threshold, wrapped episode progression, and
-  an original-layout gameplay HUD/game-over route back to the menu.
+  an original-layout gameplay HUD/game-over confirmation path.
 - The gameplay presentation keeps the original 640x480 aspect ratio, uses the
   source `Statistic` header strip, and draws dynamic HUD digits through the
   IDA-backed original bitmap width tables instead of heuristic glyph cropping.
@@ -69,23 +69,28 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - The project stretch settings explicitly preserve the original 4:3 canvas, so
   widescreen windows keep centered gameplay with black side bars instead of
   stretching the playfield.
-- `KrakoutProfile` persists the current high score through a narrow `user://`
-  profile file and seeds each new run's HUD without coupling save data into
-  transient gameplay state.
+- `KrakoutProfile` persists both the compatibility best score and a Godot-native
+  top-10 high-score table through a narrow `user://` profile file. Table entries
+  keep player name, score, reached level, and episode slug while preserving the
+  old `best_score()`/`record_score()` callers.
 - `KrakoutApp` now starts on a Godot `Control` main menu, routes `Start Game`
   into an episode browser backed by decoded episode metadata, and starts the
   selected episode at its first level.
 - The main menu now routes every original icon into a Godot-native screen:
   episode selection, game rules, high score, options, credits, and exit.
+- Qualifying game-over scores now enter the original-backed name-entry slice:
+  `BgGetName` background art, the original Enter/Backspace prompt strings,
+  `theme3` music context, `Anonymous` fallback names, and submission into the
+  persisted high-score table. Binary-compatible `Krakout.high` import/export
+  and online score posting remain out of scope.
 - `KrakoutAudio` owns manifest-backed music/SFX playback through a music player
   and small SFX pool. The options screen persists music/SFX enable flags and
   volumes through `KrakoutProfile`.
 - `KrakoutAudioCueCatalog` maps the first IDA-backed music contexts into Godot
   scene flow: main menu/rules/options use `Abnormal`, high score uses `theme2`,
   credits uses `theme5`, episode select uses `theme1`, gameplay uses `theme4`,
-  and name entry is cataloged as `theme3` for the later score entry route.
-  Numbered `effNN.wav` effects remain unmapped to gameplay events until runtime
-  or IDA evidence proves their meaning.
+  and name entry uses `theme3`. Numbered `effNN.wav` effects remain unmapped to
+  gameplay events until runtime or IDA evidence proves their meaning.
 
 ## Validation
 

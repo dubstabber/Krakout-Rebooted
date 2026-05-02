@@ -2,6 +2,7 @@ extends Control
 class_name GameScreen
 
 signal return_to_menu_requested
+signal game_over_confirmed(score: int, level_number: int, episode_slug: String)
 
 const PlayfieldRendererScript := preload("res://src/playfield/playfield_renderer.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
@@ -113,7 +114,7 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 	elif event.is_action_pressed(ACTION_LAUNCH_BALL):
 		if gameplay_session.state == GameSessionScript.STATE_GAME_OVER:
-			return_to_menu_requested.emit()
+			game_over_confirmed.emit(int(gameplay_session.score), int(gameplay_session.display_level_number), episode_slug)
 			get_viewport().set_input_as_handled()
 			return
 		launch_ready_ball()

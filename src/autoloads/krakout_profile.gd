@@ -3,6 +3,7 @@ extends Node
 const DEFAULT_SAVE_PATH := "user://krakout_profile.cfg"
 const SCORES_SECTION := "scores"
 const BEST_SCORE_KEY := "best_score"
+const HIGH_SCORE_ENTRIES_KEY := "high_score_entries"
 const SETTINGS_SECTION := "settings"
 const BONUS_STACK_VISIBLE_KEY := "bonus_stack_visible"
 const BALL_TRACKS_VISIBLE_KEY := "ball_tracks_visible"
@@ -22,10 +23,14 @@ const DEFAULT_MUSIC_ENABLED := true
 const DEFAULT_SFX_ENABLED := true
 const DEFAULT_MUSIC_VOLUME := 80
 const DEFAULT_SFX_VOLUME := 85
+const HIGH_SCORE_TABLE_LIMIT := 10
+const DEFAULT_PLAYER_NAME := "Anonymous"
+const MAX_PLAYER_NAME_LENGTH := 20
 
 @export var save_path := DEFAULT_SAVE_PATH
 
 var _best_score := 0
+var _high_score_entries: Array[Dictionary] = []
 var _bonus_stack_visible := DEFAULT_BONUS_STACK_VISIBLE
 var _ball_tracks_visible := DEFAULT_BALL_TRACKS_VISIBLE
 var _fps_visible := DEFAULT_FPS_VISIBLE
@@ -44,7 +49,7 @@ func _ready() -> void:
 
 func best_score() -> int:
 	_ensure_loaded()
-	return _best_score
+	return maxi(_best_score, _table_best_score())
 
 
 func record_score(score_value: int) -> bool:
@@ -59,6 +64,41 @@ func set_best_score(score_value: int) -> bool:
 
 	_best_score = normalized_score
 	_loaded = true
+	return save_profile()
+
+
+func high_score_entries() -> Array[Dictionary]:
+	_ensure_loaded()
+	var entries := _duplicate_entries(_high_score_entries)
+	if entries.is_empty() and _best_score > 0:
+		entries.append(_high_score_entry(DEFAULT_PLAYER_NAME, _best_score, 1, ""))
+	return entries
+
+
+func would_enter_high_score(score_value: int) -> bool:
+	_ensure_loaded()
+	var normalized_score := maxi(0, score_value)
+	if normalized_score <= 0:
+		return false
+
+	var entries := high_score_entries()
+	if entries.size() < HIGH_SCORE_TABLE_LIMIT:
+		return true
+
+	var lowest_score := int(entries[entries.size() - 1].get("score", 0))
+	return normalized_score > lowest_score
+
+
+func submit_high_score(player_name: String, score_value: int, level_number: int, episode_slug: String) -> bool:
+	_ensure_loaded()
+	var normalized_score := maxi(0, score_value)
+	if not would_enter_high_score(normalized_score):
+		return false
+
+	_materialize_legacy_best_if_needed(normalized_score)
+	_high_score_entries.append(_high_score_entry(player_name, normalized_score, level_number, episode_slug))
+	_sort_and_trim_high_scores()
+	_best_score = maxi(_best_score, _table_best_score())
 	return save_profile()
 
 
@@ -195,6 +235,7 @@ func load_profile() -> bool:
 		return false
 
 	_best_score = maxi(0, int(config.get_value(SCORES_SECTION, BEST_SCORE_KEY, 0)))
+	_high_score_entries = _entries_from_config(config.get_value(SCORES_SECTION, HIGH_SCORE_ENTRIES_KEY, ""))
 	_bonus_stack_visible = bool(config.get_value(SETTINGS_SECTION, BONUS_STACK_VISIBLE_KEY, DEFAULT_BONUS_STACK_VISIBLE))
 	_ball_tracks_visible = bool(config.get_value(SETTINGS_SECTION, BALL_TRACKS_VISIBLE_KEY, DEFAULT_BALL_TRACKS_VISIBLE))
 	_fps_visible = bool(config.get_value(SETTINGS_SECTION, FPS_VISIBLE_KEY, DEFAULT_FPS_VISIBLE))
@@ -209,7 +250,9 @@ func load_profile() -> bool:
 
 func save_profile() -> bool:
 	var config := ConfigFile.new()
+	_best_score = best_score()
 	config.set_value(SCORES_SECTION, BEST_SCORE_KEY, _best_score)
+	config.set_value(SCORES_SECTION, HIGH_SCORE_ENTRIES_KEY, JSON.stringify(_high_score_entries))
 	config.set_value(SETTINGS_SECTION, BONUS_STACK_VISIBLE_KEY, _bonus_stack_visible)
 	config.set_value(SETTINGS_SECTION, BALL_TRACKS_VISIBLE_KEY, _ball_tracks_visible)
 	config.set_value(SETTINGS_SECTION, FPS_VISIBLE_KEY, _fps_visible)
@@ -241,6 +284,7 @@ func _ensure_loaded() -> void:
 
 func _reset_profile_state() -> void:
 	_best_score = 0
+	_high_score_entries.clear()
 	_bonus_stack_visible = DEFAULT_BONUS_STACK_VISIBLE
 	_ball_tracks_visible = DEFAULT_BALL_TRACKS_VISIBLE
 	_fps_visible = DEFAULT_FPS_VISIBLE
@@ -250,3 +294,97 @@ func _reset_profile_state() -> void:
 	_sfx_enabled = DEFAULT_SFX_ENABLED
 	_music_volume = DEFAULT_MUSIC_VOLUME
 	_sfx_volume = DEFAULT_SFX_VOLUME
+
+
+func _entries_from_config(raw_value: Variant) -> Array[Dictionary]:
+	var parsed_entries: Variant
+	if raw_value is String:
+		var raw_text := String(raw_value)
+		if raw_text.is_empty():
+			return []
+		parsed_entries = JSON.parse_string(raw_text)
+	else:
+		parsed_entries = raw_value
+
+	var entries: Array[Dictionary] = []
+	if parsed_entries is Array:
+		for value: Variant in parsed_entries:
+			if value is Dictionary:
+				entries.append(_high_score_entry(
+					String(value.get("name", DEFAULT_PLAYER_NAME)),
+					int(value.get("score", 0)),
+					int(value.get("level", 1)),
+					String(value.get("episode", ""))
+				))
+	_sort_entries(entries)
+	if entries.size() > HIGH_SCORE_TABLE_LIMIT:
+		entries.resize(HIGH_SCORE_TABLE_LIMIT)
+	return entries
+
+
+func _materialize_legacy_best_if_needed(score_value: int) -> void:
+	if not _high_score_entries.is_empty():
+		return
+	if _best_score <= score_value:
+		return
+	_high_score_entries.append(_high_score_entry(DEFAULT_PLAYER_NAME, _best_score, 1, ""))
+
+
+func _high_score_entry(player_name: String, score_value: int, level_number: int, episode_slug: String) -> Dictionary:
+	return {
+		"name": _normalized_player_name(player_name),
+		"score": maxi(0, score_value),
+		"level": maxi(1, level_number),
+		"episode": episode_slug,
+	}
+
+
+func _normalized_player_name(player_name: String) -> String:
+	var normalized_name := player_name.strip_edges().replace("\n", " ").replace("\r", " ")
+	while normalized_name.contains("  "):
+		normalized_name = normalized_name.replace("  ", " ")
+	if normalized_name.is_empty():
+		normalized_name = DEFAULT_PLAYER_NAME
+	if normalized_name.length() > MAX_PLAYER_NAME_LENGTH:
+		normalized_name = normalized_name.substr(0, MAX_PLAYER_NAME_LENGTH)
+	return normalized_name
+
+
+func _sort_and_trim_high_scores() -> void:
+	_sort_entries(_high_score_entries)
+	if _high_score_entries.size() > HIGH_SCORE_TABLE_LIMIT:
+		_high_score_entries.resize(HIGH_SCORE_TABLE_LIMIT)
+
+
+func _sort_entries(entries: Array[Dictionary]) -> void:
+	var indexed_entries: Array[Dictionary] = []
+	for index in range(entries.size()):
+		var entry := entries[index].duplicate()
+		entry["_order"] = index
+		indexed_entries.append(entry)
+
+	indexed_entries.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+		var left_score := int(left.get("score", 0))
+		var right_score := int(right.get("score", 0))
+		if left_score == right_score:
+			return int(left.get("_order", 0)) < int(right.get("_order", 0))
+		return left_score > right_score
+	)
+
+	entries.clear()
+	for entry: Dictionary in indexed_entries:
+		entry.erase("_order")
+		entries.append(entry)
+
+
+func _duplicate_entries(entries: Array[Dictionary]) -> Array[Dictionary]:
+	var duplicates: Array[Dictionary] = []
+	for entry: Dictionary in entries:
+		duplicates.append(entry.duplicate())
+	return duplicates
+
+
+func _table_best_score() -> int:
+	if _high_score_entries.is_empty():
+		return 0
+	return int(_high_score_entries[0].get("score", 0))
