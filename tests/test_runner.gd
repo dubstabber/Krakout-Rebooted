@@ -19,6 +19,7 @@ const RacketRendererScript := preload("res://src/render/racket_renderer.gd")
 const BallRendererScript := preload("res://src/render/ball_renderer.gd")
 const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
 const BulletRendererScript := preload("res://src/render/bullet_renderer.gd")
+const MonsterRendererScript := preload("res://src/render/monster_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
 const GameScreenScript := preload("res://src/game/game_screen.gd")
 const BitmapTextScript := preload("res://src/render/krakout_bitmap_text.gd")
@@ -320,6 +321,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.points_to_next_extra_life == GameSessionScript.EXTRA_LIFE_SCORE_STEP, "game session starts with original extra life threshold")
 	_assert(session.display_level_number == 1, "game session displays source level number")
 	_assert(session.active_bonus_indicators().is_empty(), "game session exposes no active status indicators before timed effects exist")
+	_assert(session.active_monster_count() == 0, "game session starts without active monsters")
 
 	session.move_racket_to(-100.0)
 	_assert(session.racket_rect().position.y == GameSessionScript.RACKET_MIN_Y, "racket clamps to top bound")
@@ -566,6 +568,61 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	projectile_expire_session.update(0.0)
 	_assert(projectile_expire_session.active_projectile_count() == 0, "projectile expires at original left bound")
 
+	var monster_spawn_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	monster_spawn_session.set_monster_rng_seed(3)
+	monster_spawn_session.force_monster_spawn_ready()
+	monster_spawn_session.update(0.0)
+	_assert(monster_spawn_session.active_monster_count() == 1, "monster spawn gate creates first original monster slot")
+	var spawned_monsters: Array = monster_spawn_session.visible_monsters()
+	if spawned_monsters.size() == 1:
+		_assert(int(spawned_monsters[0]["type_id"]) == 3, "first spawned monster uses original type-cycle entry")
+		_assert(monster_spawn_session.monster_rect(spawned_monsters[0]).size == GameSessionScript.MONSTER_COLLISION_SIZE, "monster collision rect uses original 26px box")
+	monster_spawn_session.force_monster_spawn_ready()
+	monster_spawn_session.update(0.0)
+	spawned_monsters = monster_spawn_session.visible_monsters()
+	if spawned_monsters.size() >= 2:
+		_assert(int(spawned_monsters[1]["type_id"]) == 6, "second spawned monster uses original type-cycle entry")
+	monster_spawn_session.force_monster_spawn_ready()
+	monster_spawn_session.update(0.0)
+	spawned_monsters = monster_spawn_session.visible_monsters()
+	if spawned_monsters.size() >= 3:
+		_assert(int(spawned_monsters[2]["type_id"]) == 10, "third spawned monster uses original type-cycle entry")
+	for spawn_index in range(10):
+		monster_spawn_session.force_monster_spawn_ready()
+		monster_spawn_session.update(0.0)
+	_assert(monster_spawn_session.active_monster_count() == GameSessionScript.MAX_MONSTERS, "monster pool enforces original five-slot cap")
+
+	var monster_motion_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_assert(monster_motion_session.force_monster(Vector2(200, 200), 3, 0), "test helper can force a monster")
+	monster_motion_session.update(GameSessionScript.MONSTER_FRAME_SECONDS)
+	var moving_monsters: Array = monster_motion_session.visible_monsters()
+	_assert(moving_monsters.size() == 1, "forced monster remains active while within lifetime")
+	if moving_monsters.size() == 1:
+		_assert(moving_monsters[0]["position"] == Vector2(201, 200), "type 3 monster advances one original step")
+		_assert(int(moving_monsters[0]["frame"]) == 1, "monster animation advances at original cadence")
+	monster_motion_session.monsters[0]["age"] = GameSessionScript.MONSTER_LIFETIME_SECONDS - 0.01
+	monster_motion_session.update(0.02)
+	_assert(monster_motion_session.active_monster_count() == 0, "monster expires after original lifetime")
+
+	var monster_ball_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	monster_ball_hit_session.force_ball(Vector2(200, 200), Vector2.ZERO)
+	monster_ball_hit_session.force_monster(Vector2(200, 200), 3, 0)
+	monster_ball_hit_session.update(0.0)
+	_assert(monster_ball_hit_session.active_monster_count() == 0, "ball collision removes active monster")
+	_assert(monster_ball_hit_session.score == GameSessionScript.MONSTER_SCORE, "ball collision awards original default monster score")
+
+	var monster_projectile_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	monster_projectile_hit_session.force_monster(Vector2(200, 200), 3, 0)
+	var monster_hit_projectiles: Array[Dictionary] = [_projectile(
+		GameSessionScript.PROJECTILE_TYPE_CONTINUOUS,
+		Vector2(200, 200)
+	)]
+	monster_projectile_hit_session.projectiles = monster_hit_projectiles
+	monster_projectile_hit_session.update(0.0)
+	_assert(monster_projectile_hit_session.active_monster_count() == 0, "projectile collision removes active monster")
+	_assert(monster_projectile_hit_session.active_projectile_count() == 0, "projectile is consumed by monster collision")
+	_assert(monster_projectile_hit_session.score == GameSessionScript.MONSTER_SCORE, "projectile collision awards original default monster score")
+
 	var add_ball_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(add_ball_session, GameSessionScript.BONUS_ADD_STANDARD_BALL)
 	var add_ball_result: Dictionary = add_ball_session.activate_next_bonus()
@@ -685,6 +742,11 @@ func _validate_level_grid_renderer_defaults() -> void:
 	_assert(ball_renderer.source_rect_for_size(26.0, 2) == Rect2(Vector2(57, 33), Vector2(26, 26)), "ball renderer maps increased ball frame")
 	_assert(ball_renderer.source_rect_for_size(GameSessionScript.BALL_MAX_SIZE, 9) == Rect2(Vector2(397, 97), Vector2(42, 42)), "ball renderer maps largest atlas row")
 	ball_renderer.free()
+
+	var monster_renderer = MonsterRendererScript.new()
+	_assert(monster_renderer.source_rect_for_monster(3, 0) == Rect2(Vector2(96, 0), Vector2(32, 32)), "monster renderer maps original type 3 frame")
+	_assert(monster_renderer.source_rect_for_monster(10, 7) == Rect2(Vector2(320, 224), Vector2(32, 32)), "monster renderer maps original type 10 animation row")
+	monster_renderer.free()
 
 
 func _validate_project_presentation_settings() -> void:
@@ -1212,6 +1274,7 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(game.find_child("BallRenderer", true, false) != null, "game screen creates ball renderer")
 			_assert(game.find_child("BonusRenderer", true, false) != null, "game screen creates bonus renderer")
 			_assert(game.find_child("BulletRenderer", true, false) != null, "game screen creates bullet renderer")
+			_assert(game.find_child("MonsterRenderer", true, false) != null, "game screen creates monster renderer")
 			_assert(game.call("is_bonus_stack_visible") == false, "game screen loads bonus-stack visibility setting")
 			_assert(game.call("are_ball_tracks_visible") == false, "game screen loads ball-track visibility setting")
 			_assert(game.call("is_fps_visible"), "game screen loads FPS visibility setting")

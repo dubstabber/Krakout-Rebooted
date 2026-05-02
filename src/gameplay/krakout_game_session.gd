@@ -74,6 +74,20 @@ const PROJECTILE_TYPE_STRONG := 0
 const PROJECTILE_TYPE_CONTINUOUS := 1
 const PROJECTILE_MODE_DISABLED := 0
 const PROJECTILE_MODE_CONTINUOUS := 1
+const MAX_MONSTERS := 5
+const MONSTER_TYPE_CYCLE := [3, 6, 10]
+const MONSTER_SIZE := Vector2(32, 32)
+const MONSTER_COLLISION_SIZE := Vector2(26, 26)
+const MONSTER_COLLISION_OFFSET := Vector2(3, 3)
+const MONSTER_LIFETIME_SECONDS := 6.5
+const MONSTER_SPAWN_INTERVAL_SECONDS := 4.5
+const MONSTER_FRAME_SECONDS := 0.07
+const MONSTER_DEFAULT_SPEED := 1.0
+const MONSTER_TYPE3_RIGHT_LIMIT := 510.0
+const MONSTER_TRACKING_TURN_STEP_DEGREES := 2
+const MONSTER_SCORE := 15
+const MONSTER_TYPE6_SCORE_STEP := 10
+const MONSTER_TYPE6_SCORE_VARIANTS := 6
 const BONUS_ADD_STANDARD_BALL := 0
 const BONUS_ADD_FIREBALL := 1
 const BONUS_NON_STRICKED_BALLS := 2
@@ -168,13 +182,17 @@ var falling_bonuses: Array[Dictionary] = []
 var bonus_stack: Array[Dictionary] = []
 var bonus_pointer_frame := 0
 var projectiles: Array[Dictionary] = []
+var monsters: Array[Dictionary] = []
 var back_wall_time_remaining := 0.0
 var _bonus_rng = RandomScript.new()
 var _bonus_animation_rng = RandomScript.new(31415)
+var _monster_rng = RandomScript.new(31415)
 var _bonus_drop_cooldown := BONUS_DROP_GATE_SECONDS
 var _bonus_pointer_elapsed := 0.0
 var _projectile_fire_cooldown := 0.0
 var _shooting_paddle_mode := PROJECTILE_MODE_DISABLED
+var _monster_spawn_cooldown := MONSTER_SPAWN_INTERVAL_SECONDS
+var _monster_type_cycle_index := 0
 
 
 func _init() -> void:
@@ -196,6 +214,7 @@ func start_run(level: KrakoutLevelData, selected_display_level_number: int = 1, 
 	points_to_next_extra_life = EXTRA_LIFE_SCORE_STEP
 	display_level_number = max(1, selected_display_level_number)
 	_clear_bonus_run_state()
+	_clear_monster_state()
 	_reset_bonus_effect_state()
 	_load_board_for_level(level)
 	reset_round()
@@ -204,6 +223,7 @@ func start_run(level: KrakoutLevelData, selected_display_level_number: int = 1, 
 func advance_to_level(level: KrakoutLevelData, next_display_level_number: int) -> void:
 	display_level_number = max(1, next_display_level_number)
 	falling_bonuses.clear()
+	_clear_monster_state()
 	_clear_timed_bonus_state()
 	_reset_bonus_drop_gate()
 	_load_board_for_level(level)
@@ -224,6 +244,7 @@ func reset_round() -> void:
 	board_changed = false
 	balls.clear()
 	falling_bonuses.clear()
+	_clear_monster_state()
 	_clear_timed_bonus_state()
 	_reset_bonus_drop_gate()
 	_add_ready_ball()
@@ -297,6 +318,7 @@ func update(delta: float) -> void:
 		return
 
 	_update_falling_bonuses(delta)
+	_update_monsters(delta)
 	_update_projectiles(delta)
 	if board_state != null and board_state.is_complete():
 		state = STATE_LEVEL_COMPLETE
@@ -347,6 +369,14 @@ func visible_projectiles() -> Array[Dictionary]:
 	for projectile: Dictionary in projectiles:
 		if bool(projectile.get("active", false)):
 			visible.append(projectile.duplicate())
+	return visible
+
+
+func visible_monsters() -> Array[Dictionary]:
+	var visible: Array[Dictionary] = []
+	for monster: Dictionary in monsters:
+		if bool(monster.get("active", false)):
+			visible.append(monster.duplicate())
 	return visible
 
 
@@ -408,8 +438,16 @@ func set_bonus_rng_seed(seed_value: int) -> void:
 	_bonus_rng.set_seed(seed_value)
 
 
+func set_monster_rng_seed(seed_value: int) -> void:
+	_monster_rng.set_seed(seed_value)
+
+
 func force_bonus_drop_ready() -> void:
 	_bonus_drop_cooldown = 0.0
+
+
+func force_monster_spawn_ready() -> void:
+	_monster_spawn_cooldown = 0.0
 
 
 func active_ball_count() -> int:
@@ -418,6 +456,10 @@ func active_ball_count() -> int:
 
 func active_projectile_count() -> int:
 	return visible_projectiles().size()
+
+
+func active_monster_count() -> int:
+	return visible_monsters().size()
 
 
 func current_racket_height() -> float:
@@ -435,6 +477,10 @@ func ball_rect(ball: Dictionary) -> Rect2:
 
 func projectile_rect(projectile: Dictionary) -> Rect2:
 	return Rect2(projectile.get("position", Vector2.ZERO), PROJECTILE_SIZE)
+
+
+func monster_rect(monster: Dictionary) -> Rect2:
+	return Rect2(monster.get("position", Vector2.ZERO) + MONSTER_COLLISION_OFFSET, MONSTER_COLLISION_SIZE)
 
 
 func first_ball_position() -> Vector2:
@@ -458,6 +504,14 @@ func force_ball(position: Vector2, velocity: Vector2, size: float = BALL_SIZE) -
 		"speed_scale": ball_speed_scale,
 	}]
 	state = STATE_PLAYING
+
+
+func force_monster(position: Vector2, type_id: int = 3, angle: int = 0) -> bool:
+	if monsters.size() >= MAX_MONSTERS:
+		return false
+	monsters.append(_new_monster(position, type_id, angle))
+	state = STATE_PLAYING
+	return true
 
 
 func _add_ready_ball() -> void:
@@ -530,6 +584,7 @@ func _advance_ball(ball: Dictionary, delta: float) -> void:
 		ball["active"] = false
 		return
 
+	_collide_ball_with_monsters(ball)
 	_collide_with_board(ball, previous_position)
 
 
@@ -873,6 +928,8 @@ func _update_projectiles(delta: float) -> void:
 			continue
 
 		_advance_projectile(projectile, delta)
+		if bool(projectile.get("active", false)) and _collide_projectile_with_monsters(projectile):
+			projectile["active"] = false
 		if bool(projectile.get("active", false)) and _collide_projectile_with_board(projectile):
 			if int(projectile.get("type", PROJECTILE_TYPE_CONTINUOUS)) == PROJECTILE_TYPE_CONTINUOUS:
 				projectile["active"] = false
@@ -920,6 +977,185 @@ func _collide_projectile_with_board(projectile: Dictionary) -> bool:
 	)
 	_apply_board_hit_result(hit_result)
 	return true
+
+
+func _clear_monster_state() -> void:
+	monsters.clear()
+	_monster_spawn_cooldown = MONSTER_SPAWN_INTERVAL_SECONDS
+	_monster_type_cycle_index = 0
+
+
+func _update_monsters(delta: float) -> void:
+	for index in range(monsters.size()):
+		var monster := monsters[index]
+		if not bool(monster.get("active", false)):
+			continue
+		_advance_monster(monster, delta)
+		monsters[index] = monster
+
+	_compact_monsters()
+
+	_monster_spawn_cooldown = maxf(0.0, _monster_spawn_cooldown - delta)
+	if _monster_spawn_cooldown > 0.0:
+		return
+
+	_spawn_next_monster()
+	_monster_spawn_cooldown = MONSTER_SPAWN_INTERVAL_SECONDS
+
+
+func _spawn_next_monster() -> bool:
+	if monsters.size() >= MAX_MONSTERS:
+		return false
+
+	var type_id := int(MONSTER_TYPE_CYCLE[_monster_type_cycle_index % MONSTER_TYPE_CYCLE.size()])
+	_monster_type_cycle_index += 1
+	var position := Vector2(
+		260.0 + float(_monster_rng.next_mod(200)),
+		100.0 + float(_monster_rng.next_mod(320))
+	)
+	var angle_seed := _monster_rng.next_mod(4)
+	var angle := 0
+	if angle_seed >= 2:
+		angle = 330 + _monster_rng.next_mod(60)
+	else:
+		angle = 150 + _monster_rng.next_mod(60)
+
+	monsters.append(_new_monster(position, type_id, angle))
+	return true
+
+
+func _new_monster(position: Vector2, type_id: int, angle: int) -> Dictionary:
+	return {
+		"active": true,
+		"type_id": type_id,
+		"position": position,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+		"angle": posmod(angle, 360),
+		"speed": MONSTER_DEFAULT_SPEED,
+		"age": 0.0,
+	}
+
+
+func _advance_monster(monster: Dictionary, delta: float) -> void:
+	var age := float(monster.get("age", 0.0)) + delta
+	monster["age"] = age
+	if age >= MONSTER_LIFETIME_SECONDS:
+		monster["active"] = false
+		return
+
+	var type_id := int(monster.get("type_id", 0))
+	var frame_elapsed := float(monster.get("frame_elapsed", 0.0)) + delta
+	var frame := int(monster.get("frame", 0))
+	var frame_count := _frame_count_for_monster_type(type_id)
+	while frame_elapsed >= MONSTER_FRAME_SECONDS:
+		frame = (frame + 1) % frame_count
+		frame_elapsed -= MONSTER_FRAME_SECONDS
+	monster["frame"] = frame
+	monster["frame_elapsed"] = frame_elapsed
+
+	var position: Vector2 = monster.get("position", Vector2.ZERO)
+	var speed := float(monster.get("speed", MONSTER_DEFAULT_SPEED))
+	var angle := int(monster.get("angle", 0))
+	if type_id == 3:
+		if position.x <= MONSTER_TYPE3_RIGHT_LIMIT:
+			position.x += speed
+		else:
+			position.y += speed
+	elif type_id == 10:
+		angle = _tracking_angle_for_monster(monster, angle)
+		position += _monster_motion_vector(angle, speed)
+		monster["angle"] = angle
+	else:
+		position += _monster_motion_vector(angle, speed)
+
+	monster["position"] = position
+
+
+func _frame_count_for_monster_type(type_id: int) -> int:
+	if type_id <= 6 or type_id == 9:
+		return 20
+	if type_id == 8:
+		return 10
+	return 11
+
+
+func _tracking_angle_for_monster(monster: Dictionary, current_angle: int) -> int:
+	var target_position := _first_active_ball_center()
+	if target_position == Vector2.INF:
+		return current_angle
+
+	var monster_center := Vector2(monster.get("position", Vector2.ZERO)) + MONSTER_SIZE * 0.5
+	var target_delta := target_position - monster_center
+	if target_delta.is_zero_approx():
+		return current_angle
+
+	var target_angle := posmod(int(roundi(rad_to_deg(atan2(-target_delta.y, target_delta.x)))), 360)
+	var difference := posmod(target_angle - current_angle + 540, 360) - 180
+	if difference > 0:
+		current_angle += mini(MONSTER_TRACKING_TURN_STEP_DEGREES, difference)
+	elif difference < 0:
+		current_angle -= mini(MONSTER_TRACKING_TURN_STEP_DEGREES, -difference)
+	return posmod(current_angle, 360)
+
+
+func _first_active_ball_center() -> Vector2:
+	for ball: Dictionary in balls:
+		if bool(ball.get("active", false)):
+			return ball_rect(ball).get_center()
+	return Vector2.INF
+
+
+func _monster_motion_vector(angle: int, speed: float) -> Vector2:
+	var radians := deg_to_rad(float(posmod(angle, 360)))
+	return Vector2(cos(radians) * speed, -sin(radians) * speed)
+
+
+func _collide_ball_with_monsters(ball: Dictionary) -> bool:
+	var rect := ball_rect(ball)
+	for index in range(monsters.size()):
+		var monster: Dictionary = monsters[index]
+		if not bool(monster.get("active", false)):
+			continue
+		if rect.intersects(monster_rect(monster)):
+			_kill_monster_at_index(index)
+			return true
+	return false
+
+
+func _collide_projectile_with_monsters(projectile: Dictionary) -> bool:
+	var rect := projectile_rect(projectile)
+	for index in range(monsters.size()):
+		var monster: Dictionary = monsters[index]
+		if not bool(monster.get("active", false)):
+			continue
+		if rect.intersects(monster_rect(monster)):
+			_kill_monster_at_index(index)
+			return true
+	return false
+
+
+func _kill_monster_at_index(index: int) -> void:
+	if index < 0 or index >= monsters.size():
+		return
+	var monster := monsters[index]
+	monster["active"] = false
+	monsters[index] = monster
+	award_score(_score_for_monster(monster))
+
+
+func _score_for_monster(monster: Dictionary) -> int:
+	if int(monster.get("type_id", 0)) == 6:
+		return MONSTER_TYPE6_SCORE_STEP * (_monster_rng.next_mod(MONSTER_TYPE6_SCORE_VARIANTS) + 1)
+	return MONSTER_SCORE
+
+
+func _compact_monsters() -> void:
+	var compacted: Array[Dictionary] = []
+	for monster: Dictionary in monsters:
+		if bool(monster.get("active", false)):
+			compacted.append(monster)
+	monsters = compacted
 
 
 func _compact_projectiles() -> void:

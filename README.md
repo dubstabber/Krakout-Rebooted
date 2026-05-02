@@ -42,6 +42,12 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   projectiles from the extracted `Bullets` sheet, while `KrakoutGameSession`
   owns the original-backed 10-projectile pool, 250ms fire gate, leftward travel,
   and brick-hit routing.
+- `KrakoutGameSession` now owns the first IDA-backed monster pool: five active
+  slots, the original 3/6/10 type cycle, 4.5-second spawn gate, 6.5-second
+  lifetime, 70ms animation cadence, and ball/projectile collision scoring.
+- `KrakoutMonsterRenderer` draws those transient monsters from `Monsters.png`
+  through the source 32x32 type/frame grid without assigning Bee/Snake behavior
+  or unresolved monster side effects yet.
 - `KrakoutBallRenderer` draws standard balls from the extracted `Balls` atlas
   using the original visible size rows, so size-changing bonuses use matching
   10/18/26/34/42 px ball frames instead of scaling a fixed crop.

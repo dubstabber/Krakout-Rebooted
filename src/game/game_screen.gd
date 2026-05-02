@@ -10,6 +10,7 @@ const RacketRendererScript := preload("res://src/render/racket_renderer.gd")
 const BallRendererScript := preload("res://src/render/ball_renderer.gd")
 const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
 const BulletRendererScript := preload("res://src/render/bullet_renderer.gd")
+const MonsterRendererScript := preload("res://src/render/monster_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
 
 const ACTION_LAUNCH_BALL := "krakout_launch_ball"
@@ -30,6 +31,7 @@ var racket_renderer
 var ball_renderer
 var bonus_renderer
 var bullet_renderer
+var monster_renderer
 var hud_renderer
 var _run_started := false
 var _bonus_stack_visible := true
@@ -315,6 +317,11 @@ func _ensure_gameplay_nodes() -> void:
 		bullet_renderer.name = "BulletRenderer"
 		add_child(bullet_renderer)
 
+	if monster_renderer == null:
+		monster_renderer = MonsterRendererScript.new()
+		monster_renderer.name = "MonsterRenderer"
+		add_child(monster_renderer)
+
 	if hud_renderer == null:
 		hud_renderer = GameHudScript.new()
 		hud_renderer.name = "GameHud"
@@ -324,6 +331,7 @@ func _ensure_gameplay_nodes() -> void:
 	ball_renderer.set_session(gameplay_session)
 	bonus_renderer.set_session(gameplay_session)
 	bullet_renderer.set_session(gameplay_session)
+	monster_renderer.set_session(gameplay_session)
 	hud_renderer.set_session(gameplay_session)
 	_ensure_overlay_nodes()
 	_apply_presentation_settings()
@@ -338,6 +346,8 @@ func _refresh_actor_renderers() -> void:
 		bonus_renderer.queue_redraw()
 	if bullet_renderer != null:
 		bullet_renderer.queue_redraw()
+	if monster_renderer != null:
+		monster_renderer.queue_redraw()
 
 
 func _refresh_hud() -> void:
