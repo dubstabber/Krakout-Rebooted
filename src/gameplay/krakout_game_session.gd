@@ -39,6 +39,7 @@ const BALL_TOP_Y := 41.0
 const BALL_BOTTOM_Y := 453.0
 const BALL_LEFT_X := 5.0
 const BALL_LOST_X := 575.0
+const BACK_WALL_BOUNCE_X := 613.0
 const READY_BALL_GAP := 10.0
 const DEFAULT_BALL_VELOCITY := Vector2(-260.0, -90.0)
 const BONUS_TYPE_COUNT := 22
@@ -57,6 +58,8 @@ const BONUS_ANIMATION_FRAME_COUNT := 10
 const BONUS_FALLING_FRAME_SECONDS := 0.1
 const BONUS_STACK_FRAME_SECONDS := 0.07
 const BONUS_POINTER_FRAME_SECONDS := 0.05
+const BACK_WALL_DURATION_SECONDS := 30.0
+const BACK_WALL_STATUS_ICON_INDEX := 3
 const BONUS_ADD_STANDARD_BALL := 0
 const BONUS_ADD_FIREBALL := 1
 const BONUS_NON_STRICKED_BALLS := 2
@@ -111,6 +114,7 @@ const SUPPORTED_BONUS_EFFECTS := {
 	BONUS_DECREASE_BALL_SPEED: true,
 	BONUS_SHRINK_PADDLE: true,
 	BONUS_EXPAND_PADDLE: true,
+	BONUS_BACK_WALL: true,
 	BONUS_EXTRA_LIFE: true,
 	BONUS_DESTROY_ONE_BALL: true,
 	BONUS_JUMP_TO_NEXT_LEVEL: true,
@@ -147,6 +151,7 @@ var remaining_bonus_stock := 0
 var falling_bonuses: Array[Dictionary] = []
 var bonus_stack: Array[Dictionary] = []
 var bonus_pointer_frame := 0
+var back_wall_time_remaining := 0.0
 var _bonus_rng = RandomScript.new()
 var _bonus_animation_rng = RandomScript.new(31415)
 var _bonus_drop_cooldown := BONUS_DROP_GATE_SECONDS
@@ -180,6 +185,7 @@ func start_run(level: KrakoutLevelData, selected_display_level_number: int = 1, 
 func advance_to_level(level: KrakoutLevelData, next_display_level_number: int) -> void:
 	display_level_number = max(1, next_display_level_number)
 	falling_bonuses.clear()
+	_clear_timed_bonus_state()
 	_reset_bonus_drop_gate()
 	_load_board_for_level(level)
 	reset_round()
@@ -189,6 +195,7 @@ func set_board_state(state_value) -> void:
 	board_state = state_value
 	_load_bonus_stock_from_level(board_state.source_level if board_state != null else null)
 	falling_bonuses.clear()
+	_clear_timed_bonus_state()
 	_reset_bonus_drop_gate()
 	reset_round()
 
@@ -198,6 +205,7 @@ func reset_round() -> void:
 	board_changed = false
 	balls.clear()
 	falling_bonuses.clear()
+	_clear_timed_bonus_state()
 	_reset_bonus_drop_gate()
 	_add_ready_ball()
 
@@ -318,7 +326,17 @@ func bonus_stack_entries() -> Array[Dictionary]:
 
 
 func active_bonus_indicators() -> Array[Dictionary]:
-	return []
+	var indicators: Array[Dictionary] = []
+	if is_back_wall_active():
+		indicators.append({
+			"icon_index": BACK_WALL_STATUS_ICON_INDEX,
+			"value": ceili(back_wall_time_remaining),
+		})
+	return indicators
+
+
+func is_back_wall_active() -> bool:
+	return back_wall_time_remaining > 0.0
 
 
 func activate_next_bonus() -> Dictionary:
@@ -461,7 +479,10 @@ func _advance_ball(ball: Dictionary, delta: float) -> void:
 		position = ball.get("position", position)
 		velocity = ball.get("velocity", velocity)
 
-	if position.x > BALL_LOST_X:
+	if _collide_with_back_wall(ball):
+		position = ball.get("position", position)
+		velocity = ball.get("velocity", velocity)
+	elif position.x > BALL_LOST_X:
 		ball["active"] = false
 		return
 
@@ -486,6 +507,25 @@ func _collide_with_racket(ball: Dictionary) -> bool:
 	var normalized_hit := clampf((ball_center - racket_center) / (racket_height * 0.5), -1.0, 1.0)
 	velocity.y = normalized_hit * 180.0
 
+	ball["position"] = rect.position
+	ball["velocity"] = velocity
+	return true
+
+
+func _collide_with_back_wall(ball: Dictionary) -> bool:
+	if not is_back_wall_active():
+		return false
+
+	var rect := ball_rect(ball)
+	if rect.end.x < BACK_WALL_BOUNCE_X:
+		return false
+
+	var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
+	if velocity.x <= 0.0:
+		return false
+
+	rect.position.x = BACK_WALL_BOUNCE_X - rect.size.x
+	velocity.x = -absf(velocity.x)
 	ball["position"] = rect.position
 	ball["velocity"] = velocity
 	return true
@@ -647,6 +687,7 @@ func _clear_bonus_run_state() -> void:
 	bonus_stack.clear()
 	bonus_pointer_frame = 0
 	_bonus_pointer_elapsed = 0.0
+	_clear_timed_bonus_state()
 	_reset_bonus_drop_gate()
 
 
@@ -661,9 +702,15 @@ func _reset_bonus_drop_gate() -> void:
 	_bonus_drop_cooldown = BONUS_DROP_GATE_SECONDS
 
 
+func _clear_timed_bonus_state() -> void:
+	back_wall_time_remaining = 0.0
+
+
 func _update_bonus_timers(delta: float) -> void:
 	if _bonus_drop_cooldown > 0.0:
 		_bonus_drop_cooldown = maxf(0.0, _bonus_drop_cooldown - delta)
+	if back_wall_time_remaining > 0.0:
+		back_wall_time_remaining = maxf(0.0, back_wall_time_remaining - delta)
 
 
 func _spawn_falling_bonus(type_id: int, position: Vector2) -> bool:
@@ -794,6 +841,8 @@ func _apply_bonus_effect(type_id: int) -> Dictionary:
 			return _adjust_racket_segments(-RACKET_BONUS_STEP_SEGMENTS)
 		BONUS_EXPAND_PADDLE:
 			return _adjust_racket_segments(RACKET_BONUS_STEP_SEGMENTS)
+		BONUS_BACK_WALL:
+			return _activate_back_wall()
 		BONUS_EXTRA_LIFE:
 			lives_remaining += 1
 			return {"effect": "extra_life", "lives_remaining": lives_remaining}
@@ -843,6 +892,11 @@ func _adjust_racket_segments(delta_segments: int) -> Dictionary:
 	}
 
 
+func _activate_back_wall() -> Dictionary:
+	back_wall_time_remaining = BACK_WALL_DURATION_SECONDS
+	return {"effect": "back_wall", "seconds_remaining": back_wall_time_remaining}
+
+
 func _destroy_one_active_ball() -> bool:
 	for index in range(balls.size()):
 		var ball := balls[index]
@@ -862,6 +916,7 @@ func _handle_round_lost() -> void:
 		state = STATE_GAME_OVER
 		balls.clear()
 		falling_bonuses.clear()
+		_clear_timed_bonus_state()
 		return
 
 	reset_round()

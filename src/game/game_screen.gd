@@ -38,6 +38,7 @@ func _process(delta: float) -> void:
 	gameplay_session.update(delta)
 	if gameplay_session.consume_board_changed() and playfield_renderer != null:
 		playfield_renderer.refresh_board()
+	_refresh_playfield_effects()
 
 	if gameplay_session.state == GameSessionScript.STATE_LEVEL_COMPLETE:
 		_advance_to_next_level()
@@ -58,6 +59,7 @@ func _input(event: InputEvent) -> void:
 		if event.keycode == KEY_SPACE and event.pressed and not event.echo:
 			var bonus_result: Dictionary = gameplay_session.activate_next_bonus()
 			if String(bonus_result.get("status", "")) != "empty":
+				_refresh_playfield_effects()
 				_refresh_actor_renderers()
 				_refresh_hud()
 				get_viewport().set_input_as_handled()
@@ -68,6 +70,7 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 				return
 			gameplay_session.launch_ready_ball()
+			_refresh_playfield_effects()
 			_refresh_actor_renderers()
 			_refresh_hud()
 
@@ -132,6 +135,7 @@ func _apply_level() -> void:
 			gameplay_session.start_run(level, level_number, int(gameplay_session.best_score))
 			_run_started = true
 		playfield_renderer.set_board_state(gameplay_session.board_state)
+		_refresh_playfield_effects()
 		_refresh_actor_renderers()
 		_refresh_hud()
 
@@ -189,6 +193,13 @@ func _refresh_actor_renderers() -> void:
 func _refresh_hud() -> void:
 	if hud_renderer != null and hud_renderer.has_method("refresh"):
 		hud_renderer.call("refresh")
+
+
+func _refresh_playfield_effects() -> void:
+	if playfield_renderer == null or gameplay_session == null:
+		return
+	if playfield_renderer.has_method("set_back_wall_active") and gameplay_session.has_method("is_back_wall_active"):
+		playfield_renderer.call("set_back_wall_active", gameplay_session.call("is_back_wall_active"))
 
 
 func _advance_to_next_level() -> void:

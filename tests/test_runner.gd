@@ -169,6 +169,9 @@ func _validate_playfield_renderer_shell() -> void:
 	_assert(PlayfieldRendererScript.WALL_TOP_Y == 36, "top wall y remains original-screen aligned")
 	_assert(PlayfieldRendererScript.WALL_BOTTOM_Y == 453, "bottom wall y remains original-screen aligned")
 	_assert(PlayfieldRendererScript.WALL_SIDE_START_Y == 81, "side wall start remains original-screen aligned")
+	_assert(not renderer.is_back_wall_active(), "playfield renderer starts with back wall hidden")
+	renderer.set_back_wall_active(true)
+	_assert(renderer.is_back_wall_active(), "playfield renderer can show timed back wall")
 	renderer.free()
 
 
@@ -511,6 +514,33 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(destroy_ball_result["effect"] == "destroy_one_ball", "destroy-ball bonus reports effect")
 	_assert(destroy_ball_session.active_ball_count() == 1, "destroy-ball bonus removes one active ball")
 
+	var back_wall_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(back_wall_session, GameSessionScript.BONUS_BACK_WALL)
+	var back_wall_result: Dictionary = back_wall_session.activate_next_bonus()
+	_assert(back_wall_result["status"] == "applied", "back-wall bonus applies")
+	_assert(back_wall_result["effect"] == "back_wall", "back-wall bonus reports effect")
+	_assert(back_wall_session.is_back_wall_active(), "back-wall bonus starts timed wall")
+	_assert(back_wall_session.bonus_stack_entries().is_empty(), "back-wall bonus consumes first stack entry")
+	var back_wall_indicators: Array = back_wall_session.active_bonus_indicators()
+	_assert(back_wall_indicators.size() == 1, "back-wall bonus exposes one active status indicator")
+	if back_wall_indicators.size() == 1:
+		_assert(int(back_wall_indicators[0]["icon_index"]) == GameSessionScript.BACK_WALL_STATUS_ICON_INDEX, "back-wall status uses original wall icon slot")
+		_assert(int(back_wall_indicators[0]["value"]) == int(GameSessionScript.BACK_WALL_DURATION_SECONDS), "back-wall status starts at original duration")
+	back_wall_session.force_ball(
+		Vector2(GameSessionScript.BACK_WALL_BOUNCE_X - GameSessionScript.BALL_SIZE - 1.0, 350),
+		Vector2(200, 0)
+	)
+	back_wall_session.update(0.01)
+	_assert(back_wall_session.state == GameSessionScript.STATE_PLAYING, "back wall prevents right-side ball loss")
+	_assert(back_wall_session.first_ball_velocity().x < 0.0, "back wall reflects missed ball")
+	back_wall_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	back_wall_session.update(GameSessionScript.BACK_WALL_DURATION_SECONDS)
+	_assert(not back_wall_session.is_back_wall_active(), "back wall expires after original duration")
+	_assert(back_wall_session.active_bonus_indicators().is_empty(), "expired back wall clears status indicator")
+	back_wall_session.force_ball(Vector2(GameSessionScript.BALL_LOST_X + 1.0, 350), Vector2(120, 0))
+	back_wall_session.update(0.01)
+	_assert(back_wall_session.state == GameSessionScript.STATE_READY, "right-side miss is lost after back wall expires")
+
 	var jump_level_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(jump_level_session, GameSessionScript.BONUS_JUMP_TO_NEXT_LEVEL)
 	jump_level_session.activate_next_bonus()
@@ -796,6 +826,10 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("_input", space_event)
 			await process_frame
 			_assert(gameplay.lives_remaining == GameSessionScript.INITIAL_LIVES + 1, "game screen routes Space to bonus activation")
+			_stack_bonus(gameplay, GameSessionScript.BONUS_BACK_WALL)
+			game.call("activate_next_bonus")
+			await process_frame
+			_assert(playfield.call("is_back_wall_active"), "game screen syncs back-wall visual state")
 			if hud != null:
 				gameplay.state = GameSessionScript.STATE_GAME_OVER
 				gameplay.lives_remaining = -1

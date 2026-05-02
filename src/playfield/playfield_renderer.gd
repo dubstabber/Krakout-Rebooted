@@ -30,6 +30,7 @@ var board_state
 var grid_renderer: LevelGridRenderer
 var background_texture: Texture2D
 var walls_texture: Texture2D
+var back_wall_active := false
 
 
 func _ready() -> void:
@@ -67,6 +68,17 @@ func gameplay_background_source_rect() -> Rect2:
 func refresh_board() -> void:
 	if grid_renderer != null:
 		grid_renderer.queue_redraw()
+
+
+func set_back_wall_active(is_active: bool) -> void:
+	if back_wall_active == is_active:
+		return
+	back_wall_active = is_active
+	queue_redraw()
+
+
+func is_back_wall_active() -> bool:
+	return back_wall_active
 
 
 func _build_scene() -> void:
@@ -114,7 +126,8 @@ func _draw_walls() -> void:
 
 	for y in range(WALL_SIDE_START_Y, WALL_BOTTOM_Y, WALL_REPEAT_STEP):
 		draw_texture_rect_region(walls_texture, Rect2(Vector2(WALL_LEFT_X, y), WALL_SIDE_SOURCE.size), WALL_SIDE_SOURCE)
-		draw_texture_rect_region(walls_texture, Rect2(Vector2(WALL_RIGHT_X, y), WALL_SIDE_SOURCE.size), WALL_SIDE_SOURCE)
+		if back_wall_active:
+			draw_texture_rect_region(walls_texture, Rect2(Vector2(WALL_RIGHT_X, y), WALL_SIDE_SOURCE.size), WALL_SIDE_SOURCE)
 
 	draw_texture_rect_region(walls_texture, Rect2(Vector2(0, WALL_TOP_Y), WALL_TOP_LEFT_SOURCE.size), WALL_TOP_LEFT_SOURCE)
 	draw_texture_rect_region(walls_texture, Rect2(Vector2(595, WALL_TOP_Y), WALL_TOP_RIGHT_SOURCE.size), WALL_TOP_RIGHT_SOURCE)
