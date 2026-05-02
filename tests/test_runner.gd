@@ -9,6 +9,9 @@ const GameplaySheetCatalogScript := preload("res://src/playfield/krakout_gamepla
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantics.gd")
 const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
+const GameSessionScript := preload("res://src/gameplay/krakout_game_session.gd")
+const RacketRendererScript := preload("res://src/render/racket_renderer.gd")
+const BallRendererScript := preload("res://src/render/ball_renderer.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 const GameScreenScene := preload("res://scenes/game/game_screen.tscn")
@@ -57,6 +60,7 @@ func _run() -> void:
 		_assert(level.tile_semantics == "unmapped", "Default level tile semantics stay unmapped")
 		_assert(level.populated_tile_count() > 0, "Default level contains non-empty raw tiles")
 		_validate_board_state(level)
+		_validate_game_session(level)
 
 	_validate_playfield_spec()
 	_validate_brick_semantics()
@@ -192,6 +196,61 @@ func _validate_board_state(default_level: KrakoutLevelData) -> void:
 	]))
 	_assert(edge_state.explode_at(0, 0) == 4, "corner explosion clamps to board bounds")
 	_assert(edge_state.remaining_required_bricks == 0, "corner explosion clears only valid neighbors")
+
+
+func _validate_game_session(default_level: KrakoutLevelData) -> void:
+	var session = GameSessionScript.new()
+	session.load_level(default_level)
+	_assert(session.state == GameSessionScript.STATE_READY, "game session starts ready")
+	_assert(session.board_state != null, "game session owns board state")
+	_assert(session.board_state.remaining_required_bricks == 143, "game session preserves required brick count")
+	_assert(session.active_ball_count() == 1, "game session shows a ready ball")
+
+	session.move_racket_to(-100.0)
+	_assert(session.racket_rect().position.y == GameSessionScript.RACKET_MIN_Y, "racket clamps to top bound")
+	session.move_racket_to(10000.0)
+	_assert(session.racket_rect().end.y == GameSessionScript.RACKET_MAX_BOTTOM, "racket clamps to bottom bound")
+	_assert(session.first_ball_position().y > session.racket_rect().position.y, "ready ball follows racket")
+	_assert(session.launch_ready_ball(), "ready ball launches")
+	_assert(session.state == GameSessionScript.STATE_PLAYING, "game session enters playing state")
+	_assert(session.first_ball_velocity().x < 0.0, "launched ball starts toward board")
+
+	var wall_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	wall_session.force_ball(Vector2(300, GameSessionScript.BALL_TOP_Y), Vector2(-80, -120))
+	wall_session.update(0.1)
+	_assert(wall_session.first_ball_velocity().y > 0.0, "ball bounces off top wall")
+
+	var racket_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	racket_session.move_racket_to(220.0)
+	var racket_hit_y: float = racket_session.racket_rect().position.y + 40.0
+	racket_session.force_ball(
+		Vector2(GameSessionScript.RACKET_X - GameSessionScript.BALL_SIZE - 1.0, racket_hit_y),
+		Vector2(200, 0)
+	)
+	racket_session.update(0.1)
+	_assert(racket_session.first_ball_velocity().x < 0.0, "ball bounces off racket")
+
+	var missed_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	missed_session.force_ball(Vector2(GameSessionScript.BALL_LOST_X + 1.0, 350), Vector2(120, 0))
+	missed_session.update(0.01)
+	_assert(missed_session.state == GameSessionScript.STATE_BALL_LOST, "missed ball enters ball-lost state")
+
+	var brick_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	brick_session.force_ball(PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2), Vector2(-80, 0))
+	brick_session.update(0.01)
+	_assert(brick_session.board_state.tile_at(0, 0) == 0, "ball hit clears brick through board state")
+	_assert(brick_session.consume_board_changed(), "brick hit marks board for redraw")
+	_assert(brick_session.state == GameSessionScript.STATE_LEVEL_COMPLETE, "clearing final required brick completes level")
+
+	var chain_session = _game_session_from_level(_make_level_from_rows([[43, 68]]))
+	chain_session.force_ball(PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2), Vector2(-80, 0))
+	chain_session.update(0.01)
+	_assert(chain_session.board_state.tile_at(0, 0) == 0, "chain tile hit clears source tile")
+	_assert(chain_session.board_state.tile_at(1, 0) == 68, "chain tile hit leaves neighbor pending")
+	_assert(chain_session.board_state.pending_chain_explosion_count() == 1, "chain tile hit schedules delayed neighbor")
+	chain_session.update(0.031)
+	_assert(chain_session.board_state.tile_at(1, 0) == 0, "delayed chain explosion clears neighbor")
+	_assert(chain_session.state == GameSessionScript.STATE_LEVEL_COMPLETE, "chain explosion can complete level")
 
 
 func _validate_brick_atlas_mapping() -> void:
@@ -384,6 +443,16 @@ func _validate_menu_and_game_scenes() -> void:
 		_assert(playfield.default_level_number == PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER, "game screen configures playfield level")
 		_assert(playfield.level_data != null, "game screen loads default level data")
 		_assert(playfield.board_state != null, "game screen creates mutable board state")
+		var gameplay = game.call("current_game_session")
+		_assert(gameplay != null, "game screen creates gameplay session")
+		if gameplay != null:
+			_assert(gameplay.board_state == playfield.board_state, "game screen shares gameplay board with renderer")
+			_assert(game.find_child("RacketRenderer", true, false) != null, "game screen creates racket renderer")
+			_assert(game.find_child("BallRenderer", true, false) != null, "game screen creates ball renderer")
+			game.call("move_racket_to", 10000.0)
+			_assert(gameplay.racket_rect().end.y == GameSessionScript.RACKET_MAX_BOTTOM, "game screen routes racket movement")
+			_assert(game.call("launch_ready_ball"), "game screen routes ball launch")
+			_assert(gameplay.state == GameSessionScript.STATE_PLAYING, "game screen launch enters playing state")
 	game.queue_free()
 
 	var app := AppScene.instantiate()
@@ -440,6 +509,12 @@ func _board_state_from_level(level: KrakoutLevelData):
 	var state = BoardStateScript.new()
 	state.load_level(level)
 	return state
+
+
+func _game_session_from_level(level: KrakoutLevelData):
+	var session = GameSessionScript.new()
+	session.load_level(level)
+	return session
 
 
 func _is_runtime_path(entry: Dictionary) -> bool:

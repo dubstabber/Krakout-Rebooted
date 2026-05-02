@@ -20,6 +20,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   and the selected level board, then creates a mutable board state for gameplay.
 - `KrakoutBrickSemantics` and `KrakoutBoardState` preserve the original brick
   active/completion rules plus delayed 3x3 chain explosions for tile IDs 43/68.
+- `KrakoutGameSession` adds the first playable ball/racket loop around that
+  board state: mouse-following right-side racket, ready/launch/play/lost/complete
+  states, wall/racket/brick collision, and redraw signaling.
 - `KrakoutApp` now starts on a Godot `Control` main menu, routes `Start Game`
   into an episode browser backed by decoded episode metadata, and starts the
   selected episode at its first level.

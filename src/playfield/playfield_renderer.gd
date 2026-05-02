@@ -49,8 +49,19 @@ func set_level(data: KrakoutLevelData) -> void:
 	_apply_level()
 
 
+func set_board_state(state) -> void:
+	board_state = state
+	level_data = state.source_level if state != null else null
+	_apply_level()
+
+
 func current_board_state():
 	return board_state
+
+
+func refresh_board() -> void:
+	if grid_renderer != null:
+		grid_renderer.queue_redraw()
 
 
 func _build_scene() -> void:
