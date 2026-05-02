@@ -89,12 +89,13 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - `KrakoutAudioCueCatalog` maps the first IDA-backed music contexts into Godot
   scene flow: main menu/rules/options use `Abnormal`, high score uses `theme2`,
   credits uses `theme5`, episode select uses `theme1`, gameplay uses `theme4`,
-  and name entry uses `theme3`. Numbered `effNN.wav` effects remain unmapped to
-  gameplay events until runtime or IDA evidence proves their meaning.
+  and name entry uses `theme3`.
 - Gameplay now queues semantic SFX events from the session and drains them
-  through `KrakoutAudio` in the Godot scene layer. The first proven mappings are
-  direct brick clear to `eff23` and board-cell chain/explosion clear to `eff10`;
-  unproven events remain named but silent.
+  through `KrakoutAudio` in the Godot scene layer. IDA-backed mappings now cover
+  launch, racket bounce, brick clear, chain explosion, bonus spawn/collect,
+  projectile fire, monster spawn/hit, life lost, level complete, and game over;
+  back-wall bounce, generic bonus apply, and generic projectile hit remain named
+  but silent until original evidence proves a direct sample.
 
 ## Validation
 

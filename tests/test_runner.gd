@@ -917,11 +917,31 @@ func _validate_audio_cue_catalog() -> void:
 	var contexts: Array[String] = AudioCueCatalogScript.known_contexts()
 	_assert(contexts == ["credits", "episode_select", "gameplay", "high_score", "main_menu", "name_entry", "options", "rules"], "audio cue catalog exposes sorted known contexts")
 	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "audio cue catalog recognizes brick-clear gameplay SFX event")
-	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "audio cue catalog recognizes unmapped projectile-fire gameplay SFX event")
+	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "audio cue catalog recognizes projectile-fire gameplay SFX event")
 	_assert(not AudioCueCatalogScript.has_sfx_event("missing_sfx_event"), "audio cue catalog rejects unknown SFX events")
-	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BRICK_CLEAR) == "eff23", "audio cue catalog maps direct brick clear to IDA-backed eff23")
-	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION) == "eff10", "audio cue catalog maps board clear helper to IDA-backed eff10")
-	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE) == "", "audio cue catalog leaves unproven projectile fire silent")
+
+	var expected_sfx_names := {
+		GameSessionScript.SFX_EVENT_BALL_LAUNCH: "eff05",
+		GameSessionScript.SFX_EVENT_RACKET_BOUNCE: "eff07",
+		GameSessionScript.SFX_EVENT_BRICK_CLEAR: "eff23",
+		GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION: "eff10",
+		GameSessionScript.SFX_EVENT_BONUS_SPAWN: "eff11",
+		GameSessionScript.SFX_EVENT_BONUS_COLLECT: "eff15",
+		GameSessionScript.SFX_EVENT_PROJECTILE_FIRE: "eff08",
+		GameSessionScript.SFX_EVENT_MONSTER_SPAWN: "eff13",
+		GameSessionScript.SFX_EVENT_MONSTER_HIT: "eff09",
+		GameSessionScript.SFX_EVENT_LIFE_LOST: "eff16",
+		GameSessionScript.SFX_EVENT_LEVEL_COMPLETE: "eff19",
+		GameSessionScript.SFX_EVENT_GAME_OVER: "eff18",
+	}
+	for event_name: String in expected_sfx_names.keys():
+		_assert(
+			AudioCueCatalogScript.sfx_name_for_event(event_name) == expected_sfx_names[event_name],
+			"audio cue catalog maps %s to IDA-backed %s" % [event_name, expected_sfx_names[event_name]]
+		)
+	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BACK_WALL_BOUNCE) == "", "audio cue catalog leaves unproven back-wall bounce silent")
+	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BONUS_APPLY) == "", "audio cue catalog leaves generic bonus-apply silent")
+	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_PROJECTILE_HIT) == "", "audio cue catalog leaves generic projectile-hit silent")
 	_assert(AudioCueCatalogScript.sfx_name_for_event("missing_sfx_event") == "", "audio cue catalog leaves unknown SFX events silent")
 	var sfx_events: Array[String] = AudioCueCatalogScript.known_sfx_events()
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "audio cue catalog exposes bonus-apply event in known event list")
@@ -958,9 +978,20 @@ func _validate_audio_service() -> void:
 	_assert(String(_audio.call("music_name_for_context", AudioCueCatalogScript.CONTEXT_NAME_ENTRY)) == "theme3", "audio service maps name-entry music context")
 	_assert(String(_audio.call("music_name_for_context", "missing_context")) == "", "audio service rejects unknown music context")
 	_assert(bool(_audio.call("has_sfx_event", GameSessionScript.SFX_EVENT_BRICK_CLEAR)), "audio service recognizes brick-clear SFX event")
+	_assert(bool(_audio.call("has_sfx_event", GameSessionScript.SFX_EVENT_PROJECTILE_FIRE)), "audio service recognizes projectile-fire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BRICK_CLEAR)) == "eff23", "audio service maps brick-clear SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION)) == "eff10", "audio service maps chain-explosion SFX event")
-	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_PROJECTILE_FIRE)) == "", "audio service leaves unproven gameplay SFX event unmapped")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BALL_LAUNCH)) == "eff05", "audio service maps ball-launch SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_RACKET_BOUNCE)) == "eff07", "audio service maps racket-bounce SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_SPAWN)) == "eff11", "audio service maps bonus-spawn SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_COLLECT)) == "eff15", "audio service maps bonus-collect SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_PROJECTILE_FIRE)) == "eff08", "audio service maps projectile-fire SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_SPAWN)) == "eff13", "audio service maps monster-spawn SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_HIT)) == "eff09", "audio service maps monster-hit SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_LIFE_LOST)) == "eff16", "audio service maps life-lost SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_LEVEL_COMPLETE)) == "eff19", "audio service maps level-complete SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_GAME_OVER)) == "eff18", "audio service maps game-over SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_APPLY)) == "", "audio service leaves generic bonus-apply unmapped")
 
 	_audio.call("set_music_enabled", true)
 	_audio.call("set_music_volume", 50)
