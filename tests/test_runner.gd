@@ -173,6 +173,11 @@ func _validate_playfield_spec() -> void:
 	_assert(PlayfieldSpecScript.GRID_SIZE == Vector2(400, 390), "playfield grid size derives from 20x13 bricks")
 	_assert(PlayfieldSpecScript.grid_rect() == Rect2(Vector2(47, 63), Vector2(400, 390)), "playfield grid rect is stable")
 	_assert(PlayfieldSpecScript.brick_rect(19, 12) == Rect2(Vector2(427, 423), Vector2(20, 30)), "playfield brick rect maps final cell")
+	_assert(PlayfieldSpecScript.WALL_INNER_LEFT_X == 27.0, "left wall inner collision line matches original")
+	_assert(PlayfieldSpecScript.WALL_INNER_TOP_Y == 63.0, "top wall inner collision line matches original")
+	_assert(PlayfieldSpecScript.WALL_INNER_RIGHT_X == 613.0, "right wall inner collision line matches original")
+	_assert(PlayfieldSpecScript.WALL_INNER_BOTTOM_Y == 453.0, "bottom wall inner collision line matches original")
+	_assert(PlayfieldSpecScript.wall_inner_rect() == Rect2(Vector2(27, 63), Vector2(586, 390)), "wall inner collision rect is stable")
 
 
 func _validate_playfield_renderer_shell() -> void:
@@ -191,6 +196,10 @@ func _validate_playfield_renderer_shell() -> void:
 	_assert(PlayfieldRendererScript.WALL_TOP_Y == 36, "top wall y remains original-screen aligned")
 	_assert(PlayfieldRendererScript.WALL_BOTTOM_Y == 453, "bottom wall y remains original-screen aligned")
 	_assert(PlayfieldRendererScript.WALL_SIDE_START_Y == 81, "side wall start remains original-screen aligned")
+	_assert(PlayfieldSpecScript.WALL_INNER_LEFT_X == PlayfieldRendererScript.WALL_LEFT_X + PlayfieldRendererScript.WALL_SIDE_SOURCE.size.x, "left collision starts after left wall visual")
+	_assert(PlayfieldSpecScript.WALL_INNER_RIGHT_X == PlayfieldRendererScript.WALL_RIGHT_X, "right collision aligns to back wall visual")
+	_assert(PlayfieldSpecScript.WALL_INNER_TOP_Y == PlayfieldSpecScript.GRID_ORIGIN.y, "top collision aligns to original grid top")
+	_assert(PlayfieldSpecScript.WALL_INNER_BOTTOM_Y == PlayfieldRendererScript.WALL_BOTTOM_Y, "bottom collision aligns to bottom wall visual")
 	_assert(not renderer.is_back_wall_active(), "playfield renderer starts with back wall hidden")
 	renderer.set_back_wall_active(true)
 	_assert(renderer.is_back_wall_active(), "playfield renderer can show timed back wall")
@@ -308,6 +317,13 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	wall_session.force_ball(Vector2(300, GameSessionScript.BALL_TOP_Y), Vector2(-80, -120))
 	wall_session.update(0.1)
 	_assert(wall_session.first_ball_velocity().y > 0.0, "ball bounces off top wall")
+	_assert(wall_session.first_ball_position().y == GameSessionScript.BALL_TOP_Y, "top wall clamps ball to original inner boundary")
+
+	var left_wall_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	left_wall_session.force_ball(Vector2(GameSessionScript.BALL_LEFT_X, 240), Vector2(-120, 40))
+	left_wall_session.update(0.1)
+	_assert(left_wall_session.first_ball_velocity().x > 0.0, "ball bounces off left wall")
+	_assert(left_wall_session.first_ball_position().x == GameSessionScript.BALL_LEFT_X, "left wall clamps ball to original inner boundary")
 
 	var racket_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	racket_session.move_racket_to(220.0)
