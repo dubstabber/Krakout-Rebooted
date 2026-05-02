@@ -323,6 +323,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.display_level_number == 1, "game session displays source level number")
 	_assert(session.active_bonus_indicators().is_empty(), "game session exposes no active status indicators before timed effects exist")
 	_assert(session.active_monster_count() == 0, "game session starts without active monsters")
+	_assert(session.pop_audio_events().is_empty(), "game session starts without queued SFX events")
 
 	session.move_racket_to(-100.0)
 	_assert(session.racket_rect().position.y == GameSessionScript.RACKET_MIN_Y, "racket clamps to top bound")
@@ -332,6 +333,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.launch_ready_ball(), "ready ball launches")
 	_assert(session.state == GameSessionScript.STATE_PLAYING, "game session enters playing state")
 	_assert(session.first_ball_velocity().x < 0.0, "launched ball starts toward board")
+	_assert(session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BALL_LAUNCH], "launch queues semantic SFX event")
 
 	var wall_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	wall_session.force_ball(Vector2(300, GameSessionScript.BALL_TOP_Y), Vector2(-80, -120))
@@ -354,6 +356,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	)
 	racket_session.update(0.1)
 	_assert(racket_session.first_ball_velocity().x < 0.0, "ball bounces off racket")
+	_assert(racket_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_RACKET_BOUNCE], "racket bounce queues semantic SFX event")
 
 	var missed_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	missed_session.force_ball(Vector2(GameSessionScript.BALL_LOST_X + 1.0, 350), Vector2(120, 0))
@@ -361,12 +364,15 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(missed_session.state == GameSessionScript.STATE_READY, "missed ball resets to ready while spare balls remain")
 	_assert(missed_session.lives_remaining == GameSessionScript.INITIAL_LIVES - 1, "missed ball consumes one spare ball")
 	_assert(missed_session.active_ball_count() == 1, "missed ball creates a new ready ball")
+	_assert(missed_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_LIFE_LOST], "spare-ball miss queues life-lost SFX event")
 	for miss_index in range(GameSessionScript.INITIAL_LIVES):
 		missed_session.force_ball(Vector2(GameSessionScript.BALL_LOST_X + 1.0, 350), Vector2(120, 0))
 		missed_session.update(0.01)
 	_assert(missed_session.state == GameSessionScript.STATE_GAME_OVER, "losing with zero spare balls enters game over")
 	_assert(missed_session.visible_lives() == 0, "game over display clamps spare balls at zero")
 	_assert(missed_session.active_ball_count() == 0, "game over hides active balls")
+	var missed_audio_events: Array[String] = missed_session.pop_audio_events()
+	_assert(missed_audio_events.has(GameSessionScript.SFX_EVENT_GAME_OVER), "final miss queues game-over SFX event")
 
 	var brick_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	brick_session.force_ball(PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2), Vector2(-80, 0))
@@ -374,6 +380,9 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(brick_session.board_state.tile_at(0, 0) == 0, "ball hit clears brick through board state")
 	_assert(brick_session.consume_board_changed(), "brick hit marks board for redraw")
 	_assert(brick_session.score == GameSessionScript.BRICK_SCORE, "brick hit awards original score increment")
+	var brick_audio_events: Array[String] = brick_session.pop_audio_events()
+	_assert(brick_audio_events.has(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "brick clear queues IDA-backed SFX event")
+	_assert(brick_audio_events.has(GameSessionScript.SFX_EVENT_LEVEL_COMPLETE), "final brick clear queues level-complete SFX event")
 	for catchup_index in range(6):
 		brick_session.update(0.0)
 	_assert(brick_session.displayed_score == GameSessionScript.BRICK_SCORE, "displayed score catches up gradually")
@@ -386,10 +395,14 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(chain_session.board_state.tile_at(1, 0) == 68, "chain tile hit leaves neighbor pending")
 	_assert(chain_session.board_state.pending_chain_explosion_count() == 1, "chain tile hit schedules delayed neighbor")
 	_assert(chain_session.score == GameSessionScript.BRICK_SCORE, "chain hit scores immediate cleared tile")
+	_assert(chain_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION], "chain tile hit queues chain-explosion SFX event")
 	chain_session.update(0.031)
 	_assert(chain_session.board_state.tile_at(1, 0) == 0, "delayed chain explosion clears neighbor")
 	_assert(chain_session.score == GameSessionScript.BRICK_SCORE * 2, "delayed chain explosion awards score")
 	_assert(chain_session.state == GameSessionScript.STATE_LEVEL_COMPLETE, "chain explosion can complete level")
+	var delayed_chain_audio_events: Array[String] = chain_session.pop_audio_events()
+	_assert(delayed_chain_audio_events.has(GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION), "delayed chain clear queues chain-explosion SFX event")
+	_assert(delayed_chain_audio_events.has(GameSessionScript.SFX_EVENT_LEVEL_COMPLETE), "delayed chain clear queues level-complete SFX event")
 
 	var bonus_life_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	bonus_life_session.award_score(GameSessionScript.EXTRA_LIFE_SCORE_STEP - GameSessionScript.BRICK_SCORE)
@@ -421,6 +434,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	if spawned_bonuses.size() == 1:
 		_assert(int(spawned_bonuses[0]["type_id"]) == 0, "spawned bonus keeps selected original type")
 		_assert(spawned_bonuses[0]["position"] == PlayfieldSpecScript.GRID_ORIGIN, "spawned bonus starts at source brick position")
+	_assert(bonus_spawn_session.pop_audio_events().has(GameSessionScript.SFX_EVENT_BONUS_SPAWN), "bonus spawn queues semantic SFX event")
 
 	var moving_bonus_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	var moving_bonuses: Array[Dictionary] = [{
@@ -459,6 +473,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(collect_session.visible_falling_bonuses().is_empty(), "racket collects overlapping falling bonus")
 	_assert(collect_session.bonus_stack_entries().size() == 1, "collected bonus enters stack")
 	_assert(int(collect_session.bonus_stack_entries()[0]["type_id"]) == 2, "stack preserves collected bonus type")
+	_assert(collect_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BONUS_COLLECT], "bonus collection queues semantic SFX event")
 
 	var full_stack_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	full_stack_session.move_racket_to(220.0)
@@ -522,6 +537,9 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(one_shot_session.active_projectile_count() == 1, "one-shot shooting bonus spawns one projectile")
 	_assert(not one_shot_session.is_shooting_paddle_active(), "one-shot shooting bonus does not leave continuous shooting armed")
 	_assert(one_shot_session.bonus_stack_entries().is_empty(), "one-shot shooting bonus consumes first stack entry")
+	var one_shot_audio_events: Array[String] = one_shot_session.pop_audio_events()
+	_assert(one_shot_audio_events.has(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "one-shot shooting queues projectile-fire SFX event")
+	_assert(one_shot_audio_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "one-shot shooting queues bonus-apply SFX event")
 	var one_shot_projectiles: Array = one_shot_session.visible_projectiles()
 	if one_shot_projectiles.size() == 1:
 		_assert(
@@ -544,6 +562,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(continuous_shooting_session.active_projectile_count() == 1, "continuous shooting waits for original cooldown")
 	continuous_shooting_session.update(0.01)
 	_assert(continuous_shooting_session.active_projectile_count() == 2, "continuous shooting fires after original cooldown")
+	_assert(continuous_shooting_session.pop_audio_events().has(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "continuous shooting queues projectile-fire SFX event after cooldown")
 	for shot_index in range(20):
 		continuous_shooting_session.update(GameSessionScript.PROJECTILE_FIRE_COOLDOWN_SECONDS)
 	_assert(continuous_shooting_session.active_projectile_count() == GameSessionScript.MAX_PROJECTILES, "continuous shooting caps active projectiles")
@@ -559,6 +578,9 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(projectile_hit_session.consume_board_changed(), "projectile hit marks board for redraw")
 	_assert(projectile_hit_session.score == GameSessionScript.BRICK_SCORE, "projectile hit awards brick score")
 	_assert(projectile_hit_session.active_projectile_count() == 0, "continuous projectile deactivates after brick hit")
+	var projectile_hit_audio_events: Array[String] = projectile_hit_session.pop_audio_events()
+	_assert(projectile_hit_audio_events.has(GameSessionScript.SFX_EVENT_PROJECTILE_HIT), "projectile brick hit queues projectile-hit SFX event")
+	_assert(projectile_hit_audio_events.has(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "projectile brick hit queues brick-clear SFX event")
 
 	var projectile_expire_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	var expiring_projectiles: Array[Dictionary] = [_projectile(
@@ -578,6 +600,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	if spawned_monsters.size() == 1:
 		_assert(int(spawned_monsters[0]["type_id"]) == 3, "first spawned monster uses original type-cycle entry")
 		_assert(monster_spawn_session.monster_rect(spawned_monsters[0]).size == GameSessionScript.MONSTER_COLLISION_SIZE, "monster collision rect uses original 26px box")
+	_assert(monster_spawn_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_SPAWN], "monster spawn queues semantic SFX event")
 	monster_spawn_session.force_monster_spawn_ready()
 	monster_spawn_session.update(0.0)
 	spawned_monsters = monster_spawn_session.visible_monsters()
@@ -611,6 +634,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	monster_ball_hit_session.update(0.0)
 	_assert(monster_ball_hit_session.active_monster_count() == 0, "ball collision removes active monster")
 	_assert(monster_ball_hit_session.score == GameSessionScript.MONSTER_SCORE, "ball collision awards original default monster score")
+	_assert(monster_ball_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_HIT], "monster collision queues monster-hit SFX event")
 
 	var monster_projectile_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	monster_projectile_hit_session.force_monster(Vector2(200, 200), 3, 0)
@@ -623,6 +647,9 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(monster_projectile_hit_session.active_monster_count() == 0, "projectile collision removes active monster")
 	_assert(monster_projectile_hit_session.active_projectile_count() == 0, "projectile is consumed by monster collision")
 	_assert(monster_projectile_hit_session.score == GameSessionScript.MONSTER_SCORE, "projectile collision awards original default monster score")
+	var monster_projectile_audio_events: Array[String] = monster_projectile_hit_session.pop_audio_events()
+	_assert(monster_projectile_audio_events.has(GameSessionScript.SFX_EVENT_PROJECTILE_HIT), "projectile monster hit queues projectile-hit SFX event")
+	_assert(monster_projectile_audio_events.has(GameSessionScript.SFX_EVENT_MONSTER_HIT), "projectile monster hit queues monster-hit SFX event")
 
 	var add_ball_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(add_ball_session, GameSessionScript.BONUS_ADD_STANDARD_BALL)
@@ -631,6 +658,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(add_ball_result["effect"] == "add_standard_ball", "standard-ball bonus reports effect")
 	_assert(add_ball_session.active_ball_count() == 2, "standard-ball bonus adds an active ball")
 	_assert(add_ball_session.bonus_stack_entries().is_empty(), "applied bonus consumes first stack entry")
+	_assert(add_ball_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BONUS_APPLY], "applied non-projectile bonus queues bonus-apply SFX event")
 
 	var stack_shift_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(stack_shift_session, GameSessionScript.BONUS_EXTRA_LIFE)
@@ -702,6 +730,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	back_wall_session.update(0.01)
 	_assert(back_wall_session.state == GameSessionScript.STATE_PLAYING, "back wall prevents right-side ball loss")
 	_assert(back_wall_session.first_ball_velocity().x < 0.0, "back wall reflects missed ball")
+	_assert(back_wall_session.pop_audio_events().has(GameSessionScript.SFX_EVENT_BACK_WALL_BOUNCE), "back wall reflection queues semantic SFX event")
 	back_wall_session.force_ball(Vector2(300, 200), Vector2.ZERO)
 	back_wall_session.update(GameSessionScript.BACK_WALL_DURATION_SECONDS)
 	_assert(not back_wall_session.is_back_wall_active(), "back wall expires after original duration")
@@ -714,6 +743,9 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_stack_bonus(jump_level_session, GameSessionScript.BONUS_JUMP_TO_NEXT_LEVEL)
 	jump_level_session.activate_next_bonus()
 	_assert(jump_level_session.state == GameSessionScript.STATE_LEVEL_COMPLETE, "jump-level bonus routes through level-complete state")
+	var jump_level_audio_events: Array[String] = jump_level_session.pop_audio_events()
+	_assert(jump_level_audio_events.has(GameSessionScript.SFX_EVENT_LEVEL_COMPLETE), "jump-level bonus queues level-complete SFX event")
+	_assert(jump_level_audio_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "jump-level bonus queues bonus-apply SFX event")
 
 
 func _validate_brick_atlas_mapping() -> void:
@@ -884,6 +916,16 @@ func _validate_audio_cue_catalog() -> void:
 	_assert(AudioCueCatalogScript.music_name_for_context("missing_context") == "", "audio cue catalog rejects unknown contexts")
 	var contexts: Array[String] = AudioCueCatalogScript.known_contexts()
 	_assert(contexts == ["credits", "episode_select", "gameplay", "high_score", "main_menu", "name_entry", "options", "rules"], "audio cue catalog exposes sorted known contexts")
+	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "audio cue catalog recognizes brick-clear gameplay SFX event")
+	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "audio cue catalog recognizes unmapped projectile-fire gameplay SFX event")
+	_assert(not AudioCueCatalogScript.has_sfx_event("missing_sfx_event"), "audio cue catalog rejects unknown SFX events")
+	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BRICK_CLEAR) == "eff23", "audio cue catalog maps direct brick clear to IDA-backed eff23")
+	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION) == "eff10", "audio cue catalog maps board clear helper to IDA-backed eff10")
+	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE) == "", "audio cue catalog leaves unproven projectile fire silent")
+	_assert(AudioCueCatalogScript.sfx_name_for_event("missing_sfx_event") == "", "audio cue catalog leaves unknown SFX events silent")
+	var sfx_events: Array[String] = AudioCueCatalogScript.known_sfx_events()
+	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "audio cue catalog exposes bonus-apply event in known event list")
+	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_GAME_OVER), "audio cue catalog exposes game-over event in known event list")
 
 
 func _validate_audio_service() -> void:
@@ -896,6 +938,9 @@ func _validate_audio_service() -> void:
 	_assert(_audio.has_method("play_music_context"), "audio service exposes music-context playback")
 	_assert(_audio.has_method("music_name_for_context"), "audio service exposes music context lookup")
 	_assert(_audio.has_method("play_sfx"), "audio service exposes SFX playback")
+	_assert(_audio.has_method("play_sfx_event"), "audio service exposes semantic SFX event playback")
+	_assert(_audio.has_method("sfx_name_for_event"), "audio service exposes SFX event lookup")
+	_assert(_audio.has_method("has_sfx_event"), "audio service exposes known SFX event lookup")
 	_assert(bool(_audio.call("music_stream_exists", "theme1")), "audio service resolves extracted music track")
 	_assert(bool(_audio.call("music_stream_exists", "theme2")), "audio service resolves high-score music track")
 	_assert(bool(_audio.call("music_stream_exists", "theme5")), "audio service resolves credits music track")
@@ -912,6 +957,10 @@ func _validate_audio_service() -> void:
 	_assert(String(_audio.call("music_name_for_context", AudioCueCatalogScript.CONTEXT_GAMEPLAY)) == "theme4", "audio service maps gameplay music context")
 	_assert(String(_audio.call("music_name_for_context", AudioCueCatalogScript.CONTEXT_NAME_ENTRY)) == "theme3", "audio service maps name-entry music context")
 	_assert(String(_audio.call("music_name_for_context", "missing_context")) == "", "audio service rejects unknown music context")
+	_assert(bool(_audio.call("has_sfx_event", GameSessionScript.SFX_EVENT_BRICK_CLEAR)), "audio service recognizes brick-clear SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BRICK_CLEAR)) == "eff23", "audio service maps brick-clear SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION)) == "eff10", "audio service maps chain-explosion SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_PROJECTILE_FIRE)) == "", "audio service leaves unproven gameplay SFX event unmapped")
 
 	_audio.call("set_music_enabled", true)
 	_audio.call("set_music_volume", 50)

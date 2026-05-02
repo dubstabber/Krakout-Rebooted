@@ -110,6 +110,21 @@ func play_sfx(name: String) -> bool:
 	return true
 
 
+func play_sfx_event(event_name: String) -> bool:
+	var sfx_name := sfx_name_for_event(event_name)
+	if sfx_name.is_empty():
+		return false
+	return play_sfx(sfx_name)
+
+
+func sfx_name_for_event(event_name: String) -> String:
+	return AudioCueCatalogScript.sfx_name_for_event(event_name)
+
+
+func has_sfx_event(event_name: String) -> bool:
+	return AudioCueCatalogScript.has_sfx_event(event_name)
+
+
 func apply_profile_settings() -> void:
 	_load_profile_settings()
 	_apply_volume_settings()

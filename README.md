@@ -91,6 +91,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   credits uses `theme5`, episode select uses `theme1`, gameplay uses `theme4`,
   and name entry uses `theme3`. Numbered `effNN.wav` effects remain unmapped to
   gameplay events until runtime or IDA evidence proves their meaning.
+- Gameplay now queues semantic SFX events from the session and drains them
+  through `KrakoutAudio` in the Godot scene layer. The first proven mappings are
+  direct brick clear to `eff23` and board-cell chain/explosion clear to `eff10`;
+  unproven events remain named but silent.
 
 ## Validation
 

@@ -161,6 +161,21 @@ const BONUS_DISPLAY_INCREMENT_IDS := {
 	20: true,
 	21: true,
 }
+const SFX_EVENT_BALL_LAUNCH := "ball_launch"
+const SFX_EVENT_RACKET_BOUNCE := "racket_bounce"
+const SFX_EVENT_BACK_WALL_BOUNCE := "back_wall_bounce"
+const SFX_EVENT_BRICK_CLEAR := "brick_clear"
+const SFX_EVENT_CHAIN_EXPLOSION := "chain_explosion"
+const SFX_EVENT_BONUS_SPAWN := "bonus_spawn"
+const SFX_EVENT_BONUS_COLLECT := "bonus_collect"
+const SFX_EVENT_BONUS_APPLY := "bonus_apply"
+const SFX_EVENT_PROJECTILE_FIRE := "projectile_fire"
+const SFX_EVENT_PROJECTILE_HIT := "projectile_hit"
+const SFX_EVENT_MONSTER_SPAWN := "monster_spawn"
+const SFX_EVENT_MONSTER_HIT := "monster_hit"
+const SFX_EVENT_LIFE_LOST := "life_lost"
+const SFX_EVENT_LEVEL_COMPLETE := "level_complete"
+const SFX_EVENT_GAME_OVER := "game_over"
 
 var board_state
 var state := STATE_READY
@@ -193,6 +208,7 @@ var _projectile_fire_cooldown := 0.0
 var _shooting_paddle_mode := PROJECTILE_MODE_DISABLED
 var _monster_spawn_cooldown := MONSTER_SPAWN_INTERVAL_SECONDS
 var _monster_type_cycle_index := 0
+var _audio_events: Array[String] = []
 
 
 func _init() -> void:
@@ -207,6 +223,7 @@ func load_level(level: KrakoutLevelData) -> void:
 
 
 func start_run(level: KrakoutLevelData, selected_display_level_number: int = 1, starting_best_score: int = 0) -> void:
+	_audio_events.clear()
 	score = 0
 	displayed_score = 0
 	best_score = max(0, starting_best_score)
@@ -231,6 +248,7 @@ func advance_to_level(level: KrakoutLevelData, next_display_level_number: int) -
 
 
 func set_board_state(state_value) -> void:
+	_audio_events.clear()
 	board_state = state_value
 	_load_bonus_stock_from_level(board_state.source_level if board_state != null else null)
 	falling_bonuses.clear()
@@ -291,6 +309,7 @@ func launch_ready_ball() -> bool:
 	ball["velocity"] = _velocity_for_current_speed(DEFAULT_BALL_VELOCITY)
 	balls[0] = ball
 	state = STATE_PLAYING
+	_queue_audio_event(SFX_EVENT_BALL_LAUNCH)
 	return true
 
 
@@ -305,9 +324,10 @@ func update(delta: float) -> void:
 		if chain_cleared_count > 0:
 			board_changed = true
 			award_score(chain_cleared_count * BRICK_SCORE)
+			_queue_audio_event(SFX_EVENT_CHAIN_EXPLOSION)
 
 	if board_state != null and board_state.is_complete():
-		state = STATE_LEVEL_COMPLETE
+		_mark_level_complete()
 		return
 
 	if state == STATE_GAME_OVER:
@@ -321,7 +341,7 @@ func update(delta: float) -> void:
 	_update_monsters(delta)
 	_update_projectiles(delta)
 	if board_state != null and board_state.is_complete():
-		state = STATE_LEVEL_COMPLETE
+		_mark_level_complete()
 		return
 	_update_projectile_fire(delta)
 
@@ -337,7 +357,7 @@ func update(delta: float) -> void:
 			active_count += 1
 
 	if board_state != null and board_state.is_complete():
-		state = STATE_LEVEL_COMPLETE
+		_mark_level_complete()
 	elif active_count <= 0:
 		_handle_round_lost()
 
@@ -405,6 +425,14 @@ func is_shooting_paddle_active() -> bool:
 	return _shooting_paddle_mode == PROJECTILE_MODE_CONTINUOUS
 
 
+func pop_audio_events() -> Array[String]:
+	var events: Array[String] = []
+	for event_name: String in _audio_events:
+		events.append(event_name)
+	_audio_events.clear()
+	return events
+
+
 func activate_next_bonus() -> Dictionary:
 	if bonus_stack.is_empty():
 		return {"status": "empty"}
@@ -425,6 +453,7 @@ func activate_next_bonus() -> Dictionary:
 	result["status"] = "applied"
 	result["type_id"] = type_id
 	result["name"] = bonus_type_name(type_id)
+	_queue_audio_event(SFX_EVENT_BONUS_APPLY)
 	return result
 
 
@@ -608,6 +637,7 @@ func _collide_with_racket(ball: Dictionary) -> bool:
 
 	ball["position"] = rect.position
 	ball["velocity"] = velocity
+	_queue_audio_event(SFX_EVENT_RACKET_BOUNCE)
 	return true
 
 
@@ -627,6 +657,7 @@ func _collide_with_back_wall(ball: Dictionary) -> bool:
 	velocity.x = -absf(velocity.x)
 	ball["position"] = rect.position
 	ball["velocity"] = velocity
+	_queue_audio_event(SFX_EVENT_BACK_WALL_BOUNCE)
 	return true
 
 
@@ -652,17 +683,22 @@ func _collide_with_board(ball: Dictionary, previous_position: Vector2) -> bool:
 func _resolve_board_tile_hit(column: int, row: int, tile_id: int) -> Dictionary:
 	var cleared_count := 0
 	var did_change_board := false
+	var audio_event := ""
 	if BrickSemanticsScript.is_chain_explosion_tile(tile_id):
 		cleared_count = board_state.explode_at(column, row)
 		did_change_board = cleared_count > 0
+		if cleared_count > 0:
+			audio_event = SFX_EVENT_CHAIN_EXPLOSION
 	else:
 		var regular_hit_result := _resolve_regular_brick_hit(column, row, tile_id)
 		cleared_count = int(regular_hit_result.get("cleared_count", 0))
 		did_change_board = bool(regular_hit_result.get("changed", false))
+		audio_event = String(regular_hit_result.get("audio_event", ""))
 
 	return {
 		"changed": did_change_board,
 		"cleared_count": cleared_count,
+		"audio_event": audio_event,
 	}
 
 
@@ -673,6 +709,9 @@ func _apply_board_hit_result(hit_result: Dictionary) -> void:
 		board_changed = true
 	if cleared_count > 0:
 		award_score(cleared_count * BRICK_SCORE)
+	var audio_event := String(hit_result.get("audio_event", ""))
+	if not audio_event.is_empty():
+		_queue_audio_event(audio_event)
 
 
 func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictionary:
@@ -689,14 +728,16 @@ func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictiona
 		cleared_count = 1
 
 	if action == "spawn":
-		_spawn_falling_bonus(
+		if _spawn_falling_bonus(
 			int(bonus_result.get("type_id", 0)),
 			PlayfieldSpecScript.brick_rect(column, row).position
-		)
+		):
+			_queue_audio_event(SFX_EVENT_BONUS_SPAWN)
 
 	return {
 		"changed": cleared_count > 0,
 		"cleared_count": cleared_count,
+		"audio_event": SFX_EVENT_BRICK_CLEAR if cleared_count > 0 else "",
 	}
 
 
@@ -854,6 +895,7 @@ func _update_falling_bonuses(delta: float) -> void:
 		_advance_falling_bonus(bonus, delta)
 		if bonus_rect(bonus).intersects(racket_rect()) and _push_bonus_stack(int(bonus.get("type_id", 0))):
 			bonus["active"] = false
+			_queue_audio_event(SFX_EVENT_BONUS_COLLECT)
 
 		falling_bonuses[index] = bonus
 
@@ -911,6 +953,7 @@ func _spawn_projectile(projectile_type: int) -> bool:
 		"trail_frame": 0,
 		"trail_frame_elapsed": 0.0,
 	})
+	_queue_audio_event(SFX_EVENT_PROJECTILE_FIRE)
 	return true
 
 
@@ -976,6 +1019,7 @@ func _collide_projectile_with_board(projectile: Dictionary) -> bool:
 		int(hit["tile_id"])
 	)
 	_apply_board_hit_result(hit_result)
+	_queue_audio_event(SFX_EVENT_PROJECTILE_HIT)
 	return true
 
 
@@ -1021,6 +1065,7 @@ func _spawn_next_monster() -> bool:
 		angle = 150 + _monster_rng.next_mod(60)
 
 	monsters.append(_new_monster(position, type_id, angle))
+	_queue_audio_event(SFX_EVENT_MONSTER_SPAWN)
 	return true
 
 
@@ -1131,6 +1176,7 @@ func _collide_projectile_with_monsters(projectile: Dictionary) -> bool:
 			continue
 		if rect.intersects(monster_rect(monster)):
 			_kill_monster_at_index(index)
+			_queue_audio_event(SFX_EVENT_PROJECTILE_HIT)
 			return true
 	return false
 
@@ -1142,6 +1188,7 @@ func _kill_monster_at_index(index: int) -> void:
 	monster["active"] = false
 	monsters[index] = monster
 	award_score(_score_for_monster(monster))
+	_queue_audio_event(SFX_EVENT_MONSTER_HIT)
 
 
 func _score_for_monster(monster: Dictionary) -> int:
@@ -1253,7 +1300,7 @@ func _apply_bonus_effect(type_id: int) -> Dictionary:
 		BONUS_DESTROY_ONE_BALL:
 			return {"effect": "destroy_one_ball", "applied": _destroy_one_active_ball()}
 		BONUS_JUMP_TO_NEXT_LEVEL:
-			state = STATE_LEVEL_COMPLETE
+			_mark_level_complete()
 			return {"effect": "jump_to_next_level"}
 	return {"effect": "unsupported"}
 
@@ -1345,8 +1392,10 @@ func _handle_round_lost() -> void:
 		balls.clear()
 		falling_bonuses.clear()
 		_clear_timed_bonus_state()
+		_queue_audio_event(SFX_EVENT_GAME_OVER)
 		return
 
+	_queue_audio_event(SFX_EVENT_LIFE_LOST)
 	reset_round()
 
 
@@ -1355,3 +1404,16 @@ func _update_displayed_score() -> void:
 		displayed_score += 10
 	elif displayed_score < score:
 		displayed_score += 1
+
+
+func _mark_level_complete() -> void:
+	if state == STATE_LEVEL_COMPLETE:
+		return
+	state = STATE_LEVEL_COMPLETE
+	_queue_audio_event(SFX_EVENT_LEVEL_COMPLETE)
+
+
+func _queue_audio_event(event_name: String) -> void:
+	if event_name.is_empty():
+		return
+	_audio_events.append(event_name)

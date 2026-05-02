@@ -67,6 +67,7 @@ func _process(delta: float) -> void:
 
 	gameplay_session.update(delta)
 	_record_best_score()
+	_play_pending_audio_events()
 	if gameplay_session.consume_board_changed() and playfield_renderer != null:
 		playfield_renderer.refresh_board()
 	_refresh_playfield_effects()
@@ -149,6 +150,7 @@ func launch_ready_ball() -> bool:
 	if gameplay_session == null:
 		return false
 	var launched: bool = gameplay_session.launch_ready_ball()
+	_play_pending_audio_events()
 	_refresh_actor_renderers()
 	_refresh_hud()
 	return launched
@@ -158,6 +160,7 @@ func activate_next_bonus() -> Dictionary:
 	if gameplay_session == null:
 		return {"status": "missing_session"}
 	var result: Dictionary = gameplay_session.activate_next_bonus()
+	_play_pending_audio_events()
 	_refresh_playfield_effects()
 	_refresh_actor_renderers()
 	_refresh_hud()
@@ -415,6 +418,22 @@ func _refresh_playfield_effects() -> void:
 		return
 	if playfield_renderer.has_method("set_back_wall_active") and gameplay_session.has_method("is_back_wall_active"):
 		playfield_renderer.call("set_back_wall_active", gameplay_session.call("is_back_wall_active"))
+
+
+func _play_pending_audio_events() -> void:
+	if gameplay_session == null or not gameplay_session.has_method("pop_audio_events"):
+		return
+
+	var events: Array = gameplay_session.call("pop_audio_events")
+	if events.is_empty():
+		return
+
+	var audio := get_node_or_null("/root/KrakoutAudio")
+	if audio == null or not audio.has_method("play_sfx_event"):
+		return
+
+	for event_name: Variant in events:
+		audio.call("play_sfx_event", String(event_name))
 
 
 func _advance_to_next_level() -> void:
