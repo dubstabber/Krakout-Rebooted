@@ -15,6 +15,7 @@ const MonsterRendererScript := preload("res://src/render/monster_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
 
 const ACTION_LAUNCH_BALL := "krakout_launch_ball"
+const ACTION_FIRE_PADDLE := "krakout_fire_paddle"
 const ACTION_USE_BONUS := "krakout_use_bonus"
 const ACTION_TOGGLE_BONUS_STACK := "krakout_toggle_bonus_stack"
 const ACTION_TOGGLE_BALL_TRACKS := "krakout_toggle_ball_tracks"
@@ -109,6 +110,10 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif _paused:
 		return
+	elif event.is_action_pressed(ACTION_FIRE_PADDLE):
+		var fire_result: Dictionary = fire_shooting_paddle()
+		if String(fire_result.get("status", "")) != "unarmed":
+			get_viewport().set_input_as_handled()
 	elif event.is_action_pressed(ACTION_USE_BONUS):
 		var bonus_result: Dictionary = activate_next_bonus()
 		if String(bonus_result.get("status", "")) != "empty":
@@ -162,6 +167,16 @@ func activate_next_bonus() -> Dictionary:
 	var result: Dictionary = gameplay_session.activate_next_bonus()
 	_play_pending_audio_events()
 	_refresh_playfield_effects()
+	_refresh_actor_renderers()
+	_refresh_hud()
+	return result
+
+
+func fire_shooting_paddle() -> Dictionary:
+	if gameplay_session == null:
+		return {"status": "missing_session"}
+	var result: Dictionary = gameplay_session.fire_shooting_paddle()
+	_play_pending_audio_events()
 	_refresh_actor_renderers()
 	_refresh_hud()
 	return result

@@ -316,6 +316,10 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.board_state.remaining_required_bricks == 143, "game session preserves required brick count")
 	_assert(session.active_ball_count() == 1, "game session shows a ready ball")
 	_assert(session.ball_rect(session.visible_balls()[0]).size == Vector2(18, 18), "game session defaults to original standard ball size")
+	_assert(session.racket_segment_count == GameSessionScript.RACKET_DEFAULT_SEGMENTS, "game session defaults to original racket segment count")
+	_assert(session.current_racket_height() == GameSessionScript.RACKET_HEIGHT, "game session defaults to original racket height")
+	_assert(session.racket_rect().size == Vector2(GameSessionScript.RACKET_WIDTH, GameSessionScript.RACKET_HEIGHT), "game session default racket rect uses original size")
+	_assert(session.current_racket_visual_mode() == GameSessionScript.RACKET_VISUAL_MODE_NORMAL, "game session starts with original normal racket insert")
 	_assert(session.score == 0, "game session starts with zero score")
 	_assert(session.displayed_score == 0, "game session starts with zero displayed score")
 	_assert(session.lives_remaining == GameSessionScript.INITIAL_LIVES, "game session starts with original spare ball count")
@@ -534,37 +538,79 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	var one_shot_result: Dictionary = one_shot_session.activate_next_bonus()
 	_assert(one_shot_result["status"] == "applied", "one-shot shooting bonus applies")
 	_assert(one_shot_result["effect"] == "shooting_paddle_one_shot", "one-shot shooting bonus reports effect")
-	_assert(one_shot_session.active_projectile_count() == 1, "one-shot shooting bonus spawns one projectile")
+	_assert(bool(one_shot_result["armed"]), "one-shot shooting bonus arms the original launcher")
+	_assert(one_shot_session.active_projectile_count() == 0, "one-shot shooting bonus waits for explicit right-click fire")
 	_assert(not one_shot_session.is_shooting_paddle_active(), "one-shot shooting bonus does not leave continuous shooting armed")
+	_assert(one_shot_session.is_single_shot_paddle_armed(), "one-shot shooting bonus keeps one projectile armed")
+	_assert(one_shot_session.current_racket_visual_mode() == GameSessionScript.RACKET_VISUAL_MODE_SHOOTING_ONE_SHOT, "one-shot shooting bonus switches racket to original single-shot insert")
+	_assert(one_shot_session.current_racket_visual_frame() == 0, "one-shot launcher starts at first original frame")
 	_assert(one_shot_session.bonus_stack_entries().is_empty(), "one-shot shooting bonus consumes first stack entry")
 	var one_shot_audio_events: Array[String] = one_shot_session.pop_audio_events()
-	_assert(one_shot_audio_events.has(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "one-shot shooting queues projectile-fire SFX event")
+	_assert(not one_shot_audio_events.has(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "one-shot shooting activation does not queue projectile-fire SFX event")
 	_assert(one_shot_audio_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "one-shot shooting queues bonus-apply SFX event")
+	one_shot_session._monster_spawn_cooldown = 999.0
+	one_shot_session.update(GameSessionScript.RACKET_VISUAL_FRAME_SECONDS)
+	_assert(one_shot_session.current_racket_visual_frame() == 1, "one-shot launcher advances through original 50 ms frames")
+	one_shot_session.update(GameSessionScript.RACKET_VISUAL_FRAME_SECONDS * 3.0)
+	_assert(one_shot_session.current_racket_visual_frame() == GameSessionScript.RACKET_VISUAL_MAX_FRAME, "one-shot launcher reaches original final frame")
+	var one_shot_fire_result: Dictionary = one_shot_session.fire_shooting_paddle()
+	_assert(one_shot_fire_result["status"] == "fired", "right-click fire shoots armed one-shot projectile")
+	_assert(one_shot_fire_result["projectile_type"] == GameSessionScript.PROJECTILE_TYPE_STRONG, "one-shot fire uses original strong projectile")
+	_assert(one_shot_session.active_projectile_count() == 1, "right-click fire exposes one spawned projectile")
+	_assert(not one_shot_session.is_single_shot_paddle_armed(), "one-shot fire consumes the armed projectile")
 	var one_shot_projectiles: Array = one_shot_session.visible_projectiles()
+	var expected_projectile_start := Vector2(
+		GameSessionScript.RACKET_X - 20.0,
+		one_shot_session.racket_rect().position.y + floorf((GameSessionScript.RACKET_SEGMENT_PIXEL_STEP * float(one_shot_session.racket_segment_count) + 9.0) * 0.5) - 1.0
+	)
 	if one_shot_projectiles.size() == 1:
 		_assert(
-			one_shot_session.projectile_rect(one_shot_projectiles[0]) == Rect2(Vector2(550, 144), GameSessionScript.PROJECTILE_SIZE),
+			one_shot_session.projectile_rect(one_shot_projectiles[0]) == Rect2(expected_projectile_start, GameSessionScript.PROJECTILE_SIZE),
 			"one-shot projectile starts at IDA-backed paddle muzzle"
 		)
+	var one_shot_fire_audio_events: Array[String] = one_shot_session.pop_audio_events()
+	_assert(one_shot_fire_audio_events.has(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "right-click fire queues projectile-fire SFX event")
+	one_shot_session.update(GameSessionScript.RACKET_VISUAL_FRAME_SECONDS * 4.0)
+	_assert(one_shot_session.current_racket_visual_mode() == GameSessionScript.RACKET_VISUAL_MODE_NORMAL, "one-shot launcher retracts to normal insert after firing")
+	_assert(one_shot_session.current_racket_visual_frame() == 0, "one-shot launcher retracts through original frames")
 	one_shot_session.update(0.01)
 	one_shot_projectiles = one_shot_session.visible_projectiles()
 	if one_shot_projectiles.size() == 1:
-		_assert(one_shot_projectiles[0]["position"] == Vector2(545, 144), "projectile advances left by original step")
+		_assert(one_shot_projectiles[0]["position"] == expected_projectile_start + Vector2(-GameSessionScript.PROJECTILE_STEP_X * 2.0, 0), "projectile advances left by original step")
 
 	var continuous_shooting_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(continuous_shooting_session, GameSessionScript.BONUS_SHOOTING_PADDLE_CONTINUOUS)
 	var continuous_shooting_result: Dictionary = continuous_shooting_session.activate_next_bonus()
 	_assert(continuous_shooting_result["status"] == "applied", "continuous shooting bonus applies")
 	_assert(continuous_shooting_result["effect"] == "shooting_paddle_continuous", "continuous shooting bonus reports effect")
+	_assert(bool(continuous_shooting_result["armed"]), "continuous shooting bonus arms the launcher")
 	_assert(continuous_shooting_session.is_shooting_paddle_active(), "continuous shooting bonus arms shooting mode")
-	_assert(continuous_shooting_session.active_projectile_count() == 1, "continuous shooting bonus fires immediately")
-	continuous_shooting_session.update(GameSessionScript.PROJECTILE_FIRE_COOLDOWN_SECONDS - 0.01)
-	_assert(continuous_shooting_session.active_projectile_count() == 1, "continuous shooting waits for original cooldown")
-	continuous_shooting_session.update(0.01)
-	_assert(continuous_shooting_session.active_projectile_count() == 2, "continuous shooting fires after original cooldown")
-	_assert(continuous_shooting_session.pop_audio_events().has(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "continuous shooting queues projectile-fire SFX event after cooldown")
-	for shot_index in range(20):
-		continuous_shooting_session.update(GameSessionScript.PROJECTILE_FIRE_COOLDOWN_SECONDS)
+	_assert(continuous_shooting_session.current_racket_visual_mode() == GameSessionScript.RACKET_VISUAL_MODE_SHOOTING_CONTINUOUS, "continuous shooting bonus switches racket to original launcher insert")
+	_assert(continuous_shooting_session.active_projectile_count() == 0, "continuous shooting bonus waits for explicit right-click fire")
+	continuous_shooting_session._monster_spawn_cooldown = 999.0
+	var continuous_activation_audio_events: Array[String] = continuous_shooting_session.pop_audio_events()
+	_assert(not continuous_activation_audio_events.has(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "continuous shooting activation does not queue projectile-fire SFX event")
+	continuous_shooting_session.update(GameSessionScript.PROJECTILE_FIRE_COOLDOWN_SECONDS)
+	_assert(continuous_shooting_session.active_projectile_count() == 0, "continuous shooting does not auto-fire on cooldown")
+	var continuous_fire_result: Dictionary = continuous_shooting_session.fire_shooting_paddle()
+	_assert(continuous_fire_result["status"] == "fired", "right-click fire shoots continuous projectile")
+	_assert(continuous_fire_result["projectile_type"] == GameSessionScript.PROJECTILE_TYPE_CONTINUOUS, "continuous fire uses original continuous projectile")
+	_assert(continuous_shooting_session.active_projectile_count() == 1, "continuous right-click fire spawns one projectile")
+	var continuous_cooldown_result: Dictionary = continuous_shooting_session.fire_shooting_paddle()
+	_assert(continuous_cooldown_result["status"] == "cooldown", "continuous right-click fire respects original cooldown")
+	continuous_shooting_session.update(GameSessionScript.PROJECTILE_FIRE_COOLDOWN_SECONDS)
+	var continuous_second_fire_result: Dictionary = continuous_shooting_session.fire_shooting_paddle()
+	_assert(continuous_second_fire_result["status"] == "fired", "continuous right-click fire works again after cooldown")
+	_assert(continuous_shooting_session.active_projectile_count() == 2, "continuous right-click fire creates a second projectile after cooldown")
+	_assert(continuous_shooting_session.pop_audio_events().has(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "continuous shooting queues projectile-fire SFX event on explicit fire")
+	continuous_shooting_session.projectiles.clear()
+	for shot_index in range(GameSessionScript.MAX_PROJECTILES):
+		continuous_shooting_session.projectiles.append(_projectile(
+			GameSessionScript.PROJECTILE_TYPE_CONTINUOUS,
+			Vector2(500 - shot_index, 30)
+		))
+	continuous_shooting_session._projectile_fire_cooldown = 0.0
+	continuous_shooting_session.fire_shooting_paddle()
 	_assert(continuous_shooting_session.active_projectile_count() == GameSessionScript.MAX_PROJECTILES, "continuous shooting caps active projectiles")
 
 	var projectile_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
@@ -693,10 +739,20 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_stack_bonus(racket_size_session, GameSessionScript.BONUS_EXPAND_PADDLE)
 	racket_size_session.activate_next_bonus()
 	_assert(racket_size_session.racket_segment_count == GameSessionScript.RACKET_DEFAULT_SEGMENTS + GameSessionScript.RACKET_BONUS_STEP_SEGMENTS, "expand-paddle bonus uses original segment step")
-	_assert(racket_size_session.current_racket_height() == 179.0, "expand-paddle bonus updates racket height from segment count")
+	_assert(racket_size_session.current_racket_height() == 89.0, "expand-paddle bonus updates racket height from segment count")
 	_stack_bonus(racket_size_session, GameSessionScript.BONUS_SHRINK_PADDLE)
 	racket_size_session.activate_next_bonus()
 	_assert(racket_size_session.current_racket_height() == GameSessionScript.RACKET_HEIGHT, "shrink-paddle bonus can return to default height")
+	for shrink_index in range(4):
+		_stack_bonus(racket_size_session, GameSessionScript.BONUS_SHRINK_PADDLE)
+		racket_size_session.activate_next_bonus()
+	_assert(racket_size_session.racket_segment_count == GameSessionScript.RACKET_MIN_SEGMENTS, "shrink-paddle bonus reaches original reachable minimum")
+	_assert(racket_size_session.current_racket_height() == 29.0, "minimum racket size uses original collision formula")
+	for expand_index in range(20):
+		_stack_bonus(racket_size_session, GameSessionScript.BONUS_EXPAND_PADDLE)
+		racket_size_session.activate_next_bonus()
+	_assert(racket_size_session.racket_segment_count == GameSessionScript.RACKET_MAX_SEGMENTS, "expand-paddle bonus reaches original reachable maximum")
+	_assert(racket_size_session.current_racket_height() == 209.0, "maximum racket size uses original collision formula")
 
 	var extra_life_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(extra_life_session, GameSessionScript.BONUS_EXTRA_LIFE)
@@ -776,6 +832,36 @@ func _validate_level_grid_renderer_defaults() -> void:
 	_assert(ball_renderer.source_rect_for_size(GameSessionScript.BALL_MAX_SIZE, 9) == Rect2(Vector2(397, 97), Vector2(42, 42)), "ball renderer maps largest atlas row")
 	ball_renderer.free()
 
+	var racket_regions: Array[Dictionary] = RacketRendererScript.draw_regions_for_rect(
+		Rect2(Vector2(GameSessionScript.RACKET_X, 221), Vector2(GameSessionScript.RACKET_WIDTH, GameSessionScript.RACKET_HEIGHT)),
+		GameSessionScript.RACKET_DEFAULT_SEGMENTS
+	)
+	_assert(racket_regions.size() == 4, "racket renderer composes the original base strip plus centered insert")
+	if racket_regions.size() == 4:
+		_assert(racket_regions[0]["source"] == RacketRendererScript.TOP_SOURCE_RECT, "racket renderer maps original top cap")
+		_assert(racket_regions[0]["dest"] == Rect2(Vector2(GameSessionScript.RACKET_X, 221), Vector2(16, 11)), "racket renderer draws top cap unscaled")
+		_assert(racket_regions[1]["source"] == Rect2(Vector2(0, 11), Vector2(16, 50)), "racket renderer maps default body segment range")
+		_assert(racket_regions[1]["dest"] == Rect2(Vector2(GameSessionScript.RACKET_X, 232), Vector2(16, 50)), "racket renderer draws default body without full-strip scaling")
+		_assert(racket_regions[2]["source"] == RacketRendererScript.BOTTOM_SOURCE_RECT, "racket renderer maps original bottom cap")
+		_assert(racket_regions[2]["dest"] == Rect2(Vector2(GameSessionScript.RACKET_X, 282), Vector2(16, 12)), "racket renderer draws bottom cap unscaled")
+		_assert(racket_regions[3]["source"] == RacketRendererScript.NORMAL_INSERT_SOURCE_RECT, "racket renderer maps the original normal insert")
+		_assert(racket_regions[3]["dest"] == Rect2(Vector2(GameSessionScript.RACKET_X + 1.0, 239), Vector2(31, 36)), "racket renderer centers the original normal insert")
+	var continuous_region: Dictionary = RacketRendererScript.overlay_region_for_rect(
+		Rect2(Vector2(GameSessionScript.RACKET_X, 221), Vector2(GameSessionScript.RACKET_WIDTH, GameSessionScript.RACKET_HEIGHT)),
+		GameSessionScript.RACKET_DEFAULT_SEGMENTS,
+		GameSessionScript.RACKET_VISUAL_MODE_SHOOTING_CONTINUOUS,
+		GameSessionScript.RACKET_VISUAL_MAX_FRAME
+	)
+	_assert(continuous_region["source"] == Rect2(Vector2(169, 37), Vector2(38, 36)), "racket renderer maps the original continuous launcher final frame")
+	_assert(continuous_region["dest"] == Rect2(Vector2(GameSessionScript.RACKET_X - 11.0, 239), Vector2(38, 36)), "racket renderer centers the continuous launcher insert")
+	var single_shot_region: Dictionary = RacketRendererScript.overlay_region_for_rect(
+		Rect2(Vector2(GameSessionScript.RACKET_X, 221), Vector2(GameSessionScript.RACKET_WIDTH, GameSessionScript.RACKET_HEIGHT)),
+		GameSessionScript.RACKET_DEFAULT_SEGMENTS,
+		GameSessionScript.RACKET_VISUAL_MODE_SHOOTING_ONE_SHOT,
+		GameSessionScript.RACKET_VISUAL_MAX_FRAME
+	)
+	_assert(single_shot_region["source"] == Rect2(Vector2(169, 74), Vector2(38, 36)), "racket renderer maps the original single-shot launcher final frame")
+
 	var monster_renderer = MonsterRendererScript.new()
 	_assert(monster_renderer.source_rect_for_monster(3, 0) == Rect2(Vector2(96, 0), Vector2(32, 32)), "monster renderer maps original type 3 frame")
 	_assert(monster_renderer.source_rect_for_monster(10, 7) == Rect2(Vector2(320, 224), Vector2(32, 32)), "monster renderer maps original type 10 animation row")
@@ -792,6 +878,7 @@ func _validate_project_presentation_settings() -> void:
 func _validate_project_input_map() -> void:
 	var expected_actions: Array[String] = [
 		GameScreenScript.ACTION_LAUNCH_BALL,
+		GameScreenScript.ACTION_FIRE_PADDLE,
 		GameScreenScript.ACTION_USE_BONUS,
 		GameScreenScript.ACTION_TOGGLE_BONUS_STACK,
 		GameScreenScript.ACTION_TOGGLE_BALL_TRACKS,
@@ -803,6 +890,7 @@ func _validate_project_input_map() -> void:
 		_assert(InputMap.has_action(action_name), "project input action exists: %s" % action_name)
 
 	_assert(_action_has_mouse_button(GameScreenScript.ACTION_LAUNCH_BALL, MOUSE_BUTTON_LEFT), "launch action binds left mouse button")
+	_assert(_action_has_mouse_button(GameScreenScript.ACTION_FIRE_PADDLE, MOUSE_BUTTON_RIGHT), "shooting-paddle action binds right mouse button")
 	_assert(_action_has_key(GameScreenScript.ACTION_USE_BONUS, KEY_SPACE), "use-bonus action binds Space")
 	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_BONUS_STACK, KEY_TAB), "bonus-stack action binds Tab")
 	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_BALL_TRACKS, KEY_T, true), "ball-tracks action binds Ctrl+T")
@@ -1504,7 +1592,10 @@ func _validate_menu_and_game_scenes() -> void:
 			var shooting_result: Dictionary = game.call("activate_next_bonus")
 			await process_frame
 			_assert(shooting_result["effect"] == "shooting_paddle_one_shot", "game screen routes shooting bonus activation")
-			_assert(gameplay.active_projectile_count() == 1, "game screen exposes spawned projectile")
+			_assert(gameplay.active_projectile_count() == 0, "game screen leaves shooting bonus armed until right-click fire")
+			game.call("_input", _action_event(GameScreenScript.ACTION_FIRE_PADDLE))
+			await process_frame
+			_assert(gameplay.active_projectile_count() == 1, "game screen routes right-click shooting-paddle fire")
 			if hud != null:
 				gameplay.state = GameSessionScript.STATE_GAME_OVER
 				gameplay.lives_remaining = -1

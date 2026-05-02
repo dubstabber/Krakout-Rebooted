@@ -18,12 +18,14 @@ const BRICK_SCORE := 15
 const EXTRA_LIFE_SCORE_STEP := 20000
 const RACKET_X := 570.0
 const RACKET_WIDTH := 16.0
-const RACKET_HEIGHT := 164.0
+const RACKET_HEIGHT := 74.0
 const RACKET_SEGMENT_PIXEL_STEP := 5.0
-const RACKET_SEGMENT_MARGIN := 9.0
-const RACKET_DEFAULT_SEGMENTS := 31
-const RACKET_MIN_SEGMENTS := 3
-const RACKET_MAX_SEGMENTS := 36
+const RACKET_SEGMENT_MARGIN := 24.0
+const RACKET_DEFAULT_SEGMENTS := 10
+const RACKET_MIN_SEGMENTS := 1
+const RACKET_SHRINK_LIMIT_SEGMENTS := 3
+const RACKET_EXPAND_LIMIT_SEGMENTS := 36
+const RACKET_MAX_SEGMENTS := 37
 const RACKET_BONUS_STEP_SEGMENTS := 3
 const RACKET_MIN_Y := PlayfieldSpecScript.WALL_INNER_TOP_Y
 const RACKET_MAX_BOTTOM := PlayfieldSpecScript.WALL_INNER_BOTTOM_Y
@@ -74,6 +76,11 @@ const PROJECTILE_TYPE_STRONG := 0
 const PROJECTILE_TYPE_CONTINUOUS := 1
 const PROJECTILE_MODE_DISABLED := 0
 const PROJECTILE_MODE_CONTINUOUS := 1
+const RACKET_VISUAL_MODE_NORMAL := 0
+const RACKET_VISUAL_MODE_SHOOTING_CONTINUOUS := 1
+const RACKET_VISUAL_MODE_SHOOTING_ONE_SHOT := 2
+const RACKET_VISUAL_FRAME_SECONDS := 0.05
+const RACKET_VISUAL_MAX_FRAME := 4
 const MAX_MONSTERS := 5
 const MONSTER_TYPE_CYCLE := [3, 6, 10]
 const MONSTER_SIZE := Vector2(32, 32)
@@ -206,6 +213,11 @@ var _bonus_drop_cooldown := BONUS_DROP_GATE_SECONDS
 var _bonus_pointer_elapsed := 0.0
 var _projectile_fire_cooldown := 0.0
 var _shooting_paddle_mode := PROJECTILE_MODE_DISABLED
+var racket_visual_mode := RACKET_VISUAL_MODE_NORMAL
+var racket_visual_frame := 0
+var _racket_visual_target_mode := RACKET_VISUAL_MODE_NORMAL
+var _racket_visual_elapsed := 0.0
+var _single_shot_projectile_armed := false
 var _monster_spawn_cooldown := MONSTER_SPAWN_INTERVAL_SECONDS
 var _monster_type_cycle_index := 0
 var _audio_events: Array[String] = []
@@ -317,6 +329,7 @@ func update(delta: float) -> void:
 	board_changed = false
 	_update_displayed_score()
 	_update_bonus_timers(delta)
+	_update_racket_visual(delta)
 	_update_bonus_stack(delta)
 
 	if board_state != null:
@@ -423,6 +436,41 @@ func is_back_wall_active() -> bool:
 
 func is_shooting_paddle_active() -> bool:
 	return _shooting_paddle_mode == PROJECTILE_MODE_CONTINUOUS
+
+
+func is_single_shot_paddle_armed() -> bool:
+	return _single_shot_projectile_armed
+
+
+func current_racket_visual_mode() -> int:
+	return racket_visual_mode
+
+
+func current_racket_visual_frame() -> int:
+	return racket_visual_frame
+
+
+func fire_shooting_paddle() -> Dictionary:
+	if state != STATE_PLAYING:
+		return {"status": "inactive"}
+	var projectile_type := -1
+	if _shooting_paddle_mode == PROJECTILE_MODE_CONTINUOUS:
+		projectile_type = PROJECTILE_TYPE_CONTINUOUS
+	elif _single_shot_projectile_armed:
+		projectile_type = PROJECTILE_TYPE_STRONG
+	else:
+		return {"status": "unarmed"}
+
+	if _projectile_fire_cooldown > 0.0:
+		return {"status": "cooldown", "remaining": _projectile_fire_cooldown, "projectile_type": projectile_type}
+
+	if _spawn_projectile(projectile_type):
+		if projectile_type == PROJECTILE_TYPE_STRONG:
+			_single_shot_projectile_armed = false
+			_set_racket_visual_target(RACKET_VISUAL_MODE_NORMAL)
+		_projectile_fire_cooldown = PROJECTILE_FIRE_COOLDOWN_SECONDS
+		return {"status": "fired", "projectile_type": projectile_type}
+	return {"status": "blocked", "projectile_type": projectile_type}
 
 
 func pop_audio_events() -> Array[String]:
@@ -860,6 +908,11 @@ func _clear_timed_bonus_state() -> void:
 	back_wall_time_remaining = 0.0
 	projectiles.clear()
 	_shooting_paddle_mode = PROJECTILE_MODE_DISABLED
+	_single_shot_projectile_armed = false
+	racket_visual_mode = RACKET_VISUAL_MODE_NORMAL
+	racket_visual_frame = 0
+	_racket_visual_target_mode = RACKET_VISUAL_MODE_NORMAL
+	_racket_visual_elapsed = 0.0
 	_projectile_fire_cooldown = 0.0
 
 
@@ -868,6 +921,30 @@ func _update_bonus_timers(delta: float) -> void:
 		_bonus_drop_cooldown = maxf(0.0, _bonus_drop_cooldown - delta)
 	if back_wall_time_remaining > 0.0:
 		back_wall_time_remaining = maxf(0.0, back_wall_time_remaining - delta)
+
+
+func _set_racket_visual_target(visual_mode: int) -> void:
+	_racket_visual_target_mode = visual_mode
+	if visual_mode != RACKET_VISUAL_MODE_NORMAL:
+		racket_visual_mode = visual_mode
+	elif racket_visual_frame <= 0:
+		racket_visual_mode = RACKET_VISUAL_MODE_NORMAL
+
+
+func _update_racket_visual(delta: float) -> void:
+	_racket_visual_elapsed += delta
+	while _racket_visual_elapsed >= RACKET_VISUAL_FRAME_SECONDS:
+		_racket_visual_elapsed -= RACKET_VISUAL_FRAME_SECONDS
+		if _racket_visual_target_mode == RACKET_VISUAL_MODE_NORMAL:
+			if racket_visual_frame > 0:
+				racket_visual_frame -= 1
+			if racket_visual_frame <= 0:
+				racket_visual_frame = 0
+				racket_visual_mode = RACKET_VISUAL_MODE_NORMAL
+		else:
+			racket_visual_mode = _racket_visual_target_mode
+			if racket_visual_frame < RACKET_VISUAL_MAX_FRAME:
+				racket_visual_frame += 1
 
 
 func _spawn_falling_bonus(type_id: int, position: Vector2) -> bool:
@@ -930,14 +1007,6 @@ func _update_projectile_fire(delta: float) -> void:
 		if is_zero_approx(_projectile_fire_cooldown):
 			_projectile_fire_cooldown = 0.0
 
-	if _shooting_paddle_mode != PROJECTILE_MODE_CONTINUOUS:
-		return
-	if _projectile_fire_cooldown > 0.0:
-		return
-
-	if _spawn_projectile(PROJECTILE_TYPE_CONTINUOUS):
-		_projectile_fire_cooldown = PROJECTILE_FIRE_COOLDOWN_SECONDS
-
 
 func _spawn_projectile(projectile_type: int) -> bool:
 	_compact_projectiles()
@@ -958,9 +1027,10 @@ func _spawn_projectile(projectile_type: int) -> bool:
 
 
 func _projectile_spawn_position() -> Vector2:
+	var original_muzzle_y := floorf((RACKET_SEGMENT_PIXEL_STEP * float(racket_segment_count) + 9.0) * 0.5) - 1.0
 	return Vector2(
 		RACKET_X - 20.0,
-		racket_y + current_racket_height() * 0.5 - 1.0
+		racket_y + original_muzzle_y
 	)
 
 
@@ -1332,7 +1402,12 @@ func _adjust_ball_speed(delta_speed: float) -> Dictionary:
 
 
 func _adjust_racket_segments(delta_segments: int) -> Dictionary:
-	racket_segment_count = clampi(racket_segment_count + delta_segments, RACKET_MIN_SEGMENTS, RACKET_MAX_SEGMENTS)
+	if delta_segments < 0:
+		if racket_segment_count > RACKET_SHRINK_LIMIT_SEGMENTS:
+			racket_segment_count += delta_segments
+	elif delta_segments > 0:
+		if racket_segment_count < RACKET_EXPAND_LIMIT_SEGMENTS:
+			racket_segment_count += delta_segments
 	racket_y = clampf(racket_y, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_racket_height())
 	if state == STATE_READY or state == STATE_BALL_LOST:
 		_attach_ready_balls()
@@ -1350,25 +1425,21 @@ func _activate_back_wall() -> Dictionary:
 
 func _activate_shooting_paddle_one_shot() -> Dictionary:
 	_shooting_paddle_mode = PROJECTILE_MODE_DISABLED
-	var spawned := _spawn_projectile(PROJECTILE_TYPE_STRONG)
-	if spawned:
-		_projectile_fire_cooldown = PROJECTILE_FIRE_COOLDOWN_SECONDS
+	_single_shot_projectile_armed = true
+	_set_racket_visual_target(RACKET_VISUAL_MODE_SHOOTING_ONE_SHOT)
 	return {
 		"effect": "shooting_paddle_one_shot",
-		"spawned": spawned,
+		"armed": true,
 	}
 
 
 func _activate_shooting_paddle_continuous() -> Dictionary:
 	_shooting_paddle_mode = PROJECTILE_MODE_CONTINUOUS
-	var spawned := false
-	if _projectile_fire_cooldown <= 0.0:
-		spawned = _spawn_projectile(PROJECTILE_TYPE_CONTINUOUS)
-		if spawned:
-			_projectile_fire_cooldown = PROJECTILE_FIRE_COOLDOWN_SECONDS
+	_single_shot_projectile_armed = false
+	_set_racket_visual_target(RACKET_VISUAL_MODE_SHOOTING_CONTINUOUS)
 	return {
 		"effect": "shooting_paddle_continuous",
-		"spawned": spawned,
+		"armed": true,
 	}
 
 
