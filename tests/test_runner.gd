@@ -84,7 +84,7 @@ func _run() -> void:
 	_validate_brick_atlas_mapping()
 	_validate_bitmap_text_metrics()
 	_validate_level_grid_renderer_defaults()
-	_validate_game_hud_presentation()
+	await _validate_game_hud_presentation()
 	_validate_gameplay_sheet_catalog()
 	_validate_manifest_paths()
 	await _validate_menu_and_game_scenes()
@@ -724,9 +724,11 @@ func _validate_profile_service() -> void:
 
 
 func _validate_bitmap_text_metrics() -> void:
+	var font_texture := load(_assets.texture_path("Font")) as Texture2D
+	_assert(font_texture != null, "bitmap font texture loads")
 	var font_text = BitmapTextScript.new()
 	font_text.configure(
-		load(_assets.texture_path("Font")) as Texture2D,
+		font_texture,
 		BitmapTextScript.FONT_CHARSET,
 		BitmapTextScript.FONT_CELL_SIZE,
 		BitmapTextScript.FONT_ADVANCES,
@@ -736,11 +738,15 @@ func _validate_bitmap_text_metrics() -> void:
 	_assert(font_text.measure_text("Balls Left") == 153, "bitmap font measures original Balls Left width")
 	_assert(font_text.measure_text("Level") == 84, "bitmap font measures original Level width")
 	_assert(font_text.measure_text("High Score") == 164, "bitmap font measures original High Score width")
+	_assert(font_text.measure_text("0") == 18, "bitmap font measures original header zero width")
+	_assert(font_text.measure_text("885") == 54, "bitmap font measures original header high score width")
 	_assert(font_text.bounds_for_text("Level", Vector2(320, 0), HORIZONTAL_ALIGNMENT_CENTER) == Rect2(Vector2(278, 0), Vector2(84, 24)), "bitmap font supports centered bounds")
 
+	var digit_texture := load(_assets.texture_path("Digits")) as Texture2D
+	_assert(digit_texture != null, "bitmap digit texture loads")
 	var digit_text = BitmapTextScript.new()
 	digit_text.configure(
-		load(_assets.texture_path("Digits")) as Texture2D,
+		digit_texture,
 		BitmapTextScript.DIGIT_CHARSET,
 		BitmapTextScript.DIGIT_CELL_SIZE,
 		BitmapTextScript.DIGIT_ADVANCES,
@@ -762,10 +768,11 @@ func _validate_game_hud_presentation() -> void:
 	_assert(anchors["lives_center"] == Vector2(278, 18), "game hud anchors balls-left value under original caption")
 	_assert(anchors["level_center"] == Vector2(420, 18), "game hud anchors level value under original caption")
 	_assert(anchors["best_score_right"] == Vector2(615, 18), "game hud anchors high-score value under original caption")
-	_assert(hud.digit_text_bounds(0, anchors["score_right"], HORIZONTAL_ALIGNMENT_RIGHT) == Rect2(Vector2(122, 18), Vector2(15, 20)), "game hud right-aligns score digits with original metrics")
-	_assert(hud.digit_text_bounds(3, anchors["lives_center"], HORIZONTAL_ALIGNMENT_CENTER) == Rect2(Vector2(270.5, 18), Vector2(15, 20)), "game hud centers balls-left digits with original metrics")
-	_assert(hud.digit_text_bounds(1, anchors["level_center"], HORIZONTAL_ALIGNMENT_CENTER) == Rect2(Vector2(413.5, 18), Vector2(13, 20)), "game hud centers level digits with original metrics")
-	_assert(hud.digit_text_bounds(885, anchors["best_score_right"], HORIZONTAL_ALIGNMENT_RIGHT) == Rect2(Vector2(570, 18), Vector2(45, 20)), "game hud right-aligns high-score digits with original metrics")
+	_assert(hud.header_value_text_bounds(0, anchors["score_right"], HORIZONTAL_ALIGNMENT_RIGHT) == Rect2(Vector2(119, 18), Vector2(18, 24)), "game hud right-aligns score value with original Font metrics")
+	_assert(hud.header_value_text_bounds(3, anchors["lives_center"], HORIZONTAL_ALIGNMENT_CENTER) == Rect2(Vector2(268.5, 18), Vector2(19, 24)), "game hud centers balls-left value with original Font metrics")
+	_assert(hud.header_value_text_bounds(1, anchors["level_center"], HORIZONTAL_ALIGNMENT_CENTER) == Rect2(Vector2(413, 18), Vector2(14, 24)), "game hud centers level value with original Font metrics")
+	_assert(hud.header_value_text_bounds(885, anchors["best_score_right"], HORIZONTAL_ALIGNMENT_RIGHT) == Rect2(Vector2(561, 18), Vector2(54, 24)), "game hud right-aligns high-score value with original Font metrics")
+	_assert(hud.status_digit_text_bounds(25, Vector2(576, 73), HORIZONTAL_ALIGNMENT_LEFT) == Rect2(Vector2(576, 73), Vector2(29, 20)), "game hud keeps gold digit metrics for timed status values")
 	var first_status_layout: Dictionary = hud.status_indicator_layout(0)
 	_assert(first_status_layout["icon_position"] == Vector2(543, 69), "game hud status icon starts at original x/y")
 	_assert(first_status_layout["value_position"] == Vector2(576, 73), "game hud status value starts at original x/y")
@@ -777,7 +784,18 @@ func _validate_game_hud_presentation() -> void:
 	_assert(values["lives"] == 0, "game hud defaults spare balls to zero without a session")
 	_assert(values["level"] == 1, "game hud defaults display level to one")
 	_assert(values["best_score"] == 0, "game hud defaults high score to zero")
-	hud.free()
+
+	root.add_child(hud)
+	await process_frame
+	hud.refresh()
+	var bitmap_status: Dictionary = hud.bitmap_text_status()
+	_assert(bitmap_status["statistic_texture"], "game hud loads original Statistic header strip in tree")
+	_assert(bitmap_status["digit_texture"], "game hud loads original Digits sheet in tree")
+	_assert(bitmap_status["font_texture"], "game hud loads original Font sheet for fallback text in tree")
+	_assert(bitmap_status["info_icons_texture"], "game hud loads original InfoIcons sheet in tree")
+	_assert(bitmap_status["digit_text"], "game hud binds digit renderer after texture load")
+	_assert(bitmap_status["font_text"], "game hud binds font renderer after texture load")
+	hud.queue_free()
 
 
 func _validate_gameplay_sheet_catalog() -> void:
@@ -790,9 +808,11 @@ func _validate_gameplay_sheet_catalog() -> void:
 		"Bricks",
 		"Bullets",
 		"Clock",
+		"Digits",
 		"DigitsSmall",
 		"Exploision",
 		"Fb",
+		"Font",
 		"InfoIcons",
 		"Monsters",
 		"PointToBonusInStack",
@@ -991,6 +1011,10 @@ func _validate_menu_and_game_scenes() -> void:
 				_assert(hud_values["lives"] == GameSessionScript.INITIAL_LIVES, "game hud starts with spare balls")
 				_assert(hud_values["level"] == PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER, "game hud starts with display level")
 				_assert(hud_values["best_score"] == 885, "game hud starts with persisted high score")
+				var game_hud_bitmap_status: Dictionary = hud.call("bitmap_text_status")
+				_assert(game_hud_bitmap_status["statistic_texture"], "game screen hud loads Statistic header strip")
+				_assert(game_hud_bitmap_status["font_text"], "game screen hud binds original Font renderer for header values")
+				_assert(game_hud_bitmap_status["digit_text"], "game screen hud binds original Digits renderer for timed status values")
 			gameplay.award_score(1000)
 			game.call("_process", 0.0)
 			if _profile != null and _profile.has_method("best_score"):

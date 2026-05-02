@@ -27,8 +27,10 @@ var _level_value := 1
 var _best_score_value := 0
 var _statistic_texture: Texture2D
 var _digit_texture: Texture2D
+var _font_texture: Texture2D
 var _info_icons_texture: Texture2D
 var _digit_text
+var _font_text
 
 
 func _ready() -> void:
@@ -123,15 +125,39 @@ func status_indicator_slots() -> int:
 
 
 func digit_text_bounds(value: int, anchor: Vector2, alignment: HorizontalAlignment) -> Rect2:
+	return header_value_text_bounds(value, anchor, alignment)
+
+
+func header_value_text_bounds(value: int, anchor: Vector2, alignment: HorizontalAlignment) -> Rect2:
+	_ensure_font_text()
+	if _font_text == null:
+		return Rect2(anchor, Vector2.ZERO)
+	return _font_text.bounds_for_text(str(max(0, value)), anchor, alignment)
+
+
+func status_digit_text_bounds(value: int, anchor: Vector2, alignment: HorizontalAlignment) -> Rect2:
 	_ensure_digit_text()
 	if _digit_text == null:
 		return Rect2(anchor, Vector2.ZERO)
 	return _digit_text.bounds_for_text(str(max(0, value)), anchor, alignment)
 
 
+func bitmap_text_status() -> Dictionary:
+	_load_hud_textures()
+	_ensure_bitmap_text()
+	return {
+		"statistic_texture": _statistic_texture != null,
+		"digit_texture": _digit_texture != null,
+		"font_texture": _font_texture != null,
+		"info_icons_texture": _info_icons_texture != null,
+		"digit_text": _digit_text != null and _digit_text.texture != null,
+		"font_text": _font_text != null and _font_text.texture != null,
+	}
+
+
 func _ensure_nodes() -> void:
 	_load_hud_textures()
-	_ensure_digit_text()
+	_ensure_bitmap_text()
 
 	if _game_over_title != null:
 		return
@@ -179,11 +205,31 @@ func _draw() -> void:
 func _draw_status_hud() -> void:
 	if _statistic_texture != null:
 		draw_texture_rect_region(_statistic_texture, STATISTIC_SOURCE, STATISTIC_SOURCE)
-	_draw_digits(_score_value, SCORE_VALUE_RIGHT, HORIZONTAL_ALIGNMENT_RIGHT)
-	_draw_digits(_lives_value, LIVES_VALUE_CENTER, HORIZONTAL_ALIGNMENT_CENTER)
-	_draw_digits(_level_value, LEVEL_VALUE_CENTER, HORIZONTAL_ALIGNMENT_CENTER)
-	_draw_digits(_best_score_value, BEST_SCORE_VALUE_RIGHT, HORIZONTAL_ALIGNMENT_RIGHT)
+	else:
+		_draw_caption_fallback()
+	_draw_header_value(_score_value, SCORE_VALUE_RIGHT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_draw_header_value(_lives_value, LIVES_VALUE_CENTER, HORIZONTAL_ALIGNMENT_CENTER)
+	_draw_header_value(_level_value, LEVEL_VALUE_CENTER, HORIZONTAL_ALIGNMENT_CENTER)
+	_draw_header_value(_best_score_value, BEST_SCORE_VALUE_RIGHT, HORIZONTAL_ALIGNMENT_RIGHT)
 	_draw_active_bonus_indicators()
+
+
+func _draw_caption_fallback() -> void:
+	_ensure_font_text()
+	if _font_text == null:
+		return
+
+	var positions := caption_positions()
+	for index in range(min(CAPTION_TEXTS.size(), positions.size())):
+		_font_text.draw_text(self, CAPTION_TEXTS[index], positions[index])
+
+
+func _draw_header_value(value: int, anchor: Vector2, alignment: HorizontalAlignment) -> void:
+	_ensure_font_text()
+	if _font_text == null:
+		return
+
+	_font_text.draw_text(self, str(max(0, value)), anchor, alignment)
 
 
 func _draw_digits(value: int, anchor: Vector2, alignment: HorizontalAlignment) -> void:
@@ -219,12 +265,20 @@ func _load_hud_textures() -> void:
 	if _digit_texture == null:
 		_digit_texture = _load_asset_texture("Digits")
 
+	if _font_texture == null:
+		_font_texture = _load_asset_texture("Font")
+
 	if _info_icons_texture == null:
 		_info_icons_texture = _load_asset_texture("InfoIcons")
 
 
+func _ensure_bitmap_text() -> void:
+	_ensure_digit_text()
+	_ensure_font_text()
+
+
 func _ensure_digit_text() -> void:
-	if _digit_text != null:
+	if _digit_text != null and _digit_text.texture == _digit_texture:
 		return
 	_digit_text = BitmapTextScript.new()
 	_digit_text.configure(
@@ -233,6 +287,19 @@ func _ensure_digit_text() -> void:
 		BitmapTextScript.DIGIT_CELL_SIZE,
 		BitmapTextScript.DIGIT_ADVANCES,
 		BitmapTextScript.DIGIT_SPACE_ADVANCE
+	)
+
+
+func _ensure_font_text() -> void:
+	if _font_text != null and _font_text.texture == _font_texture:
+		return
+	_font_text = BitmapTextScript.new()
+	_font_text.configure(
+		_font_texture,
+		BitmapTextScript.FONT_CHARSET,
+		BitmapTextScript.FONT_CELL_SIZE,
+		BitmapTextScript.FONT_ADVANCES,
+		BitmapTextScript.FONT_SPACE_ADVANCE
 	)
 
 

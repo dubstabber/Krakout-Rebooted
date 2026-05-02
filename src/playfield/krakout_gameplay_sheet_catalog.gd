@@ -44,6 +44,11 @@ const SHEETS := {
 		"expected_size": Vector2i(100, 2000),
 		"source": "IDA sub_40D650",
 	},
+	"Digits": {
+		"texture_name": "Digits",
+		"expected_size": Vector2i(16, 200),
+		"source": "IDA sub_40D650",
+	},
 	"DigitsSmall": {
 		"texture_name": "DigitsSmall",
 		"expected_size": Vector2i(80, 180),
@@ -58,6 +63,11 @@ const SHEETS := {
 		"texture_name": "Fb",
 		"expected_size": Vector2i(24, 144),
 		"source": "IDA sub_4011F0",
+	},
+	"Font": {
+		"texture_name": "Font",
+		"expected_size": Vector2i(32, 2256),
+		"source": "IDA sub_40D650",
 	},
 	"InfoIcons": {
 		"texture_name": "InfoIcons",
