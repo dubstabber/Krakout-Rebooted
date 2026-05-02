@@ -287,6 +287,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.board_state != null, "game session owns board state")
 	_assert(session.board_state.remaining_required_bricks == 143, "game session preserves required brick count")
 	_assert(session.active_ball_count() == 1, "game session shows a ready ball")
+	_assert(session.ball_rect(session.visible_balls()[0]).size == Vector2(18, 18), "game session defaults to original standard ball size")
 	_assert(session.score == 0, "game session starts with zero score")
 	_assert(session.displayed_score == 0, "game session starts with zero displayed score")
 	_assert(session.lives_remaining == GameSessionScript.INITIAL_LIVES, "game session starts with original spare ball count")
@@ -550,8 +551,8 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	var ball_size_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(ball_size_session, GameSessionScript.BONUS_INCREASE_BALL_SIZE)
 	ball_size_session.activate_next_bonus()
-	_assert(ball_size_session.ball_size == 24.0, "increase-size bonus grows current ball size by original step")
-	_assert(ball_size_session.ball_rect(ball_size_session.visible_balls()[0]).size == Vector2(24, 24), "increase-size bonus updates live ball rect")
+	_assert(ball_size_session.ball_size == 26.0, "increase-size bonus grows current ball size by original atlas step")
+	_assert(ball_size_session.ball_rect(ball_size_session.visible_balls()[0]).size == Vector2(26, 26), "increase-size bonus updates live ball rect")
 	for size_index in range(3):
 		_stack_bonus(ball_size_session, GameSessionScript.BONUS_DECREASE_BALL_SIZE)
 		ball_size_session.activate_next_bonus()
@@ -644,6 +645,13 @@ func _validate_level_grid_renderer_defaults() -> void:
 	_assert(renderer.default_episode == PlayfieldSpecScript.DEFAULT_EPISODE, "level renderer uses shared default episode")
 	_assert(renderer.default_level_number == PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER, "level renderer uses shared default level")
 	renderer.free()
+
+	var ball_renderer: KrakoutBallRenderer = BallRendererScript.new()
+	_assert(ball_renderer.source_rect_for_size(10.0, 0) == Rect2(Vector2(1, 1), Vector2(10, 10)), "ball renderer maps smallest atlas row")
+	_assert(ball_renderer.source_rect_for_size(GameSessionScript.BALL_SIZE, 0) == Rect2(Vector2(1, 13), Vector2(18, 18)), "ball renderer maps default standard ball atlas row")
+	_assert(ball_renderer.source_rect_for_size(26.0, 2) == Rect2(Vector2(57, 33), Vector2(26, 26)), "ball renderer maps increased ball frame")
+	_assert(ball_renderer.source_rect_for_size(GameSessionScript.BALL_MAX_SIZE, 9) == Rect2(Vector2(397, 97), Vector2(42, 42)), "ball renderer maps largest atlas row")
+	ball_renderer.free()
 
 
 func _validate_project_presentation_settings() -> void:

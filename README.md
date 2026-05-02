@@ -42,6 +42,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   projectiles from the extracted `Bullets` sheet, while `KrakoutGameSession`
   owns the original-backed 10-projectile pool, 250ms fire gate, leftward travel,
   and brick-hit routing.
+- `KrakoutBallRenderer` draws standard balls from the extracted `Balls` atlas
+  using the original visible size rows, so size-changing bonuses use matching
+  10/18/26/34/42 px ball frames instead of scaling a fixed crop.
 - `Back Wall (30 sec)` now uses a timed session effect, reflects missed balls
   at the original right-side wall boundary, syncs the wall visual through the
   playfield renderer, and reports its countdown through the original
