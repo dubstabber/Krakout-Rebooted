@@ -20,6 +20,8 @@ const BallRendererScript := preload("res://src/render/ball_renderer.gd")
 const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
 const BulletRendererScript := preload("res://src/render/bullet_renderer.gd")
 const MonsterRendererScript := preload("res://src/render/monster_renderer.gd")
+const BeeRendererScript := preload("res://src/render/bee_renderer.gd")
+const ImpactEffectRendererScript := preload("res://src/render/impact_effect_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
 const GameScreenScript := preload("res://src/game/game_screen.gd")
 const BitmapTextScript := preload("res://src/render/krakout_bitmap_text.gd")
@@ -327,6 +329,9 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.display_level_number == 1, "game session displays source level number")
 	_assert(session.active_bonus_indicators().is_empty(), "game session exposes no active status indicators before timed effects exist")
 	_assert(session.active_monster_count() == 0, "game session starts without active monsters")
+	_assert(session.active_bee_count() == 0, "game session starts without active bees")
+	_assert(session.visible_impact_effects().is_empty(), "game session starts without impact effects")
+	_assert(not session.is_racket_stunned(), "game session starts with active racket control")
 	_assert(session.pop_audio_events().is_empty(), "game session starts without queued SFX events")
 
 	session.move_racket_to(-100.0)
@@ -674,13 +679,109 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	monster_motion_session.update(0.02)
 	_assert(monster_motion_session.active_monster_count() == 0, "monster expires after original lifetime")
 
+	var monster_boundary_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	monster_boundary_session.force_monster(
+		Vector2(PlayfieldSpecScript.WALL_INNER_LEFT_X - GameSessionScript.MONSTER_COLLISION_OFFSET.x - 4.0, 200),
+		6,
+		180
+	)
+	monster_boundary_session.update(0.0)
+	var bounded_monsters: Array = monster_boundary_session.visible_monsters()
+	_assert(bounded_monsters.size() == 1, "monster remains active after hitting the playfield boundary")
+	if bounded_monsters.size() == 1:
+		_assert(monster_boundary_session.monster_rect(bounded_monsters[0]).position.x == PlayfieldSpecScript.WALL_INNER_LEFT_X, "monster boundary collision clamps to original inner wall")
+		_assert(int(bounded_monsters[0]["angle"]) == 0, "monster boundary collision reflects horizontal motion")
+
 	var monster_ball_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	monster_ball_hit_session.set_collision_rng_seed(1)
 	monster_ball_hit_session.force_ball(Vector2(200, 200), Vector2.ZERO)
 	monster_ball_hit_session.force_monster(Vector2(200, 200), 3, 0)
 	monster_ball_hit_session.update(0.0)
 	_assert(monster_ball_hit_session.active_monster_count() == 0, "ball collision removes active monster")
-	_assert(monster_ball_hit_session.score == GameSessionScript.MONSTER_SCORE, "ball collision awards original default monster score")
+	_assert(monster_ball_hit_session.score == GameSessionScript.MONSTER_BALL_HIT_SCORE, "ball collision awards original ball-contact monster score")
+	_assert(not monster_ball_hit_session.first_ball_velocity().is_zero_approx(), "ball collision changes the ball trajectory")
+	_assert(monster_ball_hit_session.visible_impact_effects().size() == 1, "ball collision spawns monster hit VFX")
 	_assert(monster_ball_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_HIT], "monster collision queues monster-hit SFX event")
+	monster_ball_hit_session.update(GameSessionScript.IMPACT_EFFECT_DURATION_SECONDS)
+	_assert(monster_ball_hit_session.visible_impact_effects().is_empty(), "monster hit VFX expires through the session effect pool")
+
+	var monster_racket_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	monster_racket_hit_session.move_racket_to(220.0)
+	var monster_racket_position := Vector2(
+		GameSessionScript.RACKET_X - GameSessionScript.MONSTER_COLLISION_OFFSET.x - 8.0,
+		monster_racket_hit_session.racket_rect().position.y + 18.0
+	)
+	monster_racket_hit_session.force_monster(monster_racket_position, 3, 0)
+	monster_racket_hit_session.update(0.0)
+	_assert(monster_racket_hit_session.active_monster_count() == 0, "racket collision removes active monster")
+	_assert(monster_racket_hit_session.score == GameSessionScript.MONSTER_SCORE, "racket collision uses original paddle/projectile monster score")
+	_assert(monster_racket_hit_session.visible_impact_effects().size() == 1, "racket collision spawns monster hit VFX")
+	_assert(monster_racket_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_HIT], "racket monster collision queues monster-hit SFX event")
+
+	var monster_stun_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	monster_stun_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	monster_stun_session.move_racket_to(220.0)
+	var stunned_start_y: float = monster_stun_session.racket_rect().position.y
+	monster_stun_session.force_monster(
+		Vector2(GameSessionScript.RACKET_X - GameSessionScript.MONSTER_COLLISION_OFFSET.x - 8.0, stunned_start_y + 18.0),
+		9,
+		0
+	)
+	monster_stun_session.update(0.0)
+	_assert(monster_stun_session.is_racket_stunned(), "type 9 enemy contact stuns the racket")
+	monster_stun_session.move_racket_to(10000.0)
+	_assert(monster_stun_session.racket_rect().position.y == stunned_start_y, "stunned racket ignores player movement")
+	monster_stun_session.update(GameSessionScript.RACKET_STUN_DURATION_SECONDS)
+	_assert(not monster_stun_session.is_racket_stunned(), "racket stun expires after original duration")
+	monster_stun_session.move_racket_to(10000.0)
+	_assert(monster_stun_session.racket_rect().end.y == GameSessionScript.RACKET_MAX_BOTTOM, "racket movement resumes after stun")
+
+	var bee_spawn_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	bee_spawn_session.move_racket_to(220.0)
+	bee_spawn_session.force_bee_spawn_ready()
+	bee_spawn_session.update(0.0)
+	_assert(bee_spawn_session.active_bee_count() == 1, "bee spawn gate creates a floating hazard")
+	var spawned_bees: Array = bee_spawn_session.visible_bees()
+	if spawned_bees.size() == 1:
+		_assert(spawned_bees[0]["position"] == Vector2(GameSessionScript.BEE_SPAWN_X, bee_spawn_session.racket_rect().position.y + 13.0), "bee starts from original racket-relative y position")
+		_assert(bee_spawn_session.bee_rect(spawned_bees[0]).size == GameSessionScript.BEE_COLLISION_SIZE, "bee collision uses original 36px contact box")
+	_assert(bee_spawn_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BEE_SPAWN], "bee spawn queues EffBee SFX event")
+	bee_spawn_session.update(GameSessionScript.BEE_FRAME_SECONDS)
+	spawned_bees = bee_spawn_session.visible_bees()
+	if spawned_bees.size() == 1:
+		_assert(spawned_bees[0]["position"].x == GameSessionScript.BEE_SPAWN_X + GameSessionScript.BEE_STEP_X, "bee advances by original 3px step")
+		_assert(int(spawned_bees[0]["frame"]) == 1, "bee animation advances through original 5ms frames")
+
+	var bee_ball_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	bee_ball_hit_session.force_ball(Vector2(200, 200), Vector2.ZERO)
+	bee_ball_hit_session.force_bee(Vector2(200, 200))
+	bee_ball_hit_session.update(0.0)
+	_assert(bee_ball_hit_session.active_bee_count() == 0, "ball collision removes active bee")
+	_assert(bee_ball_hit_session.score == GameSessionScript.BEE_BALL_HIT_SCORE, "ball collision awards bee ball-contact score")
+	_assert(not bee_ball_hit_session.first_ball_velocity().is_zero_approx(), "bee ball collision changes the ball trajectory")
+	_assert(not bee_ball_hit_session.is_racket_stunned(), "bee ball collision does not stun the racket")
+	_assert(bee_ball_hit_session.visible_impact_effects().size() == 1, "bee ball collision spawns impact VFX")
+	_assert(bee_ball_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_HIT], "bee ball collision queues monster-hit SFX event")
+
+	var bee_racket_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	bee_racket_hit_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	bee_racket_hit_session.move_racket_to(220.0)
+	var bee_hit_position := Vector2(
+		GameSessionScript.RACKET_X - GameSessionScript.BEE_COLLISION_OFFSET.x - 8.0,
+		bee_racket_hit_session.racket_rect().position.y + 18.0
+	)
+	bee_racket_hit_session.force_bee(bee_hit_position)
+	bee_racket_hit_session.update(0.0)
+	_assert(bee_racket_hit_session.active_bee_count() == 0, "racket collision removes active bee")
+	_assert(bee_racket_hit_session.score == GameSessionScript.BEE_STUN_SCORE, "bee hit awards original stun-hazard score")
+	_assert(bee_racket_hit_session.is_racket_stunned(), "bee hit stuns the racket")
+	_assert(bee_racket_hit_session.visible_impact_effects().size() == 1, "bee hit spawns impact VFX")
+	_assert(bee_racket_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_HIT], "bee hit queues monster-hit SFX event")
+
+	var bee_expire_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	bee_expire_session.force_bee(Vector2(GameSessionScript.BEE_EXPIRE_X - 1.0, 100))
+	bee_expire_session.update(0.0)
+	_assert(bee_expire_session.active_bee_count() == 0, "bee expires at original right bound")
 
 	var monster_projectile_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	monster_projectile_hit_session.force_monster(Vector2(200, 200), 3, 0)
@@ -693,6 +794,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(monster_projectile_hit_session.active_monster_count() == 0, "projectile collision removes active monster")
 	_assert(monster_projectile_hit_session.active_projectile_count() == 0, "projectile is consumed by monster collision")
 	_assert(monster_projectile_hit_session.score == GameSessionScript.MONSTER_SCORE, "projectile collision awards original default monster score")
+	_assert(monster_projectile_hit_session.visible_impact_effects().size() == 1, "projectile collision spawns monster hit VFX")
 	var monster_projectile_audio_events: Array[String] = monster_projectile_hit_session.pop_audio_events()
 	_assert(monster_projectile_audio_events.has(GameSessionScript.SFX_EVENT_PROJECTILE_HIT), "projectile monster hit queues projectile-hit SFX event")
 	_assert(monster_projectile_audio_events.has(GameSessionScript.SFX_EVENT_MONSTER_HIT), "projectile monster hit queues monster-hit SFX event")
@@ -867,6 +969,16 @@ func _validate_level_grid_renderer_defaults() -> void:
 	_assert(monster_renderer.source_rect_for_monster(10, 7) == Rect2(Vector2(320, 224), Vector2(32, 32)), "monster renderer maps original type 10 animation row")
 	monster_renderer.free()
 
+	var bee_renderer = BeeRendererScript.new()
+	_assert(bee_renderer.source_rect_for_bee(0) == Rect2(Vector2(0, 0), Vector2(48, 40)), "bee renderer maps original first bee frame")
+	_assert(bee_renderer.source_rect_for_bee(5) == Rect2(Vector2(0, 200), Vector2(48, 40)), "bee renderer maps original final bee frame")
+	bee_renderer.free()
+
+	var impact_renderer = ImpactEffectRendererScript.new()
+	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_HIT, 0) == Rect2(Vector2(20, 0), Vector2(10, 10)), "impact renderer maps original monster-hit effect cell")
+	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_HIT, 3) == Rect2(Vector2(10, 10), Vector2(10, 10)), "impact renderer advances through original effect cells")
+	impact_renderer.free()
+
 
 func _validate_project_presentation_settings() -> void:
 	_assert(ProjectSettings.get_setting("display/window/size/viewport_width") == 640, "project keeps original viewport width")
@@ -1018,6 +1130,7 @@ func _validate_audio_cue_catalog() -> void:
 		GameSessionScript.SFX_EVENT_PROJECTILE_FIRE: "eff08",
 		GameSessionScript.SFX_EVENT_MONSTER_SPAWN: "eff13",
 		GameSessionScript.SFX_EVENT_MONSTER_HIT: "eff09",
+		GameSessionScript.SFX_EVENT_BEE_SPAWN: "EffBee",
 		GameSessionScript.SFX_EVENT_LIFE_LOST: "eff16",
 		GameSessionScript.SFX_EVENT_LEVEL_COMPLETE: "eff19",
 		GameSessionScript.SFX_EVENT_GAME_OVER: "eff18",
@@ -1033,6 +1146,7 @@ func _validate_audio_cue_catalog() -> void:
 	_assert(AudioCueCatalogScript.sfx_name_for_event("missing_sfx_event") == "", "audio cue catalog leaves unknown SFX events silent")
 	var sfx_events: Array[String] = AudioCueCatalogScript.known_sfx_events()
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "audio cue catalog exposes bonus-apply event in known event list")
+	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BEE_SPAWN), "audio cue catalog exposes bee-spawn event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_GAME_OVER), "audio cue catalog exposes game-over event in known event list")
 
 
@@ -1056,6 +1170,7 @@ func _validate_audio_service() -> void:
 	_assert(bool(_audio.call("music_stream_exists", "theme4")), "audio service resolves gameplay music track")
 	_assert(bool(_audio.call("music_stream_exists", "Abnormal")), "audio service resolves abnormal music track")
 	_assert(bool(_audio.call("sfx_stream_exists", "eff01")), "audio service resolves extracted SFX")
+	_assert(bool(_audio.call("sfx_stream_exists", "EffBee")), "audio service resolves extracted bee SFX")
 	_assert(not bool(_audio.call("music_stream_exists", "missing_track")), "audio service rejects unknown music track")
 	_assert(not bool(_audio.call("sfx_stream_exists", "missing_sfx")), "audio service rejects unknown SFX")
 	_assert(String(_audio.call("music_name_for_context", AudioCueCatalogScript.CONTEXT_MAIN_MENU)) == "Abnormal", "audio service maps main-menu music context")
@@ -1076,6 +1191,7 @@ func _validate_audio_service() -> void:
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_PROJECTILE_FIRE)) == "eff08", "audio service maps projectile-fire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_SPAWN)) == "eff13", "audio service maps monster-spawn SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_HIT)) == "eff09", "audio service maps monster-hit SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BEE_SPAWN)) == "EffBee", "audio service maps bee-spawn SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_LIFE_LOST)) == "eff16", "audio service maps life-lost SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_LEVEL_COMPLETE)) == "eff19", "audio service maps level-complete SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_GAME_OVER)) == "eff18", "audio service maps game-over SFX event")
@@ -1521,6 +1637,8 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(game.find_child("BonusRenderer", true, false) != null, "game screen creates bonus renderer")
 			_assert(game.find_child("BulletRenderer", true, false) != null, "game screen creates bullet renderer")
 			_assert(game.find_child("MonsterRenderer", true, false) != null, "game screen creates monster renderer")
+			_assert(game.find_child("BeeRenderer", true, false) != null, "game screen creates bee renderer")
+			_assert(game.find_child("ImpactEffectRenderer", true, false) != null, "game screen creates impact effect renderer")
 			_assert(game.call("is_bonus_stack_visible") == false, "game screen loads bonus-stack visibility setting")
 			_assert(game.call("are_ball_tracks_visible") == false, "game screen loads ball-track visibility setting")
 			_assert(game.call("is_fps_visible"), "game screen loads FPS visibility setting")

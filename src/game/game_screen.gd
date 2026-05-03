@@ -12,6 +12,8 @@ const BallRendererScript := preload("res://src/render/ball_renderer.gd")
 const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
 const BulletRendererScript := preload("res://src/render/bullet_renderer.gd")
 const MonsterRendererScript := preload("res://src/render/monster_renderer.gd")
+const BeeRendererScript := preload("res://src/render/bee_renderer.gd")
+const ImpactEffectRendererScript := preload("res://src/render/impact_effect_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
 
 const ACTION_LAUNCH_BALL := "krakout_launch_ball"
@@ -34,6 +36,8 @@ var ball_renderer
 var bonus_renderer
 var bullet_renderer
 var monster_renderer
+var bee_renderer
+var impact_effect_renderer
 var hud_renderer
 var _run_started := false
 var _bonus_stack_visible := true
@@ -341,6 +345,16 @@ func _ensure_gameplay_nodes() -> void:
 		monster_renderer.name = "MonsterRenderer"
 		add_child(monster_renderer)
 
+	if bee_renderer == null:
+		bee_renderer = BeeRendererScript.new()
+		bee_renderer.name = "BeeRenderer"
+		add_child(bee_renderer)
+
+	if impact_effect_renderer == null:
+		impact_effect_renderer = ImpactEffectRendererScript.new()
+		impact_effect_renderer.name = "ImpactEffectRenderer"
+		add_child(impact_effect_renderer)
+
 	if hud_renderer == null:
 		hud_renderer = GameHudScript.new()
 		hud_renderer.name = "GameHud"
@@ -351,6 +365,8 @@ func _ensure_gameplay_nodes() -> void:
 	bonus_renderer.set_session(gameplay_session)
 	bullet_renderer.set_session(gameplay_session)
 	monster_renderer.set_session(gameplay_session)
+	bee_renderer.set_session(gameplay_session)
+	impact_effect_renderer.set_session(gameplay_session)
 	hud_renderer.set_session(gameplay_session)
 	_ensure_overlay_nodes()
 	_apply_presentation_settings()
@@ -367,6 +383,10 @@ func _refresh_actor_renderers() -> void:
 		bullet_renderer.queue_redraw()
 	if monster_renderer != null:
 		monster_renderer.queue_redraw()
+	if bee_renderer != null:
+		bee_renderer.queue_redraw()
+	if impact_effect_renderer != null:
+		impact_effect_renderer.queue_redraw()
 
 
 func _refresh_hud() -> void:

@@ -93,8 +93,28 @@ const MONSTER_DEFAULT_SPEED := 1.0
 const MONSTER_TYPE3_RIGHT_LIMIT := 510.0
 const MONSTER_TRACKING_TURN_STEP_DEGREES := 2
 const MONSTER_SCORE := 15
+const MONSTER_BALL_HIT_SCORE := 25
 const MONSTER_TYPE6_SCORE_STEP := 10
 const MONSTER_TYPE6_SCORE_VARIANTS := 6
+const MONSTER_BALL_HIT_MIN_ROTATION_DEGREES := 90
+const MONSTER_BALL_HIT_RANDOM_ROTATION_DEGREES := 90
+const BEE_SIZE := Vector2(48, 40)
+const BEE_COLLISION_SIZE := Vector2(36, 36)
+const BEE_COLLISION_OFFSET := Vector2(6, 6)
+const BEE_FRAME_COUNT := 6
+const BEE_FRAME_SECONDS := 0.005
+const BEE_STEP_X := 3.0
+const BEE_SPAWN_X := 50.0
+const BEE_EXPIRE_X := 640.0
+const BEE_SPAWN_DELAY_MAX_SECONDS := 30.0
+const BEE_BALL_HIT_SCORE := MONSTER_BALL_HIT_SCORE
+const BEE_STUN_SCORE := 30
+const RACKET_STUN_DURATION_SECONDS := 3.0
+const MAX_IMPACT_EFFECTS := 100
+const IMPACT_EFFECT_KIND_MONSTER_HIT := 2
+const IMPACT_EFFECT_FRAME_SECONDS := 0.03
+const IMPACT_EFFECT_FRAME_COUNT := 6
+const IMPACT_EFFECT_DURATION_SECONDS := 0.18
 const BONUS_ADD_STANDARD_BALL := 0
 const BONUS_ADD_FIREBALL := 1
 const BONUS_NON_STRICKED_BALLS := 2
@@ -180,6 +200,7 @@ const SFX_EVENT_PROJECTILE_FIRE := "projectile_fire"
 const SFX_EVENT_PROJECTILE_HIT := "projectile_hit"
 const SFX_EVENT_MONSTER_SPAWN := "monster_spawn"
 const SFX_EVENT_MONSTER_HIT := "monster_hit"
+const SFX_EVENT_BEE_SPAWN := "bee_spawn"
 const SFX_EVENT_LIFE_LOST := "life_lost"
 const SFX_EVENT_LEVEL_COMPLETE := "level_complete"
 const SFX_EVENT_GAME_OVER := "game_over"
@@ -205,11 +226,16 @@ var bonus_stack: Array[Dictionary] = []
 var bonus_pointer_frame := 0
 var projectiles: Array[Dictionary] = []
 var monsters: Array[Dictionary] = []
+var bees: Array[Dictionary] = []
+var impact_effects: Array[Dictionary] = []
 var back_wall_time_remaining := 0.0
 var _bonus_rng = RandomScript.new()
 var _bonus_animation_rng = RandomScript.new(31415)
 var _monster_rng = RandomScript.new(31415)
+var _collision_rng = RandomScript.new(31415)
 var _bonus_drop_cooldown := BONUS_DROP_GATE_SECONDS
+var _bee_spawn_delay_remaining := BEE_SPAWN_DELAY_MAX_SECONDS
+var _racket_stun_time_remaining := 0.0
 var _bonus_pointer_elapsed := 0.0
 var _projectile_fire_cooldown := 0.0
 var _shooting_paddle_mode := PROJECTILE_MODE_DISABLED
@@ -303,6 +329,8 @@ func _load_board_for_level(level: KrakoutLevelData) -> void:
 
 
 func move_racket_to(mouse_y: float) -> void:
+	if is_racket_stunned():
+		return
 	var current_height := current_racket_height()
 	racket_y = clampf(mouse_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
 	if state == STATE_READY or state == STATE_BALL_LOST:
@@ -329,6 +357,7 @@ func update(delta: float) -> void:
 	board_changed = false
 	_update_displayed_score()
 	_update_bonus_timers(delta)
+	_update_impact_effects(delta)
 	_update_racket_visual(delta)
 	_update_bonus_stack(delta)
 
@@ -352,6 +381,7 @@ func update(delta: float) -> void:
 
 	_update_falling_bonuses(delta)
 	_update_monsters(delta)
+	_update_bees(delta)
 	_update_projectiles(delta)
 	if board_state != null and board_state.is_complete():
 		_mark_level_complete()
@@ -413,6 +443,22 @@ func visible_monsters() -> Array[Dictionary]:
 	return visible
 
 
+func visible_bees() -> Array[Dictionary]:
+	var visible: Array[Dictionary] = []
+	for bee: Dictionary in bees:
+		if bool(bee.get("active", false)):
+			visible.append(bee.duplicate())
+	return visible
+
+
+func visible_impact_effects() -> Array[Dictionary]:
+	var visible: Array[Dictionary] = []
+	for effect: Dictionary in impact_effects:
+		if bool(effect.get("active", false)):
+			visible.append(effect.duplicate())
+	return visible
+
+
 func bonus_stack_entries() -> Array[Dictionary]:
 	var entries: Array[Dictionary] = []
 	for entry: Dictionary in bonus_stack:
@@ -440,6 +486,10 @@ func is_shooting_paddle_active() -> bool:
 
 func is_single_shot_paddle_armed() -> bool:
 	return _single_shot_projectile_armed
+
+
+func is_racket_stunned() -> bool:
+	return _racket_stun_time_remaining > 0.0
 
 
 func current_racket_visual_mode() -> int:
@@ -519,12 +569,20 @@ func set_monster_rng_seed(seed_value: int) -> void:
 	_monster_rng.set_seed(seed_value)
 
 
+func set_collision_rng_seed(seed_value: int) -> void:
+	_collision_rng.set_seed(seed_value)
+
+
 func force_bonus_drop_ready() -> void:
 	_bonus_drop_cooldown = 0.0
 
 
 func force_monster_spawn_ready() -> void:
 	_monster_spawn_cooldown = 0.0
+
+
+func force_bee_spawn_ready() -> void:
+	_bee_spawn_delay_remaining = 0.0
 
 
 func active_ball_count() -> int:
@@ -537,6 +595,10 @@ func active_projectile_count() -> int:
 
 func active_monster_count() -> int:
 	return visible_monsters().size()
+
+
+func active_bee_count() -> int:
+	return visible_bees().size()
 
 
 func current_racket_height() -> float:
@@ -558,6 +620,10 @@ func projectile_rect(projectile: Dictionary) -> Rect2:
 
 func monster_rect(monster: Dictionary) -> Rect2:
 	return Rect2(monster.get("position", Vector2.ZERO) + MONSTER_COLLISION_OFFSET, MONSTER_COLLISION_SIZE)
+
+
+func bee_rect(bee: Dictionary) -> Rect2:
+	return Rect2(bee.get("position", Vector2.ZERO) + BEE_COLLISION_OFFSET, BEE_COLLISION_SIZE)
 
 
 func first_ball_position() -> Vector2:
@@ -587,6 +653,14 @@ func force_monster(position: Vector2, type_id: int = 3, angle: int = 0) -> bool:
 	if monsters.size() >= MAX_MONSTERS:
 		return false
 	monsters.append(_new_monster(position, type_id, angle))
+	state = STATE_PLAYING
+	return true
+
+
+func force_bee(position: Vector2, frame: int = 0) -> bool:
+	if bees.size() >= 1:
+		return false
+	bees.append(_new_bee(position, frame))
 	state = STATE_PLAYING
 	return true
 
@@ -661,7 +735,10 @@ func _advance_ball(ball: Dictionary, delta: float) -> void:
 		ball["active"] = false
 		return
 
-	_collide_ball_with_monsters(ball)
+	if _collide_ball_with_monsters(ball):
+		return
+	if _collide_ball_with_bees(ball):
+		return
 	_collide_with_board(ball, previous_position)
 
 
@@ -921,6 +998,8 @@ func _update_bonus_timers(delta: float) -> void:
 		_bonus_drop_cooldown = maxf(0.0, _bonus_drop_cooldown - delta)
 	if back_wall_time_remaining > 0.0:
 		back_wall_time_remaining = maxf(0.0, back_wall_time_remaining - delta)
+	if _racket_stun_time_remaining > 0.0:
+		_racket_stun_time_remaining = maxf(0.0, _racket_stun_time_remaining - delta)
 
 
 func _set_racket_visual_target(visual_mode: int) -> void:
@@ -1095,8 +1174,12 @@ func _collide_projectile_with_board(projectile: Dictionary) -> bool:
 
 func _clear_monster_state() -> void:
 	monsters.clear()
+	bees.clear()
+	impact_effects.clear()
 	_monster_spawn_cooldown = MONSTER_SPAWN_INTERVAL_SECONDS
 	_monster_type_cycle_index = 0
+	_bee_spawn_delay_remaining = BEE_SPAWN_DELAY_MAX_SECONDS
+	_racket_stun_time_remaining = 0.0
 
 
 func _update_monsters(delta: float) -> void:
@@ -1105,6 +1188,8 @@ func _update_monsters(delta: float) -> void:
 		if not bool(monster.get("active", false)):
 			continue
 		_advance_monster(monster, delta)
+		if bool(monster.get("active", false)) and _collide_monster_with_racket(index, monster):
+			continue
 		monsters[index] = monster
 
 	_compact_monsters()
@@ -1172,19 +1257,56 @@ func _advance_monster(monster: Dictionary, delta: float) -> void:
 	var position: Vector2 = monster.get("position", Vector2.ZERO)
 	var speed := float(monster.get("speed", MONSTER_DEFAULT_SPEED))
 	var angle := int(monster.get("angle", 0))
-	if type_id == 3:
+	if type_id == 3 and not bool(monster.get("boundary_reflected", false)):
 		if position.x <= MONSTER_TYPE3_RIGHT_LIMIT:
 			position.x += speed
+			angle = 0
 		else:
 			position.y += speed
+			angle = 270
 	elif type_id == 10:
 		angle = _tracking_angle_for_monster(monster, angle)
 		position += _monster_motion_vector(angle, speed)
-		monster["angle"] = angle
 	else:
 		position += _monster_motion_vector(angle, speed)
 
 	monster["position"] = position
+	monster["angle"] = angle
+	_collide_monster_with_boundaries(monster)
+
+
+func _collide_monster_with_boundaries(monster: Dictionary) -> bool:
+	var position: Vector2 = monster.get("position", Vector2.ZERO)
+	var rect := Rect2(position + MONSTER_COLLISION_OFFSET, MONSTER_COLLISION_SIZE)
+	var hit_horizontal := false
+	var hit_vertical := false
+
+	if rect.position.x < PlayfieldSpecScript.WALL_INNER_LEFT_X:
+		position.x = PlayfieldSpecScript.WALL_INNER_LEFT_X - MONSTER_COLLISION_OFFSET.x
+		hit_horizontal = true
+	elif rect.end.x > PlayfieldSpecScript.WALL_INNER_RIGHT_X:
+		position.x = PlayfieldSpecScript.WALL_INNER_RIGHT_X - MONSTER_COLLISION_OFFSET.x - MONSTER_COLLISION_SIZE.x
+		hit_horizontal = true
+
+	if rect.position.y < PlayfieldSpecScript.WALL_INNER_TOP_Y:
+		position.y = PlayfieldSpecScript.WALL_INNER_TOP_Y - MONSTER_COLLISION_OFFSET.y
+		hit_vertical = true
+	elif rect.end.y > PlayfieldSpecScript.WALL_INNER_BOTTOM_Y:
+		position.y = PlayfieldSpecScript.WALL_INNER_BOTTOM_Y - MONSTER_COLLISION_OFFSET.y - MONSTER_COLLISION_SIZE.y
+		hit_vertical = true
+
+	if not hit_horizontal and not hit_vertical:
+		return false
+
+	var angle := int(monster.get("angle", 0))
+	if hit_horizontal:
+		angle = posmod(180 - angle, 360)
+	if hit_vertical:
+		angle = posmod(360 - angle, 360)
+	monster["position"] = position
+	monster["angle"] = angle
+	monster["boundary_reflected"] = true
+	return true
 
 
 func _frame_count_for_monster_type(type_id: int) -> int:
@@ -1233,7 +1355,21 @@ func _collide_ball_with_monsters(ball: Dictionary) -> bool:
 		if not bool(monster.get("active", false)):
 			continue
 		if rect.intersects(monster_rect(monster)):
-			_kill_monster_at_index(index)
+			_rotate_ball_from_enemy_contact(ball)
+			_kill_monster_at_index(index, _score_for_monster_ball_contact(monster))
+			return true
+	return false
+
+
+func _collide_ball_with_bees(ball: Dictionary) -> bool:
+	var rect := ball_rect(ball)
+	for index in range(bees.size()):
+		var bee: Dictionary = bees[index]
+		if not bool(bee.get("active", false)):
+			continue
+		if rect.intersects(bee_rect(bee)):
+			_rotate_ball_from_enemy_contact(ball)
+			_kill_bee_at_index(index, BEE_BALL_HIT_SCORE)
 			return true
 	return false
 
@@ -1245,26 +1381,59 @@ func _collide_projectile_with_monsters(projectile: Dictionary) -> bool:
 		if not bool(monster.get("active", false)):
 			continue
 		if rect.intersects(monster_rect(monster)):
-			_kill_monster_at_index(index)
+			_kill_monster_at_index(index, _score_for_monster_paddle_contact(monster))
 			_queue_audio_event(SFX_EVENT_PROJECTILE_HIT)
 			return true
 	return false
 
 
-func _kill_monster_at_index(index: int) -> void:
+func _collide_monster_with_racket(index: int, monster: Dictionary) -> bool:
+	if not monster_rect(monster).intersects(racket_rect()):
+		return false
+
+	_kill_monster_at_index(index, _score_for_monster_paddle_contact(monster))
+	if int(monster.get("type_id", 0)) == 9:
+		_apply_racket_stun()
+	return true
+
+
+func _kill_monster_at_index(index: int, score_value: int = -1) -> void:
 	if index < 0 or index >= monsters.size():
 		return
 	var monster := monsters[index]
 	monster["active"] = false
 	monsters[index] = monster
-	award_score(_score_for_monster(monster))
+	award_score(score_value if score_value >= 0 else _score_for_monster_paddle_contact(monster))
+	_spawn_impact_effect(monster.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_MONSTER_HIT)
 	_queue_audio_event(SFX_EVENT_MONSTER_HIT)
 
 
-func _score_for_monster(monster: Dictionary) -> int:
+func _score_for_monster_paddle_contact(monster: Dictionary) -> int:
 	if int(monster.get("type_id", 0)) == 6:
 		return MONSTER_TYPE6_SCORE_STEP * (_monster_rng.next_mod(MONSTER_TYPE6_SCORE_VARIANTS) + 1)
 	return MONSTER_SCORE
+
+
+func _score_for_monster_ball_contact(monster: Dictionary) -> int:
+	if int(monster.get("type_id", 0)) == 6:
+		return MONSTER_TYPE6_SCORE_STEP * (_collision_rng.next_mod(MONSTER_TYPE6_SCORE_VARIANTS) + 1)
+	return MONSTER_BALL_HIT_SCORE
+
+
+func _rotate_ball_from_enemy_contact(ball: Dictionary) -> void:
+	var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
+	var speed := velocity.length()
+	if speed <= 0.0:
+		speed = _velocity_for_current_speed(DEFAULT_BALL_VELOCITY).length()
+
+	var current_angle := 0
+	if not velocity.is_zero_approx():
+		current_angle = posmod(int(roundi(rad_to_deg(atan2(-velocity.y, velocity.x)))), 360)
+	var next_angle := posmod(
+		current_angle + MONSTER_BALL_HIT_MIN_ROTATION_DEGREES + _collision_rng.next_mod(MONSTER_BALL_HIT_RANDOM_ROTATION_DEGREES),
+		360
+	)
+	ball["velocity"] = _monster_motion_vector(next_angle, speed)
 
 
 func _compact_monsters() -> void:
@@ -1273,6 +1442,145 @@ func _compact_monsters() -> void:
 		if bool(monster.get("active", false)):
 			compacted.append(monster)
 	monsters = compacted
+
+
+func _update_bees(delta: float) -> void:
+	for index in range(bees.size()):
+		var bee := bees[index]
+		if not bool(bee.get("active", false)):
+			continue
+		_advance_bee(bee, delta)
+		if bool(bee.get("active", false)) and bee_rect(bee).intersects(racket_rect()):
+			_resolve_bee_racket_hit(index, bee)
+			continue
+		bees[index] = bee
+
+	_compact_bees()
+
+	if _bee_spawn_delay_remaining > 0.0:
+		_bee_spawn_delay_remaining = maxf(0.0, _bee_spawn_delay_remaining - delta)
+	if _bee_spawn_delay_remaining > 0.0 or not bees.is_empty():
+		return
+
+	if _spawn_next_bee():
+		_reset_bee_spawn_delay()
+
+
+func _spawn_next_bee() -> bool:
+	if not bees.is_empty():
+		return false
+
+	bees.append(_new_bee(_bee_spawn_position()))
+	_queue_audio_event(SFX_EVENT_BEE_SPAWN)
+	return true
+
+
+func _new_bee(position: Vector2, frame: int = 0) -> Dictionary:
+	return {
+		"active": true,
+		"position": position,
+		"frame": posmod(frame, BEE_FRAME_COUNT),
+		"frame_elapsed": 0.0,
+	}
+
+
+func _bee_spawn_position() -> Vector2:
+	var y := racket_y + floorf((RACKET_SEGMENT_PIXEL_STEP * float(racket_segment_count) - 24.0) * 0.5)
+	return Vector2(BEE_SPAWN_X, y)
+
+
+func _advance_bee(bee: Dictionary, delta: float) -> void:
+	var position: Vector2 = bee.get("position", Vector2.ZERO)
+	position.x += BEE_STEP_X
+	bee["position"] = position
+	if position.x >= BEE_EXPIRE_X:
+		bee["active"] = false
+		return
+
+	var frame_elapsed := float(bee.get("frame_elapsed", 0.0)) + delta
+	var frame := int(bee.get("frame", 0))
+	while frame_elapsed >= BEE_FRAME_SECONDS:
+		frame = (frame + 1) % BEE_FRAME_COUNT
+		frame_elapsed -= BEE_FRAME_SECONDS
+	bee["frame"] = frame
+	bee["frame_elapsed"] = frame_elapsed
+
+
+func _resolve_bee_racket_hit(index: int, bee: Dictionary) -> void:
+	_kill_bee_at_index(index, BEE_STUN_SCORE)
+	_apply_racket_stun()
+
+
+func _kill_bee_at_index(index: int, score_value: int) -> void:
+	if index < 0 or index >= bees.size():
+		return
+	var bee := bees[index]
+	bee["active"] = false
+	bees[index] = bee
+	award_score(score_value)
+	_spawn_impact_effect(bee.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_MONSTER_HIT)
+	_queue_audio_event(SFX_EVENT_MONSTER_HIT)
+
+
+func _apply_racket_stun() -> void:
+	_racket_stun_time_remaining += RACKET_STUN_DURATION_SECONDS
+
+
+func _reset_bee_spawn_delay() -> void:
+	_bee_spawn_delay_remaining = BEE_SPAWN_DELAY_MAX_SECONDS - float(_collision_rng.next_mod(10))
+
+
+func _update_impact_effects(delta: float) -> void:
+	for index in range(impact_effects.size()):
+		var effect := impact_effects[index]
+		if not bool(effect.get("active", false)):
+			continue
+
+		var age := float(effect.get("age", 0.0)) + delta
+		var frame_elapsed := float(effect.get("frame_elapsed", 0.0)) + delta
+		var frame := int(effect.get("frame", 0))
+		while frame_elapsed >= IMPACT_EFFECT_FRAME_SECONDS:
+			frame = mini(frame + 1, IMPACT_EFFECT_FRAME_COUNT - 1)
+			frame_elapsed -= IMPACT_EFFECT_FRAME_SECONDS
+		effect["age"] = age
+		effect["frame"] = frame
+		effect["frame_elapsed"] = frame_elapsed
+		if age >= IMPACT_EFFECT_DURATION_SECONDS:
+			effect["active"] = false
+		impact_effects[index] = effect
+
+	_compact_impact_effects()
+
+
+func _spawn_impact_effect(position: Vector2, kind: int) -> bool:
+	_compact_impact_effects()
+	if impact_effects.size() >= MAX_IMPACT_EFFECTS:
+		return false
+	impact_effects.append({
+		"active": true,
+		"position": position,
+		"kind": kind,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+		"age": 0.0,
+	})
+	return true
+
+
+func _compact_bees() -> void:
+	var compacted: Array[Dictionary] = []
+	for bee: Dictionary in bees:
+		if bool(bee.get("active", false)):
+			compacted.append(bee)
+	bees = compacted
+
+
+func _compact_impact_effects() -> void:
+	var compacted: Array[Dictionary] = []
+	for effect: Dictionary in impact_effects:
+		if bool(effect.get("active", false)):
+			compacted.append(effect)
+	impact_effects = compacted
 
 
 func _compact_projectiles() -> void:
@@ -1463,6 +1771,7 @@ func _handle_round_lost() -> void:
 		balls.clear()
 		falling_bonuses.clear()
 		_clear_timed_bonus_state()
+		_clear_monster_state()
 		_queue_audio_event(SFX_EVENT_GAME_OVER)
 		return
 
