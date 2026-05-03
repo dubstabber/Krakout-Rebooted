@@ -1,8 +1,7 @@
 extends Node2D
 class_name KrakoutImpactEffectRenderer
 
-const CELL_SIZE := Vector2(10, 10)
-const COLUMNS := 4
+const CELL_SIZE := Vector2(32, 32)
 
 var session
 var effect_texture: Texture2D
@@ -20,9 +19,8 @@ func set_session(value) -> void:
 
 
 func source_rect_for_effect(kind: int, frame: int = 0) -> Rect2:
-	var effect_index := maxi(0, kind + frame)
 	return Rect2(
-		Vector2((effect_index % COLUMNS) * CELL_SIZE.x, int(effect_index / COLUMNS) * CELL_SIZE.y),
+		Vector2(maxi(0, kind) * CELL_SIZE.x, maxi(0, frame) * CELL_SIZE.y),
 		CELL_SIZE
 	)
 

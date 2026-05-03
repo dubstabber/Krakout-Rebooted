@@ -45,6 +45,9 @@ const BACK_WALL_BOUNCE_X := PlayfieldSpecScript.WALL_INNER_RIGHT_X
 const READY_BALL_GAP := 10.0
 const ORIGINAL_UPDATE_HZ := 50.0
 const ORIGINAL_BALL_STEPS_PER_UPDATE := 3.0
+# sub_40DAF0 invokes the original enemy updater three times per gameplay step.
+const ORIGINAL_ENEMY_STEPS_PER_UPDATE := 3.0
+const ORIGINAL_ENEMY_UPDATE_HZ := ORIGINAL_UPDATE_HZ * ORIGINAL_ENEMY_STEPS_PER_UPDATE
 const ORIGINAL_DEFAULT_BALL_SPEED_PER_TICK := 2.5
 const ORIGINAL_BALL_SPEEDUP_HIT_LIMIT := 100
 const ORIGINAL_BALL_SPEEDUP_PER_TICK := 0.3
@@ -101,7 +104,9 @@ const MONSTER_SPAWN_INTERVAL_SECONDS := 4.5
 const MONSTER_FRAME_SECONDS := 0.07
 const MONSTER_DEFAULT_SPEED := 1.0
 const MONSTER_TYPE3_RIGHT_LIMIT := 510.0
-const MONSTER_TRACKING_TURN_STEP_DEGREES := 2
+const MONSTER_TYPE3_VERTICAL_JITTER_BASE := -5.0
+const MONSTER_TYPE3_VERTICAL_JITTER_RANGE := 10
+const MONSTER_TRACKING_TURN_STEP_DEGREES := 2.0
 const MONSTER_SCORE := 15
 const MONSTER_BALL_HIT_SCORE := 25
 const MONSTER_TYPE6_SCORE_STEP := 10
@@ -121,10 +126,12 @@ const BEE_BALL_HIT_SCORE := MONSTER_BALL_HIT_SCORE
 const BEE_STUN_SCORE := 30
 const RACKET_STUN_DURATION_SECONDS := 3.0
 const MAX_IMPACT_EFFECTS := 100
+const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
+const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
 const IMPACT_EFFECT_KIND_MONSTER_HIT := 2
-const IMPACT_EFFECT_FRAME_SECONDS := 0.03
-const IMPACT_EFFECT_FRAME_COUNT := 6
-const IMPACT_EFFECT_DURATION_SECONDS := 0.18
+const IMPACT_EFFECT_FRAME_SECONDS := 0.05
+const IMPACT_EFFECT_FRAME_COUNT := 11
+const IMPACT_EFFECT_DURATION_SECONDS := IMPACT_EFFECT_FRAME_SECONDS * IMPACT_EFFECT_FRAME_COUNT
 const BONUS_ADD_STANDARD_BALL := 0
 const BONUS_ADD_FIREBALL := 1
 const BONUS_NON_STRICKED_BALLS := 2
@@ -209,6 +216,7 @@ const SFX_EVENT_BONUS_APPLY := "bonus_apply"
 const SFX_EVENT_PROJECTILE_FIRE := "projectile_fire"
 const SFX_EVENT_PROJECTILE_HIT := "projectile_hit"
 const SFX_EVENT_MONSTER_SPAWN := "monster_spawn"
+const SFX_EVENT_MONSTER_EXPIRE := "monster_expire"
 const SFX_EVENT_MONSTER_HIT := "monster_hit"
 const SFX_EVENT_BEE_SPAWN := "bee_spawn"
 const SFX_EVENT_LIFE_LOST := "life_lost"
@@ -1251,6 +1259,7 @@ func _spawn_next_monster() -> bool:
 		angle = 150 + _monster_rng.next_mod(60)
 
 	monsters.append(_new_monster(position, type_id, angle))
+	_spawn_impact_effect(position, IMPACT_EFFECT_KIND_MONSTER_SPAWN)
 	_queue_audio_event(SFX_EVENT_MONSTER_SPAWN)
 	return true
 
@@ -1262,7 +1271,7 @@ func _new_monster(position: Vector2, type_id: int, angle: int) -> Dictionary:
 		"position": position,
 		"frame": 0,
 		"frame_elapsed": 0.0,
-		"angle": posmod(angle, 360),
+		"angle": float(posmod(angle, 360)),
 		"speed": MONSTER_DEFAULT_SPEED,
 		"age": 0.0,
 	}
@@ -1273,6 +1282,8 @@ func _advance_monster(monster: Dictionary, delta: float) -> void:
 	monster["age"] = age
 	if age >= MONSTER_LIFETIME_SECONDS:
 		monster["active"] = false
+		_spawn_impact_effect(monster.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_MONSTER_TIMEOUT)
+		_queue_audio_event(SFX_EVENT_MONSTER_EXPIRE)
 		return
 
 	var type_id := int(monster.get("type_id", 0))
@@ -1287,19 +1298,28 @@ func _advance_monster(monster: Dictionary, delta: float) -> void:
 
 	var position: Vector2 = monster.get("position", Vector2.ZERO)
 	var speed := float(monster.get("speed", MONSTER_DEFAULT_SPEED))
-	var angle := int(monster.get("angle", 0))
+	var tick_scale := ORIGINAL_ENEMY_UPDATE_HZ * delta
+	var distance := speed * tick_scale
+	var angle := float(monster.get("angle", 0.0))
 	if type_id == 3 and not bool(monster.get("boundary_reflected", false)):
-		if position.x <= MONSTER_TYPE3_RIGHT_LIMIT:
-			position.x += speed
-			angle = 0
-		else:
-			position.y += speed
-			angle = 270
+		if distance > 0.0:
+			var horizontal_limit := MONSTER_TYPE3_RIGHT_LIMIT + speed
+			if position.x <= MONSTER_TYPE3_RIGHT_LIMIT:
+				position.x = minf(position.x + distance, horizontal_limit)
+
+			var jitter := float(_monster_rng.next_mod(MONSTER_TYPE3_VERTICAL_JITTER_RANGE))
+			var probe_y := position.y + MONSTER_SIZE.y * 0.5 + MONSTER_TYPE3_VERTICAL_JITTER_BASE + jitter
+			if racket_rect().get_center().y > probe_y:
+				position.y += distance
+				angle = 270.0
+			else:
+				position.y -= distance
+				angle = 90.0
 	elif type_id == 10:
-		angle = _tracking_angle_for_monster(monster, angle)
-		position += _monster_motion_vector(angle, speed)
+		angle = _tracking_angle_for_monster(monster, angle, tick_scale)
+		position += _monster_motion_vector(angle, distance)
 	else:
-		position += _monster_motion_vector(angle, speed)
+		position += _monster_motion_vector(angle, distance)
 
 	monster["position"] = position
 	monster["angle"] = angle
@@ -1329,11 +1349,11 @@ func _collide_monster_with_boundaries(monster: Dictionary) -> bool:
 	if not hit_horizontal and not hit_vertical:
 		return false
 
-	var angle := int(monster.get("angle", 0))
+	var angle := float(monster.get("angle", 0.0))
 	if hit_horizontal:
-		angle = posmod(180 - angle, 360)
+		angle = fposmod(180.0 - angle, 360.0)
 	if hit_vertical:
-		angle = posmod(360 - angle, 360)
+		angle = fposmod(360.0 - angle, 360.0)
 	monster["position"] = position
 	monster["angle"] = angle
 	monster["boundary_reflected"] = true
@@ -1348,7 +1368,7 @@ func _frame_count_for_monster_type(type_id: int) -> int:
 	return 11
 
 
-func _tracking_angle_for_monster(monster: Dictionary, current_angle: int) -> int:
+func _tracking_angle_for_monster(monster: Dictionary, current_angle: float, tick_scale: float) -> float:
 	var target_position := _first_active_ball_center()
 	if target_position == Vector2.INF:
 		return current_angle
@@ -1358,13 +1378,14 @@ func _tracking_angle_for_monster(monster: Dictionary, current_angle: int) -> int
 	if target_delta.is_zero_approx():
 		return current_angle
 
-	var target_angle := posmod(int(roundi(rad_to_deg(atan2(-target_delta.y, target_delta.x)))), 360)
-	var difference := posmod(target_angle - current_angle + 540, 360) - 180
+	var target_angle := fposmod(rad_to_deg(atan2(-target_delta.y, target_delta.x)), 360.0)
+	var difference := fposmod(target_angle - current_angle + 540.0, 360.0) - 180.0
+	var turn_step := MONSTER_TRACKING_TURN_STEP_DEGREES * tick_scale
 	if difference > 0:
-		current_angle += mini(MONSTER_TRACKING_TURN_STEP_DEGREES, difference)
+		current_angle += minf(turn_step, difference)
 	elif difference < 0:
-		current_angle -= mini(MONSTER_TRACKING_TURN_STEP_DEGREES, -difference)
-	return posmod(current_angle, 360)
+		current_angle -= minf(turn_step, -difference)
+	return fposmod(current_angle, 360.0)
 
 
 func _first_active_ball_center() -> Vector2:
@@ -1374,8 +1395,8 @@ func _first_active_ball_center() -> Vector2:
 	return Vector2.INF
 
 
-func _monster_motion_vector(angle: int, speed: float) -> Vector2:
-	var radians := deg_to_rad(float(posmod(angle, 360)))
+func _monster_motion_vector(angle: float, speed: float) -> Vector2:
+	var radians := deg_to_rad(fposmod(angle, 360.0))
 	return Vector2(cos(radians) * speed, -sin(radians) * speed)
 
 
@@ -1521,7 +1542,7 @@ func _bee_spawn_position() -> Vector2:
 
 func _advance_bee(bee: Dictionary, delta: float) -> void:
 	var position: Vector2 = bee.get("position", Vector2.ZERO)
-	position.x += BEE_STEP_X
+	position.x += BEE_STEP_X * ORIGINAL_ENEMY_UPDATE_HZ * delta
 	bee["position"] = position
 	if position.x >= BEE_EXPIRE_X:
 		bee["active"] = false

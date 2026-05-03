@@ -690,6 +690,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	if spawned_monsters.size() == 1:
 		_assert(int(spawned_monsters[0]["type_id"]) == 3, "first spawned monster uses original type-cycle entry")
 		_assert(monster_spawn_session.monster_rect(spawned_monsters[0]).size == GameSessionScript.MONSTER_COLLISION_SIZE, "monster collision rect uses original 26px box")
+	var spawn_effects: Array = monster_spawn_session.visible_impact_effects()
+	_assert(spawn_effects.size() == 1, "monster spawn creates original spawn VFX")
+	if spawn_effects.size() == 1 and spawned_monsters.size() == 1:
+		_assert(int(spawn_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_SPAWN, "monster spawn VFX uses original effect kind")
+		_assert(spawn_effects[0]["position"] == spawned_monsters[0]["position"], "monster spawn VFX starts at monster position")
 	_assert(monster_spawn_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_SPAWN], "monster spawn queues semantic SFX event")
 	monster_spawn_session.force_monster_spawn_ready()
 	monster_spawn_session.update(0.0)
@@ -712,11 +717,36 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	var moving_monsters: Array = monster_motion_session.visible_monsters()
 	_assert(moving_monsters.size() == 1, "forced monster remains active while within lifetime")
 	if moving_monsters.size() == 1:
-		_assert(moving_monsters[0]["position"] == Vector2(201, 200), "type 3 monster advances one original step")
+		var expected_monster_distance := GameSessionScript.MONSTER_DEFAULT_SPEED * GameSessionScript.ORIGINAL_ENEMY_UPDATE_HZ * GameSessionScript.MONSTER_FRAME_SECONDS
+		var expected_monster_x := 200.0 + expected_monster_distance
+		_assert(is_equal_approx(float(moving_monsters[0]["position"].x), expected_monster_x), "type 3 monster advances at original 3-substep enemy speed")
+		_assert(is_equal_approx(float(moving_monsters[0]["position"].y), 200.0 - expected_monster_distance), "type 3 eye follows the paddle vertically while moving horizontally")
 		_assert(int(moving_monsters[0]["frame"]) == 1, "monster animation advances at original cadence")
+	var monster_split_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_assert(monster_split_session.force_monster(Vector2(200, 200), 3, 0), "test helper can force split-step monster")
+	monster_split_session.update(GameSessionScript.MONSTER_FRAME_SECONDS * 0.5)
+	monster_split_session.update(GameSessionScript.MONSTER_FRAME_SECONDS * 0.5)
+	var split_monsters: Array = monster_split_session.visible_monsters()
+	if moving_monsters.size() == 1 and split_monsters.size() == 1:
+		_assert(is_equal_approx(float(split_monsters[0]["position"].x), float(moving_monsters[0]["position"].x)), "monster movement is stable across split deltas")
+		_assert(is_equal_approx(float(split_monsters[0]["position"].y), float(moving_monsters[0]["position"].y)), "monster y movement is stable across split deltas")
+	var eye_follow_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	eye_follow_session.set_monster_rng_seed(1)
+	eye_follow_session.move_racket_to(120.0)
+	eye_follow_session.force_ball(Vector2(300, 430), Vector2.ZERO)
+	_assert(eye_follow_session.force_monster(Vector2(220, 260), 3, 0), "test helper can force a paddle-following eye")
+	eye_follow_session.update(1.0 / GameSessionScript.ORIGINAL_ENEMY_UPDATE_HZ)
+	var eye_monsters: Array = eye_follow_session.visible_monsters()
+	if eye_monsters.size() == 1:
+		_assert(float(eye_monsters[0]["position"].y) < 260.0, "type 3 eye follows the paddle instead of the active ball")
 	monster_motion_session.monsters[0]["age"] = GameSessionScript.MONSTER_LIFETIME_SECONDS - 0.01
 	monster_motion_session.update(0.02)
 	_assert(monster_motion_session.active_monster_count() == 0, "monster expires after original lifetime")
+	var timeout_effects: Array = monster_motion_session.visible_impact_effects()
+	_assert(timeout_effects.size() == 1, "monster timeout creates original timeout VFX")
+	if timeout_effects.size() == 1:
+		_assert(int(timeout_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_TIMEOUT, "monster timeout VFX uses original effect kind")
+	_assert(monster_motion_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_EXPIRE], "monster timeout queues original expire SFX event")
 
 	var monster_boundary_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	monster_boundary_session.force_monster(
@@ -798,9 +828,17 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(bee_spawn_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BEE_SPAWN], "bee spawn queues EffBee SFX event")
 	bee_spawn_session.update(GameSessionScript.BEE_FRAME_SECONDS)
 	spawned_bees = bee_spawn_session.visible_bees()
+	var expected_bee_x := GameSessionScript.BEE_SPAWN_X + GameSessionScript.BEE_STEP_X * GameSessionScript.ORIGINAL_ENEMY_UPDATE_HZ * GameSessionScript.BEE_FRAME_SECONDS
 	if spawned_bees.size() == 1:
-		_assert(spawned_bees[0]["position"].x == GameSessionScript.BEE_SPAWN_X + GameSessionScript.BEE_STEP_X, "bee advances by original 3px step")
+		_assert(is_equal_approx(float(spawned_bees[0]["position"].x), expected_bee_x), "bee advances at original 3-substep enemy speed")
 		_assert(int(spawned_bees[0]["frame"]) == 1, "bee animation advances through original 5ms frames")
+	var bee_split_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	bee_split_session.force_bee(Vector2(GameSessionScript.BEE_SPAWN_X, 100))
+	bee_split_session.update(GameSessionScript.BEE_FRAME_SECONDS * 0.5)
+	bee_split_session.update(GameSessionScript.BEE_FRAME_SECONDS * 0.5)
+	var split_bees: Array = bee_split_session.visible_bees()
+	if spawned_bees.size() == 1 and split_bees.size() == 1:
+		_assert(is_equal_approx(float(split_bees[0]["position"].x), expected_bee_x), "bee movement is stable across split deltas")
 
 	var bee_ball_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	bee_ball_hit_session.force_ball(Vector2(200, 200), Vector2.ZERO)
@@ -830,7 +868,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 
 	var bee_expire_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	bee_expire_session.force_bee(Vector2(GameSessionScript.BEE_EXPIRE_X - 1.0, 100))
-	bee_expire_session.update(0.0)
+	bee_expire_session.update(1.0 / (GameSessionScript.BEE_STEP_X * GameSessionScript.ORIGINAL_ENEMY_UPDATE_HZ))
 	_assert(bee_expire_session.active_bee_count() == 0, "bee expires at original right bound")
 
 	var monster_projectile_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
@@ -1025,8 +1063,9 @@ func _validate_level_grid_renderer_defaults() -> void:
 	bee_renderer.free()
 
 	var impact_renderer = ImpactEffectRendererScript.new()
-	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_HIT, 0) == Rect2(Vector2(20, 0), Vector2(10, 10)), "impact renderer maps original monster-hit effect cell")
-	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_HIT, 3) == Rect2(Vector2(10, 10), Vector2(10, 10)), "impact renderer advances through original effect cells")
+	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_SPAWN, 0) == Rect2(Vector2(0, 0), Vector2(32, 32)), "impact renderer maps original monster-spawn effect cell")
+	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_TIMEOUT, 10) == Rect2(Vector2(32, 320), Vector2(32, 32)), "impact renderer maps original monster-timeout final frame")
+	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_HIT, 3) == Rect2(Vector2(64, 96), Vector2(32, 32)), "impact renderer advances original monster-hit vertical frames")
 	impact_renderer.free()
 
 
@@ -1181,6 +1220,7 @@ func _validate_audio_cue_catalog() -> void:
 		GameSessionScript.SFX_EVENT_BONUS_COLLECT: "eff15",
 		GameSessionScript.SFX_EVENT_PROJECTILE_FIRE: "eff08",
 		GameSessionScript.SFX_EVENT_MONSTER_SPAWN: "eff13",
+		GameSessionScript.SFX_EVENT_MONSTER_EXPIRE: "eff14",
 		GameSessionScript.SFX_EVENT_MONSTER_HIT: "eff09",
 		GameSessionScript.SFX_EVENT_BEE_SPAWN: "EffBee",
 		GameSessionScript.SFX_EVENT_LIFE_LOST: "eff16",
@@ -1199,6 +1239,7 @@ func _validate_audio_cue_catalog() -> void:
 	var sfx_events: Array[String] = AudioCueCatalogScript.known_sfx_events()
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "audio cue catalog exposes bonus-apply event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BEE_SPAWN), "audio cue catalog exposes bee-spawn event in known event list")
+	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_MONSTER_EXPIRE), "audio cue catalog exposes monster-expire event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_GAME_OVER), "audio cue catalog exposes game-over event in known event list")
 
 
@@ -1242,6 +1283,7 @@ func _validate_audio_service() -> void:
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_COLLECT)) == "eff15", "audio service maps bonus-collect SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_PROJECTILE_FIRE)) == "eff08", "audio service maps projectile-fire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_SPAWN)) == "eff13", "audio service maps monster-spawn SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_EXPIRE)) == "eff14", "audio service maps monster-expire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_HIT)) == "eff09", "audio service maps monster-hit SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BEE_SPAWN)) == "EffBee", "audio service maps bee-spawn SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_LIFE_LOST)) == "eff16", "audio service maps life-lost SFX event")

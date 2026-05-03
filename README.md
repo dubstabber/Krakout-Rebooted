@@ -44,13 +44,17 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   and brick-hit routing.
 - `KrakoutGameSession` now owns the first IDA-backed monster pool: five active
   slots, the original 3/6/10 type cycle, 4.5-second spawn gate, 6.5-second
-  lifetime, 70ms animation cadence, ball/projectile collision scoring, ball
+  lifetime, 70ms animation cadence, original 1px/call 3-substep speed conversion,
+  paddle-following type-3 eye movement, ball/projectile collision scoring, ball
   trajectory changes, wall-boundary reflection, and paddle contact handling.
 - `KrakoutMonsterRenderer` draws those transient monsters from `Monsters.png`
   through the source 32x32 type/frame grid. `KrakoutBeeRenderer` adds the
   first Bee/type-9 floating hazard path, including the original-style
-  racket-relative spawn, ball-hit removal without paddle stun, contact stun,
-  hit SFX, and impact VFX.
+  racket-relative spawn, 3px/call 3-substep speed conversion, ball-hit removal
+  without paddle stun, contact stun, hit SFX, and impact VFX.
+- `KrakoutImpactEffectRenderer` draws enemy spawn, timeout, and hit effects from
+  the original `Exploision` 32x32 vertical-frame columns, with the original
+  11-frame/50ms cadence.
 - `KrakoutBallRenderer` draws standard balls from the extracted `Balls` atlas
   using the original visible size rows, so size-changing bonuses use matching
   10/18/26/34/42 px ball frames instead of scaling a fixed crop.
@@ -102,9 +106,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - Gameplay now queues semantic SFX events from the session and drains them
   through `KrakoutAudio` in the Godot scene layer. IDA-backed mappings now cover
   launch, racket bounce, brick clear, chain explosion, bonus spawn/collect,
-  projectile fire, monster spawn/hit, life lost, level complete, and game over;
-  back-wall bounce, generic bonus apply, and generic projectile hit remain named
-  but silent until original evidence proves a direct sample.
+  projectile fire, monster spawn/timeout/hit, life lost, level complete, and
+  game over; back-wall bounce, generic bonus apply, and generic projectile hit
+  remain named but silent until original evidence proves a direct sample.
 
 ## Validation
 
