@@ -670,7 +670,13 @@ func _play_pending_audio_events() -> void:
 		return
 
 	for event_name: Variant in events:
-		audio.call("play_sfx_event", String(event_name))
+		var semantic_event := String(event_name)
+		if audio.has_method("is_sfx_stop_event") \
+			and audio.has_method("stop_sfx_event") \
+			and bool(audio.call("is_sfx_stop_event", semantic_event)):
+			audio.call("stop_sfx_event", semantic_event)
+		else:
+			audio.call("play_sfx_event", semantic_event)
 
 
 func _advance_to_next_level() -> void:

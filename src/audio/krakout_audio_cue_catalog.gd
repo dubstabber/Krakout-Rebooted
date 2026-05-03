@@ -23,6 +23,7 @@ const SFX_EVENT_MONSTER_SPAWN := "monster_spawn"
 const SFX_EVENT_MONSTER_EXPIRE := "monster_expire"
 const SFX_EVENT_MONSTER_HIT := "monster_hit"
 const SFX_EVENT_BEE_SPAWN := "bee_spawn"
+const SFX_EVENT_BEE_STOP := "bee_stop"
 const SFX_EVENT_LIFE_LOST := "life_lost"
 const SFX_EVENT_LEVEL_READY := "level_ready"
 const SFX_EVENT_LEVEL_COMPLETE := "level_complete"
@@ -53,6 +54,7 @@ const KNOWN_SFX_EVENTS := [
 	SFX_EVENT_MONSTER_EXPIRE,
 	SFX_EVENT_MONSTER_HIT,
 	SFX_EVENT_BEE_SPAWN,
+	SFX_EVENT_BEE_STOP,
 	SFX_EVENT_LIFE_LOST,
 	SFX_EVENT_LEVEL_READY,
 	SFX_EVENT_LEVEL_COMPLETE,
@@ -74,6 +76,9 @@ const SFX_EVENT_NAMES := {
 	SFX_EVENT_LEVEL_COMPLETE: "eff19",
 	SFX_EVENT_GAME_OVER: "eff18",
 }
+const SFX_STOP_EVENT_NAMES := {
+	SFX_EVENT_BEE_STOP: "EffBee",
+}
 
 
 static func music_name_for_context(context_name: String) -> String:
@@ -94,6 +99,14 @@ static func known_contexts() -> Array[String]:
 
 static func sfx_name_for_event(event_name: String) -> String:
 	return String(SFX_EVENT_NAMES.get(event_name, ""))
+
+
+static func sfx_stop_name_for_event(event_name: String) -> String:
+	return String(SFX_STOP_EVENT_NAMES.get(event_name, ""))
+
+
+static func is_sfx_stop_event(event_name: String) -> bool:
+	return SFX_STOP_EVENT_NAMES.has(event_name)
 
 
 static func has_sfx_event(event_name: String) -> bool:

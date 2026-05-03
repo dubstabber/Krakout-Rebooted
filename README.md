@@ -54,7 +54,8 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   through the source 32x32 type/frame grid. `KrakoutBeeRenderer` adds the
   first Bee/type-9 floating hazard path, including the original-style
   racket-relative spawn, 3px/call 3-substep speed conversion, ball-hit removal
-  without paddle stun, contact stun, hit SFX, and impact VFX.
+  without paddle stun, contact stun, original `InfoIcons` stuck-racket countdown,
+  `EffBee` stop-on-removal routing, hit SFX, and impact VFX.
 - `KrakoutImpactEffectRenderer` draws enemy spawn, timeout, and hit effects from
   the original `Exploision` 32x32 vertical-frame columns, with the original
   11-frame/50ms cadence.

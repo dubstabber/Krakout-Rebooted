@@ -106,6 +106,7 @@ func play_sfx(name: String) -> bool:
 	var player := _next_sfx_player()
 	player.stream = stream
 	player.volume_db = _volume_db(_sfx_volume)
+	player.set_meta("krakout_sfx_name", name)
 	player.play()
 	return true
 
@@ -115,6 +116,41 @@ func play_sfx_event(event_name: String) -> bool:
 	if sfx_name.is_empty():
 		return false
 	return play_sfx(sfx_name)
+
+
+func stop_sfx(name: String) -> bool:
+	_ensure_players()
+	var did_stop := false
+	for player: AudioStreamPlayer in _sfx_players:
+		if String(player.get_meta("krakout_sfx_name", "")) != name:
+			continue
+		if player.playing:
+			player.stop()
+			did_stop = true
+	return did_stop
+
+
+func stop_sfx_event(event_name: String) -> bool:
+	var sfx_name := AudioCueCatalogScript.sfx_stop_name_for_event(event_name)
+	if sfx_name.is_empty():
+		return false
+	return stop_sfx(sfx_name)
+
+
+func sfx_stop_name_for_event(event_name: String) -> String:
+	return AudioCueCatalogScript.sfx_stop_name_for_event(event_name)
+
+
+func is_sfx_stop_event(event_name: String) -> bool:
+	return AudioCueCatalogScript.is_sfx_stop_event(event_name)
+
+
+func is_sfx_playing(name: String) -> bool:
+	_ensure_players()
+	for player: AudioStreamPlayer in _sfx_players:
+		if player.playing and String(player.get_meta("krakout_sfx_name", "")) == name:
+			return true
+	return false
 
 
 func sfx_name_for_event(event_name: String) -> String:

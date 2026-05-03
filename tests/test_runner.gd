@@ -1101,7 +1101,10 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(not bee_ball_hit_session.first_ball_velocity().is_zero_approx(), "bee ball collision changes the ball trajectory")
 	_assert(not bee_ball_hit_session.is_racket_stunned(), "bee ball collision does not stun the racket")
 	_assert(bee_ball_hit_session.visible_impact_effects().size() == 1, "bee ball collision spawns impact VFX")
-	_assert(bee_ball_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_HIT], "bee ball collision queues monster-hit SFX event")
+	_assert(
+		bee_ball_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BEE_STOP, GameSessionScript.SFX_EVENT_MONSTER_HIT],
+		"bee ball collision stops EffBee before monster-hit SFX"
+	)
 
 	var bee_racket_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	bee_racket_hit_session.force_ball(Vector2(300, 200), Vector2.ZERO)
@@ -1115,13 +1118,29 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(bee_racket_hit_session.active_bee_count() == 0, "racket collision removes active bee")
 	_assert(bee_racket_hit_session.score == GameSessionScript.BEE_STUN_SCORE, "bee hit awards original stun-hazard score")
 	_assert(bee_racket_hit_session.is_racket_stunned(), "bee hit stuns the racket")
+	var bee_stun_indicators: Array = bee_racket_hit_session.active_bonus_indicators()
+	_assert(bee_stun_indicators.size() == 1, "bee stun exposes one active status indicator")
+	if bee_stun_indicators.size() == 1:
+		_assert(int(bee_stun_indicators[0]["icon_index"]) == GameSessionScript.RACKET_STUN_STATUS_ICON_INDEX, "bee stun status uses original stuck-racket icon slot")
+		_assert(int(bee_stun_indicators[0]["value"]) == int(GameSessionScript.RACKET_STUN_DURATION_SECONDS), "bee stun status starts at original duration")
 	_assert(bee_racket_hit_session.visible_impact_effects().size() == 1, "bee hit spawns impact VFX")
-	_assert(bee_racket_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_HIT], "bee hit queues monster-hit SFX event")
+	_assert(
+		bee_racket_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BEE_STOP, GameSessionScript.SFX_EVENT_MONSTER_HIT],
+		"bee hit stops EffBee before monster-hit SFX"
+	)
+	bee_racket_hit_session.update(1.0)
+	var bee_stun_countdown: Array = bee_racket_hit_session.active_bonus_indicators()
+	_assert(bee_stun_countdown.size() == 1, "bee stun status remains visible while stun is active")
+	if bee_stun_countdown.size() == 1:
+		_assert(int(bee_stun_countdown[0]["value"]) == int(GameSessionScript.RACKET_STUN_DURATION_SECONDS) - 1, "bee stun status counts down once per second")
+	bee_racket_hit_session.update(GameSessionScript.RACKET_STUN_DURATION_SECONDS - 1.0)
+	_assert(bee_racket_hit_session.active_bonus_indicators().is_empty(), "expired bee stun clears status indicator")
 
 	var bee_expire_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	bee_expire_session.force_bee(Vector2(GameSessionScript.BEE_EXPIRE_X - 1.0, 100))
 	bee_expire_session.update(1.0 / (GameSessionScript.BEE_STEP_X * GameSessionScript.ORIGINAL_ENEMY_UPDATE_HZ))
 	_assert(bee_expire_session.active_bee_count() == 0, "bee expires at original right bound")
+	_assert(bee_expire_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BEE_STOP], "bee expiry stops EffBee playback")
 
 	var monster_projectile_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	monster_projectile_hit_session.force_monster(Vector2(200, 200), 3, 0)
@@ -1617,6 +1636,7 @@ func _validate_audio_cue_catalog() -> void:
 	_assert(contexts == ["credits", "episode_select", "gameplay", "high_score", "main_menu", "name_entry", "options", "rules"], "audio cue catalog exposes sorted known contexts")
 	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "audio cue catalog recognizes brick-clear gameplay SFX event")
 	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "audio cue catalog recognizes projectile-fire gameplay SFX event")
+	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_BEE_STOP), "audio cue catalog recognizes bee-stop gameplay SFX event")
 	_assert(not AudioCueCatalogScript.has_sfx_event("missing_sfx_event"), "audio cue catalog rejects unknown SFX events")
 
 	var expected_sfx_names := {
@@ -1644,11 +1664,15 @@ func _validate_audio_cue_catalog() -> void:
 	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BONUS_APPLY) == "", "audio cue catalog leaves generic bonus-apply silent")
 	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_PROJECTILE_HIT) == "", "audio cue catalog leaves generic projectile-hit silent")
 	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BALL_LAUNCH) == "", "audio cue catalog leaves initial ball launch silent")
+	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BEE_STOP) == "", "audio cue catalog does not play bee-stop as a new SFX")
+	_assert(AudioCueCatalogScript.sfx_stop_name_for_event(GameSessionScript.SFX_EVENT_BEE_STOP) == "EffBee", "audio cue catalog maps bee-stop to the active EffBee playback")
+	_assert(AudioCueCatalogScript.is_sfx_stop_event(GameSessionScript.SFX_EVENT_BEE_STOP), "audio cue catalog marks bee-stop as a stop event")
 	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_LEVEL_READY) != AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_LEVEL_COMPLETE), "audio cue catalog keeps start and ending cues distinct")
 	_assert(AudioCueCatalogScript.sfx_name_for_event("missing_sfx_event") == "", "audio cue catalog leaves unknown SFX events silent")
 	var sfx_events: Array[String] = AudioCueCatalogScript.known_sfx_events()
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "audio cue catalog exposes bonus-apply event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BEE_SPAWN), "audio cue catalog exposes bee-spawn event in known event list")
+	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BEE_STOP), "audio cue catalog exposes bee-stop event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_LEVEL_READY), "audio cue catalog exposes level-ready event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_MONSTER_EXPIRE), "audio cue catalog exposes monster-expire event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_GAME_OVER), "audio cue catalog exposes game-over event in known event list")
@@ -1665,6 +1689,9 @@ func _validate_audio_service() -> void:
 	_assert(_audio.has_method("music_name_for_context"), "audio service exposes music context lookup")
 	_assert(_audio.has_method("play_sfx"), "audio service exposes SFX playback")
 	_assert(_audio.has_method("play_sfx_event"), "audio service exposes semantic SFX event playback")
+	_assert(_audio.has_method("stop_sfx_event"), "audio service exposes semantic SFX stop events")
+	_assert(_audio.has_method("is_sfx_stop_event"), "audio service exposes SFX stop event lookup")
+	_assert(_audio.has_method("is_sfx_playing"), "audio service exposes active SFX lookup")
 	_assert(_audio.has_method("sfx_name_for_event"), "audio service exposes SFX event lookup")
 	_assert(_audio.has_method("has_sfx_event"), "audio service exposes known SFX event lookup")
 	_assert(bool(_audio.call("music_stream_exists", "theme1")), "audio service resolves extracted music track")
@@ -1702,6 +1729,8 @@ func _validate_audio_service() -> void:
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_LEVEL_COMPLETE)) == "eff19", "audio service maps level-complete SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_GAME_OVER)) == "eff18", "audio service maps game-over SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_APPLY)) == "", "audio service leaves generic bonus-apply unmapped")
+	_assert(String(_audio.call("sfx_stop_name_for_event", GameSessionScript.SFX_EVENT_BEE_STOP)) == "EffBee", "audio service maps bee-stop to EffBee")
+	_assert(bool(_audio.call("is_sfx_stop_event", GameSessionScript.SFX_EVENT_BEE_STOP)), "audio service recognizes bee-stop as a stop event")
 
 	_audio.call("set_music_enabled", true)
 	_audio.call("set_music_volume", 50)
@@ -1720,6 +1749,10 @@ func _validate_audio_service() -> void:
 	_assert(int(_audio.call("sfx_volume")) == 0, "audio service clamps minimum SFX volume")
 	_assert(not bool(_audio.call("play_sfx", "eff01")), "audio service suppresses muted SFX")
 	_audio.call("set_sfx_volume", 65)
+	_assert(bool(_audio.call("play_sfx", "EffBee")), "audio service can start active bee SFX")
+	_assert(bool(_audio.call("is_sfx_playing", "EffBee")), "audio service tracks active bee SFX")
+	_assert(bool(_audio.call("stop_sfx_event", GameSessionScript.SFX_EVENT_BEE_STOP)), "audio service stops active bee SFX by semantic event")
+	_assert(not bool(_audio.call("is_sfx_playing", "EffBee")), "audio service stops EffBee playback after bee-stop")
 	_audio.call("set_sfx_enabled", false)
 
 
@@ -2187,6 +2220,14 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(gameplay.is_level_ready_sequence_active(), "game screen starts level-ready sequence when board is loaded")
 			var startup_indicators: Array[Dictionary] = gameplay.active_bonus_indicators()
 			_assert(not startup_indicators.is_empty() and int(startup_indicators[0]["icon_index"]) == GameSessionScript.LEVEL_READY_STATUS_ICON_INDEX, "game screen exposes level-start countdown indicator")
+			if _audio != null and _audio.has_method("play_sfx") and _audio.has_method("is_sfx_playing"):
+				_audio.call("set_sfx_enabled", true)
+				_audio.call("set_sfx_volume", 65)
+				_assert(bool(_audio.call("play_sfx", "EffBee")), "game screen test can start bee SFX")
+				_assert(bool(_audio.call("is_sfx_playing", "EffBee")), "bee SFX is active before routed stop event")
+				gameplay.call("_queue_audio_event", GameSessionScript.SFX_EVENT_BEE_STOP)
+				game.call("_play_pending_audio_events")
+				_assert(not bool(_audio.call("is_sfx_playing", "EffBee")), "game screen routes bee-stop events to stop EffBee")
 			var game_bonus_renderer := game.find_child("BonusRenderer", true, false)
 			if game_bonus_renderer != null:
 				_assert(not game_bonus_renderer.call("is_stack_visible"), "bonus renderer applies hidden stack setting")

@@ -100,6 +100,7 @@ const BACK_WALL_DURATION_SECONDS := 30.0
 const BACK_WALL_STATUS_ICON_INDEX := 3
 const LEVEL_READY_SEQUENCE_SECONDS := 30.0
 const LEVEL_READY_STATUS_ICON_INDEX := 2
+const RACKET_STUN_STATUS_ICON_INDEX := 1
 # sub_40F940 draws Roller.tga as a 20x390 strip at x = 47 + reveal_offset
 # and advances ten source frames while revealing the 20 board columns.
 const LEVEL_READY_ROLLER_FRAME_COUNT := 10
@@ -258,6 +259,7 @@ const SFX_EVENT_MONSTER_SPAWN := "monster_spawn"
 const SFX_EVENT_MONSTER_EXPIRE := "monster_expire"
 const SFX_EVENT_MONSTER_HIT := "monster_hit"
 const SFX_EVENT_BEE_SPAWN := "bee_spawn"
+const SFX_EVENT_BEE_STOP := "bee_stop"
 const SFX_EVENT_LIFE_LOST := "life_lost"
 const SFX_EVENT_LEVEL_READY := "level_ready"
 const SFX_EVENT_LEVEL_COMPLETE := "level_complete"
@@ -596,6 +598,11 @@ func active_bonus_indicators() -> Array[Dictionary]:
 		indicators.append({
 			"icon_index": LEVEL_READY_STATUS_ICON_INDEX,
 			"value": ceili(level_ready_time_remaining),
+		})
+	if is_racket_stunned():
+		indicators.append({
+			"icon_index": RACKET_STUN_STATUS_ICON_INDEX,
+			"value": ceili(_racket_stun_time_remaining),
 		})
 	if is_back_wall_active():
 		indicators.append({
@@ -1549,6 +1556,8 @@ func _collide_projectile_with_board(projectile: Dictionary) -> bool:
 
 
 func _clear_monster_state() -> void:
+	if _has_active_bee():
+		_queue_audio_event(SFX_EVENT_BEE_STOP)
 	monsters.clear()
 	bees.clear()
 	impact_effects.clear()
@@ -1883,6 +1892,7 @@ func _advance_bee(bee: Dictionary, delta: float) -> void:
 	bee["position"] = position
 	if position.x >= BEE_EXPIRE_X:
 		bee["active"] = false
+		_queue_audio_event(SFX_EVENT_BEE_STOP)
 		return
 
 	var frame_elapsed := float(bee.get("frame_elapsed", 0.0)) + delta
@@ -1907,6 +1917,7 @@ func _kill_bee_at_index(index: int, score_value: int) -> void:
 	bees[index] = bee
 	award_score(score_value)
 	_spawn_impact_effect(bee.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_MONSTER_HIT)
+	_queue_audio_event(SFX_EVENT_BEE_STOP)
 	_queue_audio_event(SFX_EVENT_MONSTER_HIT)
 
 
@@ -1961,6 +1972,13 @@ func _compact_bees() -> void:
 		if bool(bee.get("active", false)):
 			compacted.append(bee)
 	bees = compacted
+
+
+func _has_active_bee() -> bool:
+	for bee: Dictionary in bees:
+		if bool(bee.get("active", false)):
+			return true
+	return false
 
 
 func _compact_impact_effects() -> void:
