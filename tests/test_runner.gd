@@ -358,6 +358,17 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(left_wall_session.first_ball_velocity().x > 0.0, "ball bounces off left wall")
 	_assert(left_wall_session.first_ball_position().x == GameSessionScript.BALL_LEFT_X, "left wall clamps ball to original inner boundary")
 
+	var speedup_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	speedup_session.force_ball(Vector2(500, GameSessionScript.BALL_TOP_Y), Vector2(-300, -1))
+	var speedup_ball: Dictionary = speedup_session.balls[0]
+	speedup_ball["target_speed"] = 300.0
+	speedup_ball["speed_hit_count"] = GameSessionScript.ORIGINAL_BALL_SPEEDUP_HIT_LIMIT
+	speedup_session.balls[0] = speedup_ball
+	speedup_session.update(0.0)
+	var expected_speedup := 300.0 + GameSessionScript.ORIGINAL_BALL_SPEEDUP_PER_TICK * GameSessionScript.ORIGINAL_BALL_STEPS_PER_UPDATE * GameSessionScript.ORIGINAL_UPDATE_HZ
+	_assert(is_equal_approx(speedup_session.first_ball_velocity().length(), expected_speedup), "ball speed increases after the original hit-count threshold")
+	_assert(int(speedup_session.balls[0]["speed_hit_count"]) == 0, "ball speed-up hit counter resets after acceleration")
+
 	var racket_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	racket_session.move_racket_to(220.0)
 	var racket_hit_y: float = racket_session.racket_rect().position.y + 40.0

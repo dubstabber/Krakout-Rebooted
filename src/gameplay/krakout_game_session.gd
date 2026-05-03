@@ -46,6 +46,9 @@ const READY_BALL_GAP := 10.0
 const ORIGINAL_UPDATE_HZ := 50.0
 const ORIGINAL_BALL_STEPS_PER_UPDATE := 3.0
 const ORIGINAL_DEFAULT_BALL_SPEED_PER_TICK := 2.0
+const ORIGINAL_BALL_SPEEDUP_HIT_LIMIT := 100
+const ORIGINAL_BALL_SPEEDUP_PER_TICK := 0.3
+const ORIGINAL_BALL_MAX_SPEED_PER_TICK := 6.0
 const DEFAULT_BALL_VELOCITY := Vector2(
 	-ORIGINAL_DEFAULT_BALL_SPEED_PER_TICK * ORIGINAL_BALL_STEPS_PER_UPDATE * ORIGINAL_UPDATE_HZ,
 	0.0
@@ -355,6 +358,7 @@ func launch_ready_ball() -> bool:
 	ball["active"] = true
 	ball["velocity"] = _velocity_for_current_speed(DEFAULT_BALL_VELOCITY)
 	ball["target_speed"] = Vector2(ball["velocity"]).length()
+	ball["speed_hit_count"] = 0
 	balls[0] = ball
 	state = STATE_PLAYING
 	_queue_audio_event(SFX_EVENT_BALL_LAUNCH)
@@ -654,6 +658,7 @@ func force_ball(position: Vector2, velocity: Vector2, size: float = BALL_SIZE) -
 		"size": size,
 		"speed_scale": ball_speed_scale,
 		"target_speed": _target_speed_for_new_ball(velocity),
+		"speed_hit_count": 0,
 	}]
 	state = STATE_PLAYING
 
@@ -688,6 +693,7 @@ func _add_ball(position: Vector2, velocity: Vector2, active := true) -> bool:
 		"size": ball_size,
 		"speed_scale": ball_speed_scale,
 		"target_speed": _target_speed_for_new_ball(velocity),
+		"speed_hit_count": 0,
 	})
 	return true
 
@@ -705,6 +711,7 @@ func _attach_ready_balls() -> void:
 		ball["size"] = ball_size
 		ball["speed_scale"] = ball_speed_scale
 		ball["target_speed"] = _target_speed_for_new_ball(_velocity_for_current_speed(DEFAULT_BALL_VELOCITY))
+		ball["speed_hit_count"] = 0
 		balls[index] = ball
 
 
@@ -720,20 +727,26 @@ func _advance_ball(ball: Dictionary, delta: float) -> void:
 	var position := previous_position + Vector2(ball.get("velocity", Vector2.ZERO)) * delta
 	var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
 	var size := float(ball.get("size", BALL_SIZE))
+	var wall_hit := false
 
 	if position.y <= BALL_TOP_Y:
 		position.y = BALL_TOP_Y
 		velocity.y = absf(velocity.y)
+		wall_hit = true
 	elif position.y + size >= BALL_BOTTOM_Y:
 		position.y = BALL_BOTTOM_Y - size
 		velocity.y = -absf(velocity.y)
+		wall_hit = true
 
 	if position.x <= BALL_LEFT_X:
 		position.x = BALL_LEFT_X
 		velocity.x = absf(velocity.x)
+		wall_hit = true
 
 	ball["position"] = position
 	ball["velocity"] = velocity
+	if wall_hit:
+		_register_ball_speed_hit(ball)
 
 	if _collide_with_racket(ball):
 		position = ball.get("position", position)
@@ -777,6 +790,7 @@ func _collide_with_racket(ball: Dictionary) -> bool:
 	ball["position"] = rect.position
 	ball["velocity"] = velocity
 	ball["target_speed"] = speed
+	_register_ball_speed_hit(ball)
 	_queue_audio_event(SFX_EVENT_RACKET_BOUNCE)
 	return true
 
@@ -797,6 +811,7 @@ func _collide_with_back_wall(ball: Dictionary) -> bool:
 	velocity.x = -absf(velocity.x)
 	ball["position"] = rect.position
 	ball["velocity"] = velocity
+	_register_ball_speed_hit(ball)
 	_queue_audio_event(SFX_EVENT_BACK_WALL_BOUNCE)
 	return true
 
@@ -817,6 +832,7 @@ func _collide_with_board(ball: Dictionary, previous_position: Vector2) -> bool:
 	_apply_board_hit_result(hit_result)
 
 	_reflect_from_tile(ball, previous_position, PlayfieldSpecScript.brick_rect(column, row))
+	_register_ball_speed_hit(ball)
 	return true
 
 
@@ -1795,6 +1811,30 @@ func _target_speed_for_ball(ball: Dictionary) -> float:
 	if not velocity.is_zero_approx():
 		return velocity.length()
 	return _velocity_for_current_speed(DEFAULT_BALL_VELOCITY).length()
+
+
+func _register_ball_speed_hit(ball: Dictionary) -> void:
+	var hit_count := int(ball.get("speed_hit_count", 0)) + 1
+	if hit_count <= ORIGINAL_BALL_SPEEDUP_HIT_LIMIT:
+		ball["speed_hit_count"] = hit_count
+		return
+
+	ball["speed_hit_count"] = 0
+	var target_speed := _target_speed_for_ball(ball)
+	var max_speed := ORIGINAL_BALL_MAX_SPEED_PER_TICK * ORIGINAL_BALL_STEPS_PER_UPDATE * ORIGINAL_UPDATE_HZ
+	if target_speed >= max_speed:
+		ball["target_speed"] = max_speed
+		return
+
+	var next_speed := minf(
+		max_speed,
+		target_speed + ORIGINAL_BALL_SPEEDUP_PER_TICK * ORIGINAL_BALL_STEPS_PER_UPDATE * ORIGINAL_UPDATE_HZ
+	)
+	ball["target_speed"] = next_speed
+
+	var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
+	if not velocity.is_zero_approx():
+		ball["velocity"] = velocity.normalized() * next_speed
 
 
 func _handle_round_lost() -> void:
