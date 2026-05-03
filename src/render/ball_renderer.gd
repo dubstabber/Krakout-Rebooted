@@ -37,8 +37,18 @@ func are_tracks_visible() -> bool:
 	return tracks_visible
 
 
+func are_balls_visible_for_session() -> bool:
+	if session == null:
+		return false
+	if session.has_method("are_balls_visible"):
+		return bool(session.call("are_balls_visible"))
+	if session.has_method("is_level_ready_prompt_visible"):
+		return not bool(session.call("is_level_ready_prompt_visible"))
+	return true
+
+
 func _draw() -> void:
-	if session == null or ball_texture == null:
+	if ball_texture == null or not are_balls_visible_for_session():
 		return
 
 	for ball: Dictionary in session.visible_balls():

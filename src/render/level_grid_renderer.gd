@@ -19,6 +19,7 @@ var _animation_frame := 0
 var _animation_direction := 1
 var _animation_elapsed := 0.0
 var _has_animated_tiles := false
+var _reveal_offset_pixels := -1.0
 
 
 func _ready() -> void:
@@ -43,6 +44,26 @@ func set_board_state(state) -> void:
 	level_data = state.source_level if state != null else null
 	_has_animated_tiles = _source_has_animated_tiles(state)
 	queue_redraw()
+
+
+func set_reveal_offset_pixels(value: float) -> void:
+	var next_offset := -1.0
+	if value >= 0.0:
+		next_offset = clampf(value, 0.0, PlayfieldSpecScript.GRID_SIZE.x - PlayfieldSpecScript.BRICK_SIZE.x)
+	if is_equal_approx(_reveal_offset_pixels, next_offset):
+		return
+	_reveal_offset_pixels = next_offset
+	queue_redraw()
+
+
+func current_reveal_offset_pixels() -> float:
+	return _reveal_offset_pixels
+
+
+func is_column_revealed(column: int) -> bool:
+	if _reveal_offset_pixels < 0.0:
+		return true
+	return float(max(0, column)) * tile_size.x <= _reveal_offset_pixels
 
 
 func _process(delta: float) -> void:
@@ -71,6 +92,9 @@ func _draw() -> void:
 
 	for row in range(int(draw_source.rows_count)):
 		for column in range(int(draw_source.columns)):
+			if not is_column_revealed(column):
+				continue
+
 			var tile_id := int(draw_source.tile_at(column, row))
 			if atlas_mapping.is_empty_tile(tile_id):
 				continue

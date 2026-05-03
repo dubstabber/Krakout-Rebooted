@@ -94,8 +94,18 @@ func set_session(value) -> void:
 	queue_redraw()
 
 
+func is_racket_visible_for_session() -> bool:
+	if session == null:
+		return false
+	if session.has_method("is_racket_visible"):
+		return bool(session.call("is_racket_visible"))
+	if session.has_method("is_level_ready_prompt_visible"):
+		return not bool(session.call("is_level_ready_prompt_visible"))
+	return true
+
+
 func _draw() -> void:
-	if session == null or racket_texture == null:
+	if racket_texture == null or not is_racket_visible_for_session():
 		return
 
 	var visual_mode := VISUAL_MODE_NORMAL

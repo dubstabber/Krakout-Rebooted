@@ -110,6 +110,17 @@ func is_back_wall_active() -> bool:
 	return back_wall_active
 
 
+func set_level_reveal_offset_pixels(value: float) -> void:
+	if grid_renderer != null and grid_renderer.has_method("set_reveal_offset_pixels"):
+		grid_renderer.call("set_reveal_offset_pixels", value)
+
+
+func current_level_reveal_offset_pixels() -> float:
+	if grid_renderer != null and grid_renderer.has_method("current_reveal_offset_pixels"):
+		return float(grid_renderer.call("current_reveal_offset_pixels"))
+	return -1.0
+
+
 func _build_scene() -> void:
 	if grid_renderer != null:
 		return

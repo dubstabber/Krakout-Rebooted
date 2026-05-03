@@ -32,6 +32,10 @@ const RACKET_MAX_SEGMENTS := 37
 const RACKET_BONUS_STEP_SEGMENTS := 3
 const RACKET_MIN_Y := PlayfieldSpecScript.WALL_INNER_TOP_Y
 const RACKET_MAX_BOTTOM := PlayfieldSpecScript.WALL_INNER_BOTTOM_Y
+# sub_40E580 stores racket top y = 221 for the default 74 px racket, centered
+# inside the original 63..453 playfield span.
+const RACKET_READY_CENTER_Y := (PlayfieldSpecScript.WALL_INNER_TOP_Y + PlayfieldSpecScript.WALL_INNER_BOTTOM_Y) * 0.5
+const RACKET_READY_DEFAULT_Y := RACKET_READY_CENTER_Y - RACKET_HEIGHT * 0.5
 const BALL_SIZE := 18.0
 const BALL_MIN_SIZE := 10.0
 const BALL_MAX_SIZE := 42.0
@@ -381,6 +385,8 @@ func _load_board_for_level(level: KrakoutLevelData) -> void:
 func move_racket_to(mouse_y: float) -> void:
 	if is_racket_stunned():
 		return
+	if is_level_ready_prompt_visible():
+		return
 	var current_height := current_racket_height()
 	racket_y = clampf(mouse_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
 	if state == STATE_READY or state == STATE_BALL_LOST:
@@ -587,6 +593,7 @@ func active_bonus_indicators() -> Array[Dictionary]:
 
 
 func start_level_ready_sequence(queue_audio := true) -> void:
+	_reset_racket_to_ready_center()
 	level_ready_time_remaining = LEVEL_READY_SEQUENCE_SECONDS
 	_level_ready_animation_time_remaining = LEVEL_READY_ANIMATION_SECONDS
 	_level_ready_roller_offset = 0.0
@@ -602,6 +609,14 @@ func is_level_ready_sequence_active() -> bool:
 
 func is_level_ready_prompt_visible() -> bool:
 	return _level_ready_animation_time_remaining > 0.0
+
+
+func is_racket_visible() -> bool:
+	return not is_level_ready_prompt_visible()
+
+
+func are_balls_visible() -> bool:
+	return not is_level_ready_prompt_visible()
 
 
 func level_ready_animation_progress() -> float:
@@ -861,6 +876,16 @@ func _ready_ball_position() -> Vector2:
 		RACKET_X - ball_size - READY_BALL_GAP,
 		racket_y + current_racket_height() * 0.5 - ball_size * 0.5
 	)
+
+
+func _reset_racket_to_ready_center() -> void:
+	racket_y = clampf(
+		RACKET_READY_CENTER_Y - current_racket_height() * 0.5,
+		RACKET_MIN_Y,
+		RACKET_MAX_BOTTOM - current_racket_height()
+	)
+	if state == STATE_READY or state == STATE_BALL_LOST:
+		_attach_ready_balls()
 
 
 func _advance_ball(ball: Dictionary, delta: float) -> void:

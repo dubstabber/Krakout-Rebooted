@@ -158,6 +158,7 @@ func _process(delta: float) -> void:
 		return
 
 	gameplay_session.update(delta)
+	_sync_level_ready_reveal()
 	_update_held_shooting_paddle()
 	_record_best_score()
 	_play_pending_audio_events()
@@ -268,6 +269,7 @@ func launch_ready_ball() -> bool:
 	if gameplay_session == null:
 		return false
 	var launched: bool = gameplay_session.launch_ready_ball()
+	_sync_level_ready_reveal()
 	_play_pending_audio_events()
 	_refresh_actor_renderers()
 	_refresh_hud()
@@ -472,8 +474,9 @@ func _apply_level() -> void:
 			var starting_best_score: int = maxi(int(gameplay_session.best_score), _profile_best_score())
 			gameplay_session.start_run(level, level_number, starting_best_score)
 			_run_started = true
-		gameplay_session.start_level_ready_sequence(true)
 		playfield_renderer.set_board_state(gameplay_session.board_state)
+		gameplay_session.start_level_ready_sequence(true)
+		_sync_level_ready_reveal()
 		_refresh_playfield_effects()
 		_refresh_actor_renderers()
 		_refresh_hud()
@@ -632,10 +635,26 @@ func _apply_presentation_settings() -> void:
 
 
 func _refresh_playfield_effects() -> void:
+	_sync_level_ready_reveal()
 	if playfield_renderer == null or gameplay_session == null:
 		return
 	if playfield_renderer.has_method("set_back_wall_active") and gameplay_session.has_method("is_back_wall_active"):
 		playfield_renderer.call("set_back_wall_active", gameplay_session.call("is_back_wall_active"))
+
+
+func _sync_level_ready_reveal() -> void:
+	if playfield_renderer == null or gameplay_session == null:
+		return
+	if not playfield_renderer.has_method("set_level_reveal_offset_pixels"):
+		return
+
+	var reveal_offset := -1.0
+	if gameplay_session.has_method("level_ready_roller_layout"):
+		var layout: Dictionary = gameplay_session.call("level_ready_roller_layout")
+		if bool(layout.get("visible", false)):
+			var position: Vector2 = layout.get("position", PlayfieldSpecScript.GRID_ORIGIN)
+			reveal_offset = maxf(0.0, position.x - PlayfieldSpecScript.GRID_ORIGIN.x)
+	playfield_renderer.call("set_level_reveal_offset_pixels", reveal_offset)
 
 
 func _play_pending_audio_events() -> void:
