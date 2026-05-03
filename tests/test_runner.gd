@@ -261,6 +261,13 @@ func _validate_brick_semantics() -> void:
 	_assert(BrickSemanticsScript.behavior_case(68) == 4, "tile 68 keeps its chain behavior case")
 	_assert(BrickSemanticsScript.behavior_case(69) == 1, "tile 69 keeps its non-clear behavior case")
 	_assert(not BrickSemanticsScript.can_spawn_bonus(43), "chain tiles do not route through bonus spawn logic")
+	_assert(BrickSemanticsScript.hit_kind(1) == BrickSemanticsScript.HIT_KIND_NORMAL, "tile 1 uses normal hit behavior")
+	_assert(BrickSemanticsScript.hit_kind(8) == BrickSemanticsScript.HIT_KIND_FORCE_BREAK_ONLY, "tile 8 only clears under force-break hits")
+	_assert(BrickSemanticsScript.hit_kind(15) == BrickSemanticsScript.HIT_KIND_DOWNGRADE, "tile 15 uses original downgrade behavior")
+	_assert(BrickSemanticsScript.hit_kind(43) == BrickSemanticsScript.HIT_KIND_CHAIN_EXPLOSION, "tile 43 uses chain hit behavior")
+	_assert(BrickSemanticsScript.downgraded_tile_id(15) == 14, "tile 15 downgrades to original next stage")
+	_assert(BrickSemanticsScript.downgraded_tile_id(42) == 44, "tile 42 downgrades to original animated next stage")
+	_assert(BrickSemanticsScript.downgraded_tile_id(70) == 90, "tile 70 downgrades to original high-range next stage")
 
 
 func _validate_original_rng() -> void:
@@ -498,14 +505,35 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	brick_session.update(0.01)
 	_assert(brick_session.board_state.tile_at(0, 0) == 0, "ball hit clears brick through board state")
 	_assert(brick_session.consume_board_changed(), "brick hit marks board for redraw")
-	_assert(brick_session.score == GameSessionScript.BRICK_SCORE, "brick hit awards original score increment")
+	_assert(brick_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "normal brick hit awards original score increment")
 	var brick_audio_events: Array[String] = brick_session.pop_audio_events()
 	_assert(brick_audio_events.has(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "brick clear queues IDA-backed SFX event")
 	_assert(brick_audio_events.has(GameSessionScript.SFX_EVENT_LEVEL_COMPLETE), "final brick clear queues level-complete SFX event")
 	for catchup_index in range(6):
 		brick_session.update(0.0)
-	_assert(brick_session.displayed_score == GameSessionScript.BRICK_SCORE, "displayed score catches up gradually")
+	_assert(brick_session.displayed_score == GameSessionScript.NORMAL_BRICK_SCORE, "displayed score catches up gradually")
 	_assert(brick_session.state == GameSessionScript.STATE_LEVEL_COMPLETE, "clearing final required brick completes level")
+
+	var hard_session = _game_session_from_level(_make_level_from_rows([[8, 1]]))
+	hard_session.force_ball(PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2), Vector2(-80, 0))
+	hard_session.update(0.01)
+	_assert(hard_session.board_state.tile_at(0, 0) == 8, "ordinary ball hit leaves force-break-only brick intact")
+	_assert(not hard_session.consume_board_changed(), "ordinary hard-brick hit does not redraw board")
+	_assert(hard_session.score == 0, "ordinary hard-brick hit awards no score")
+	_assert(hard_session.state == GameSessionScript.STATE_PLAYING, "hard-brick hit does not complete while required bricks remain")
+
+	var downgrade_session = _game_session_from_level(_make_level_from_rows([[15, 42, 70, 1]]))
+	var downgrade_15: Dictionary = downgrade_session._resolve_board_tile_hit(0, 0, 15)
+	downgrade_session._apply_board_hit_result(downgrade_15)
+	_assert(downgrade_session.board_state.tile_at(0, 0) == 14, "tile 15 downgrades instead of clearing on ordinary hit")
+	_assert(downgrade_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "downgrade hit awards original score increment")
+	var downgrade_42: Dictionary = downgrade_session._resolve_board_tile_hit(1, 0, 42)
+	downgrade_session._apply_board_hit_result(downgrade_42)
+	_assert(downgrade_session.board_state.tile_at(1, 0) == 44, "tile 42 downgrades to original animated next stage")
+	var downgrade_70: Dictionary = downgrade_session._resolve_board_tile_hit(2, 0, 70)
+	downgrade_session._apply_board_hit_result(downgrade_70)
+	_assert(downgrade_session.board_state.tile_at(2, 0) == 90, "tile 70 downgrades to original high-range next stage")
+	_assert(downgrade_session.score == GameSessionScript.NORMAL_BRICK_SCORE * 3, "each downgrade hit awards original score increment")
 
 	var chain_session = _game_session_from_level(_make_level_from_rows([[43, 68]]))
 	chain_session.force_ball(PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2), Vector2(-80, 0))
@@ -545,7 +573,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	bonus_spawn_session.force_ball(PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2), Vector2(-80, 0))
 	bonus_spawn_session.update(0.01)
 	_assert(bonus_spawn_session.board_state.tile_at(0, 0) == 0, "bonus-eligible brick hit still clears the source tile")
-	_assert(bonus_spawn_session.score == GameSessionScript.BRICK_SCORE, "bonus-eligible brick hit still awards brick score")
+	_assert(bonus_spawn_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "bonus-eligible brick hit still awards normal brick score")
 	_assert(bonus_spawn_session.remaining_bonus_stock == 0, "bonus spawn consumes one original stock counter")
 	_assert(bonus_spawn_session.bonus_stock_counts[0] == 0, "bonus spawn decrements selected stock")
 	var spawned_bonuses: Array = bonus_spawn_session.visible_falling_bonuses()
@@ -645,10 +673,10 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	chain_selector_session.update(0.01)
 	_assert(chain_selector_session.board_state.tile_at(0, 0) == 68, "random bonus selector can convert a hit brick into a chain tile")
 	_assert(chain_selector_session.board_state.pending_chain_explosion_count() == 1, "converted random chain tile is scheduled")
-	_assert(chain_selector_session.score == 0, "converted chain tile waits for delayed explosion scoring")
+	_assert(chain_selector_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "converted chain selector still scores the normal brick hit")
 	chain_selector_session.update(0.031)
 	_assert(chain_selector_session.board_state.tile_at(0, 0) == 0, "converted chain tile clears after delay")
-	_assert(chain_selector_session.score == GameSessionScript.BRICK_SCORE, "converted chain explosion awards brick score")
+	_assert(chain_selector_session.score == GameSessionScript.NORMAL_BRICK_SCORE + GameSessionScript.BRICK_SCORE, "converted chain explosion awards chain clear score")
 
 	var inactive_bonus_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(inactive_bonus_session, GameSessionScript.BONUS_EXTRA_LIFE)
@@ -758,11 +786,32 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	projectile_hit_session.update(0.0)
 	_assert(projectile_hit_session.board_state.tile_at(0, 0) == 0, "projectile hit clears brick through board state")
 	_assert(projectile_hit_session.consume_board_changed(), "projectile hit marks board for redraw")
-	_assert(projectile_hit_session.score == GameSessionScript.BRICK_SCORE, "projectile hit awards brick score")
+	_assert(projectile_hit_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "projectile hit awards normal brick score")
 	_assert(projectile_hit_session.active_projectile_count() == 0, "continuous projectile deactivates after brick hit")
 	var projectile_hit_audio_events: Array[String] = projectile_hit_session.pop_audio_events()
 	_assert(projectile_hit_audio_events.has(GameSessionScript.SFX_EVENT_PROJECTILE_HIT), "projectile brick hit queues projectile-hit SFX event")
 	_assert(projectile_hit_audio_events.has(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "projectile brick hit queues brick-clear SFX event")
+
+	var strong_projectile_hard_session = _playing_session_from_level(_make_level_from_rows([[8, 1]]))
+	var strong_hard_projectiles: Array[Dictionary] = [_projectile(
+		GameSessionScript.PROJECTILE_TYPE_STRONG,
+		PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2)
+	)]
+	strong_projectile_hard_session.projectiles = strong_hard_projectiles
+	strong_projectile_hard_session.update(0.0)
+	_assert(strong_projectile_hard_session.board_state.tile_at(0, 0) == 0, "strong projectile force-breaks hard brick")
+	_assert(strong_projectile_hard_session.consume_board_changed(), "strong projectile hard-brick hit marks board for redraw")
+	_assert(strong_projectile_hard_session.score == GameSessionScript.HARD_BRICK_FORCE_SCORE, "strong projectile hard-brick hit awards original force-break score")
+
+	var strong_projectile_downgrade_session = _playing_session_from_level(_make_level_from_rows([[15, 1]]))
+	var strong_downgrade_projectiles: Array[Dictionary] = [_projectile(
+		GameSessionScript.PROJECTILE_TYPE_STRONG,
+		PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2)
+	)]
+	strong_projectile_downgrade_session.projectiles = strong_downgrade_projectiles
+	strong_projectile_downgrade_session.update(0.0)
+	_assert(strong_projectile_downgrade_session.board_state.tile_at(0, 0) == 0, "strong projectile clears downgrade brick instead of stepping it down")
+	_assert(strong_projectile_downgrade_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "strong projectile downgrade hit awards original downgrade score")
 
 	var projectile_expire_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	var expiring_projectiles: Array[Dictionary] = [_projectile(

@@ -14,7 +14,10 @@ const STATE_GAME_OVER := "game_over"
 
 const MAX_BALLS := 5
 const INITIAL_LIVES := 3
-const BRICK_SCORE := 15
+const NORMAL_BRICK_SCORE := 5
+const CHAIN_BRICK_SCORE := 15
+const HARD_BRICK_FORCE_SCORE := 30
+const BRICK_SCORE := CHAIN_BRICK_SCORE
 const EXTRA_LIFE_SCORE_STEP := 20000
 const RACKET_X := 570.0
 const RACKET_WIDTH := 16.0
@@ -400,7 +403,7 @@ func update(delta: float) -> void:
 		var chain_cleared_count: int = board_state.process_chain_explosions(delta)
 		if chain_cleared_count > 0:
 			board_changed = true
-			award_score(chain_cleared_count * BRICK_SCORE)
+			award_score(chain_cleared_count * CHAIN_BRICK_SCORE)
 			_queue_audio_event(SFX_EVENT_CHAIN_EXPLOSION)
 
 	if board_state != null and board_state.is_complete():
@@ -964,35 +967,59 @@ func _collide_with_board(ball: Dictionary, previous_position: Vector2) -> bool:
 	return true
 
 
-func _resolve_board_tile_hit(column: int, row: int, tile_id: int) -> Dictionary:
+func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break := false) -> Dictionary:
 	var cleared_count := 0
 	var did_change_board := false
+	var score_delta := 0
 	var audio_event := ""
-	if BrickSemanticsScript.is_chain_explosion_tile(tile_id):
+	var hit_kind := BrickSemanticsScript.hit_kind(tile_id)
+	if hit_kind == BrickSemanticsScript.HIT_KIND_CHAIN_EXPLOSION:
 		cleared_count = board_state.explode_at(column, row)
 		did_change_board = cleared_count > 0
 		if cleared_count > 0:
+			score_delta = cleared_count * CHAIN_BRICK_SCORE
 			audio_event = SFX_EVENT_CHAIN_EXPLOSION
+	elif hit_kind == BrickSemanticsScript.HIT_KIND_FORCE_BREAK_ONLY:
+		if force_break and board_state.clear_tile(column, row):
+			cleared_count = 1
+			did_change_board = true
+			score_delta = HARD_BRICK_FORCE_SCORE
+			audio_event = SFX_EVENT_BRICK_CLEAR
+	elif hit_kind == BrickSemanticsScript.HIT_KIND_DOWNGRADE:
+		if force_break:
+			if board_state.clear_tile(column, row):
+				cleared_count = 1
+				did_change_board = true
+				score_delta = NORMAL_BRICK_SCORE
+				audio_event = SFX_EVENT_BRICK_CLEAR
+		else:
+			var next_tile_id := BrickSemanticsScript.downgraded_tile_id(tile_id)
+			if board_state.set_tile(column, row, next_tile_id):
+				did_change_board = true
+				score_delta = NORMAL_BRICK_SCORE
+				audio_event = SFX_EVENT_BRICK_CLEAR
 	else:
 		var regular_hit_result := _resolve_regular_brick_hit(column, row, tile_id)
 		cleared_count = int(regular_hit_result.get("cleared_count", 0))
 		did_change_board = bool(regular_hit_result.get("changed", false))
+		score_delta = int(regular_hit_result.get("score", 0))
 		audio_event = String(regular_hit_result.get("audio_event", ""))
 
 	return {
 		"changed": did_change_board,
 		"cleared_count": cleared_count,
+		"score": score_delta,
 		"audio_event": audio_event,
 	}
 
 
 func _apply_board_hit_result(hit_result: Dictionary) -> void:
 	var did_change_board := bool(hit_result.get("changed", false))
-	var cleared_count := int(hit_result.get("cleared_count", 0))
+	var score_delta := int(hit_result.get("score", 0))
 	if did_change_board:
 		board_changed = true
-	if cleared_count > 0:
-		award_score(cleared_count * BRICK_SCORE)
+	if score_delta > 0:
+		award_score(score_delta)
 	var audio_event := String(hit_result.get("audio_event", ""))
 	if not audio_event.is_empty():
 		_queue_audio_event(audio_event)
@@ -1005,6 +1032,8 @@ func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictiona
 		return {
 			"changed": true,
 			"cleared_count": 0,
+			"score": NORMAL_BRICK_SCORE,
+			"audio_event": SFX_EVENT_BRICK_CLEAR,
 		}
 
 	var cleared_count := 0
@@ -1021,6 +1050,7 @@ func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictiona
 	return {
 		"changed": cleared_count > 0,
 		"cleared_count": cleared_count,
+		"score": NORMAL_BRICK_SCORE if cleared_count > 0 else 0,
 		"audio_event": SFX_EVENT_BRICK_CLEAR if cleared_count > 0 else "",
 	}
 
@@ -1324,7 +1354,8 @@ func _collide_projectile_with_board(projectile: Dictionary) -> bool:
 	var hit_result := _resolve_board_tile_hit(
 		int(hit["column"]),
 		int(hit["row"]),
-		int(hit["tile_id"])
+		int(hit["tile_id"]),
+		int(projectile.get("type", PROJECTILE_TYPE_CONTINUOUS)) == PROJECTILE_TYPE_STRONG
 	)
 	_apply_board_hit_result(hit_result)
 	_queue_audio_event(SFX_EVENT_PROJECTILE_HIT)
