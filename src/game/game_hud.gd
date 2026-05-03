@@ -23,7 +23,6 @@ const READY_TEXT_POSITION := Vector2(320, 240)
 const READY_HINT_POSITION := Vector2(320, 428)
 const READY_TEXT := "Get Ready!"
 const READY_HINT_TEXT := "(Press Mouse Button when ready)"
-const READY_TEXT_BOB_PIXELS := 6.0
 
 var session
 var _game_over_title: Label
@@ -139,14 +138,8 @@ func ready_prompt_layout() -> Dictionary:
 	var session_state := String(session.state)
 	if session_state != READY_STATE and session_state != BALL_LOST_STATE:
 		return {"visible": false}
-
-	var progress := 1.0
-	if session.has_method("level_ready_animation_progress"):
-		progress = clampf(float(session.call("level_ready_animation_progress")), 0.0, 1.0)
-
-	var text_position := READY_TEXT_POSITION
-	if progress < 1.0:
-		text_position.y -= roundf(sin(progress * PI) * READY_TEXT_BOB_PIXELS)
+	if session.has_method("is_level_ready_prompt_visible") and not bool(session.call("is_level_ready_prompt_visible")):
+		return {"visible": false}
 
 	return {
 		"visible": true,
@@ -154,9 +147,8 @@ func ready_prompt_layout() -> Dictionary:
 		"ready_text": READY_TEXT,
 		"hint_text": READY_HINT_TEXT,
 		"level_position": READY_LEVEL_POSITION,
-		"ready_position": text_position,
+		"ready_position": READY_TEXT_POSITION,
 		"hint_position": READY_HINT_POSITION,
-		"animation_progress": progress,
 	}
 
 

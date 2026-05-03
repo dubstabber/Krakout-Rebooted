@@ -14,6 +14,7 @@ const BulletRendererScript := preload("res://src/render/bullet_renderer.gd")
 const MonsterRendererScript := preload("res://src/render/monster_renderer.gd")
 const BeeRendererScript := preload("res://src/render/bee_renderer.gd")
 const ImpactEffectRendererScript := preload("res://src/render/impact_effect_renderer.gd")
+const LevelReadyRollerRendererScript := preload("res://src/render/level_ready_roller_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
 const DebugCheatsOverlayScript := preload("res://src/game/debug_cheats_overlay.gd")
 
@@ -100,6 +101,7 @@ var bullet_renderer
 var monster_renderer
 var bee_renderer
 var impact_effect_renderer
+var level_ready_roller_renderer
 var hud_renderer
 var _run_started := false
 var _bonus_stack_visible := true
@@ -503,6 +505,11 @@ func _ensure_gameplay_nodes() -> void:
 		ball_renderer.name = "BallRenderer"
 		add_child(ball_renderer)
 
+	if level_ready_roller_renderer == null:
+		level_ready_roller_renderer = LevelReadyRollerRendererScript.new()
+		level_ready_roller_renderer.name = "LevelReadyRollerRenderer"
+		add_child(level_ready_roller_renderer)
+
 	if bonus_renderer == null:
 		bonus_renderer = BonusRendererScript.new()
 		bonus_renderer.name = "BonusRenderer"
@@ -540,6 +547,7 @@ func _ensure_gameplay_nodes() -> void:
 	monster_renderer.set_session(gameplay_session)
 	bee_renderer.set_session(gameplay_session)
 	impact_effect_renderer.set_session(gameplay_session)
+	level_ready_roller_renderer.set_session(gameplay_session)
 	hud_renderer.set_session(gameplay_session)
 	_ensure_overlay_nodes()
 	_apply_presentation_settings()
@@ -560,6 +568,8 @@ func _refresh_actor_renderers() -> void:
 		bee_renderer.queue_redraw()
 	if impact_effect_renderer != null:
 		impact_effect_renderer.queue_redraw()
+	if level_ready_roller_renderer != null:
+		level_ready_roller_renderer.queue_redraw()
 
 
 func _refresh_hud() -> void:

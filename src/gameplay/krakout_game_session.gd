@@ -87,8 +87,17 @@ const BONUS_POINTER_FRAME_SECONDS := 0.05
 const BACK_WALL_DURATION_SECONDS := 30.0
 const BACK_WALL_STATUS_ICON_INDEX := 3
 const LEVEL_READY_SEQUENCE_SECONDS := 30.0
-const LEVEL_READY_ANIMATION_SECONDS := 1.5
 const LEVEL_READY_STATUS_ICON_INDEX := 2
+# sub_40F940 draws Roller.tga as a 20x390 strip at x = 47 + reveal_offset
+# and advances ten source frames while revealing the 20 board columns.
+const LEVEL_READY_ROLLER_FRAME_COUNT := 10
+const LEVEL_READY_ROLLER_STEP_SECONDS := 1.0 / ORIGINAL_UPDATE_HZ
+const LEVEL_READY_ROLLER_STEP_EPSILON := 0.000001
+const LEVEL_READY_ROLLER_STEP_PIXELS := 4.0
+const LEVEL_READY_ROLLER_SOURCE_SIZE := Vector2(20, 390)
+const LEVEL_READY_ROLLER_POSITION := Vector2(47, 63)
+const LEVEL_READY_ROLLER_TRAVEL_PIXELS := 380.0
+const LEVEL_READY_ANIMATION_SECONDS := LEVEL_READY_ROLLER_TRAVEL_PIXELS / LEVEL_READY_ROLLER_STEP_PIXELS * LEVEL_READY_ROLLER_STEP_SECONDS
 const MAX_PROJECTILES := 10
 const PROJECTILE_FIRE_COOLDOWN_SECONDS := 0.25
 const PROJECTILE_STEP_X := 7.0
@@ -283,6 +292,9 @@ var _single_shot_projectile_armed := false
 var _monster_spawn_cooldown := MONSTER_SPAWN_INTERVAL_SECONDS
 var _monster_type_cycle_index := 0
 var _level_ready_animation_time_remaining := 0.0
+var _level_ready_roller_offset := 0.0
+var _level_ready_roller_frame := 0
+var _level_ready_roller_step_elapsed := 0.0
 var _audio_events: Array[String] = []
 
 
@@ -577,6 +589,9 @@ func active_bonus_indicators() -> Array[Dictionary]:
 func start_level_ready_sequence(queue_audio := true) -> void:
 	level_ready_time_remaining = LEVEL_READY_SEQUENCE_SECONDS
 	_level_ready_animation_time_remaining = LEVEL_READY_ANIMATION_SECONDS
+	_level_ready_roller_offset = 0.0
+	_level_ready_roller_frame = 0
+	_level_ready_roller_step_elapsed = 0.0
 	if queue_audio:
 		_queue_audio_event(SFX_EVENT_LEVEL_READY)
 
@@ -585,10 +600,29 @@ func is_level_ready_sequence_active() -> bool:
 	return level_ready_time_remaining > 0.0
 
 
+func is_level_ready_prompt_visible() -> bool:
+	return _level_ready_animation_time_remaining > 0.0
+
+
 func level_ready_animation_progress() -> float:
-	if LEVEL_READY_ANIMATION_SECONDS <= 0.0:
+	if LEVEL_READY_ROLLER_TRAVEL_PIXELS <= 0.0:
 		return 1.0
-	return 1.0 - clampf(_level_ready_animation_time_remaining / LEVEL_READY_ANIMATION_SECONDS, 0.0, 1.0)
+	return clampf(_level_ready_roller_offset / LEVEL_READY_ROLLER_TRAVEL_PIXELS, 0.0, 1.0)
+
+
+func level_ready_roller_layout() -> Dictionary:
+	if not is_level_ready_prompt_visible():
+		return {"visible": false}
+
+	var roller_position := LEVEL_READY_ROLLER_POSITION + Vector2(_level_ready_roller_offset, 0.0)
+	return {
+		"visible": true,
+		"position": roller_position,
+		"destination": Rect2(roller_position, LEVEL_READY_ROLLER_SOURCE_SIZE),
+		"source": Rect2(Vector2(_level_ready_roller_frame * LEVEL_READY_ROLLER_SOURCE_SIZE.x, 0), LEVEL_READY_ROLLER_SOURCE_SIZE),
+		"frame": _level_ready_roller_frame,
+		"progress": level_ready_animation_progress(),
+	}
 
 
 func is_back_wall_active() -> bool:
@@ -893,12 +927,25 @@ func _update_level_ready_sequence(delta: float) -> void:
 	if level_ready_time_remaining > 0.0:
 		level_ready_time_remaining = maxf(0.0, level_ready_time_remaining - delta)
 	if _level_ready_animation_time_remaining > 0.0:
-		_level_ready_animation_time_remaining = maxf(0.0, _level_ready_animation_time_remaining - delta)
+		_level_ready_roller_step_elapsed += delta
+		while _level_ready_roller_step_elapsed + LEVEL_READY_ROLLER_STEP_EPSILON >= LEVEL_READY_ROLLER_STEP_SECONDS and _level_ready_animation_time_remaining > 0.0:
+			_level_ready_roller_step_elapsed -= LEVEL_READY_ROLLER_STEP_SECONDS
+			if _level_ready_roller_step_elapsed < 0.0:
+				_level_ready_roller_step_elapsed = 0.0
+			_level_ready_roller_offset = minf(LEVEL_READY_ROLLER_TRAVEL_PIXELS, _level_ready_roller_offset + LEVEL_READY_ROLLER_STEP_PIXELS)
+			_level_ready_roller_frame = (_level_ready_roller_frame + 1) % LEVEL_READY_ROLLER_FRAME_COUNT
+			_level_ready_animation_time_remaining = maxf(0.0, _level_ready_animation_time_remaining - LEVEL_READY_ROLLER_STEP_SECONDS)
+		if _level_ready_roller_offset >= LEVEL_READY_ROLLER_TRAVEL_PIXELS:
+			_level_ready_animation_time_remaining = 0.0
+			_level_ready_roller_step_elapsed = 0.0
 
 
 func _clear_level_ready_sequence() -> void:
 	level_ready_time_remaining = 0.0
 	_level_ready_animation_time_remaining = 0.0
+	_level_ready_roller_offset = 0.0
+	_level_ready_roller_frame = 0
+	_level_ready_roller_step_elapsed = 0.0
 
 
 func _collide_with_racket(ball: Dictionary) -> bool:
@@ -2019,6 +2066,7 @@ func _handle_round_lost() -> void:
 		state = STATE_GAME_OVER
 		balls.clear()
 		falling_bonuses.clear()
+		_clear_level_ready_sequence()
 		_clear_timed_bonus_state()
 		_clear_monster_state()
 		_queue_audio_event(SFX_EVENT_GAME_OVER)
@@ -2026,6 +2074,7 @@ func _handle_round_lost() -> void:
 
 	_queue_audio_event(SFX_EVENT_LIFE_LOST)
 	reset_round()
+	start_level_ready_sequence(false)
 
 
 func _update_displayed_score() -> void:
