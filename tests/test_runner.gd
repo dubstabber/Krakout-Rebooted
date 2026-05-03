@@ -342,8 +342,9 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.launch_ready_ball(), "ready ball launches")
 	_assert(session.state == GameSessionScript.STATE_PLAYING, "game session enters playing state")
 	_assert(session.first_ball_velocity().x < 0.0, "launched ball starts toward board")
-	_assert(session.first_ball_velocity() == Vector2(-300, 0), "launched ball starts at original effective substep speed")
-	_assert(is_equal_approx(session.first_ball_velocity().length(), 300.0), "launched ball speed matches original default cadence")
+	_assert(GameSessionScript.ORIGINAL_DEFAULT_BALL_SPEED_PER_TICK == 2.5, "launched ball uses the faster original default speed tick")
+	_assert(session.first_ball_velocity() == Vector2(-375, 0), "launched ball starts at original effective substep speed")
+	_assert(is_equal_approx(session.first_ball_velocity().length(), 375.0), "launched ball speed matches original default cadence")
 	_assert(session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BALL_LAUNCH], "launch queues semantic SFX event")
 
 	var wall_session = _game_session_from_level(_make_level_from_rows([[1]]))

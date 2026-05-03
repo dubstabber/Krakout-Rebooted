@@ -60,8 +60,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   `InfoIcons` HUD strip.
 - The gameplay loop now tracks the original-backed run counters around that
   loop: 15-point brick scoring, gradual displayed-score catch-up, three spare
-  balls, a 20,000-point extra-ball threshold, wrapped episode progression, and
-  an original-layout gameplay HUD/game-over confirmation path.
+  balls, the faster original-style launch cadence, a 20,000-point extra-ball
+  threshold, wrapped episode progression, and an original-layout gameplay
+  HUD/game-over confirmation path.
 - The gameplay presentation keeps the original 640x480 aspect ratio, uses the
   source `Statistic` header strip, and draws dynamic HUD digits through the
   IDA-backed original bitmap width tables instead of heuristic glyph cropping.
