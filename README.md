@@ -27,9 +27,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   states, wall/racket/brick collision, and redraw signaling.
 - `KrakoutGameSession` now consumes the first 22 level-tail bytes as original
   bonus stock, uses the original RNG constants, applies the 3-second drop gate
-  and stock-weighted drop chance, spawns falling bonuses, converts random
-  selector hits into chain tiles, and stacks collected bonuses up to the original
-  16-entry cap.
+  and stock-weighted drop chance, spawns falling bonuses with the original
+  1.5px/call three-substep rightward drift, converts random selector hits into
+  chain tiles, and stacks collected bonuses up to the original 16-entry cap.
 - Pressing Space now activates the first collected bonus in the original stack
   order. The current supported effects are standard ball, fireball,
   non-stricked balls, ball size/speed, paddle size, shooting paddle projectiles,

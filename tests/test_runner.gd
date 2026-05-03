@@ -690,9 +690,29 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	var moved_bonuses: Array = moving_bonus_session.visible_falling_bonuses()
 	_assert(moved_bonuses.size() == 1, "falling bonus remains active while in bounds")
 	if moved_bonuses.size() == 1:
-		_assert(is_equal_approx(moved_bonuses[0]["position"].x, 101.5), "falling bonus advances by original x step")
-		_assert(int(moved_bonuses[0]["angle"]) == 3, "falling bonus advances by original angle step")
+		_assert(is_equal_approx(moved_bonuses[0]["position"].x, 122.5), "falling bonus advances by original three-substep x speed")
+		_assert(int(moved_bonuses[0]["angle"]) == 45, "falling bonus advances by original three-substep angle speed")
 		_assert(int(moved_bonuses[0]["frame"]) == 1, "falling bonus animation advances at original cadence")
+
+	var stepped_bonus_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	var stepped_bonuses: Array[Dictionary] = [{
+		"active": true,
+		"type_id": 2,
+		"position": Vector2(100, 100),
+		"base_y": 100.0,
+		"angle": 0,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+	}]
+	stepped_bonus_session.falling_bonuses = stepped_bonuses
+	stepped_bonus_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	for _step in range(10):
+		stepped_bonus_session.update(0.01)
+	var stepped_moved_bonuses: Array = stepped_bonus_session.visible_falling_bonuses()
+	_assert(stepped_moved_bonuses.size() == 1, "falling bonus remains active across split updates")
+	if moved_bonuses.size() == 1 and stepped_moved_bonuses.size() == 1:
+		_assert(is_equal_approx(stepped_moved_bonuses[0]["position"].x, moved_bonuses[0]["position"].x), "falling bonus speed is frame-rate independent")
+		_assert(int(stepped_moved_bonuses[0]["angle"]) == int(moved_bonuses[0]["angle"]), "falling bonus wave angle is frame-rate independent")
 
 	var collect_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	collect_session.move_racket_to(220.0)

@@ -82,6 +82,10 @@ const MAX_FALLING_BONUSES := 20
 const MAX_STACKED_BONUSES := 16
 const BONUS_DROP_GATE_SECONDS := 3.0
 const BONUS_SIZE := 32.0
+const ORIGINAL_BONUS_STEPS_PER_UPDATE := 3.0
+const ORIGINAL_BONUS_SUBSTEP_HZ := ORIGINAL_UPDATE_HZ * ORIGINAL_BONUS_STEPS_PER_UPDATE
+# sub_402D10 advances falling bonuses by 1.5 px and 3 degrees per call; sub_40DAF0
+# calls it three times per original 50 Hz gameplay step.
 const BONUS_STEP_X := 1.5
 const BONUS_WAVE_SCALE := 1.0 / 12.0
 const BONUS_ANGLE_STEP := 3
@@ -1396,6 +1400,7 @@ func _spawn_falling_bonus(type_id: int, position: Vector2) -> bool:
 		"angle": 0,
 		"frame": _bonus_animation_rng.next_mod(BONUS_ANIMATION_FRAME_COUNT),
 		"frame_elapsed": 0.0,
+		"substep_accumulator": 0.0,
 	})
 	return true
 
@@ -1418,11 +1423,24 @@ func _update_falling_bonuses(delta: float) -> void:
 
 func _advance_falling_bonus(bonus: Dictionary, delta: float) -> void:
 	var position: Vector2 = bonus.get("position", Vector2.ZERO)
-	var next_x := position.x + BONUS_STEP_X
-	var next_angle := (int(bonus.get("angle", 0)) + BONUS_ANGLE_STEP) % 360
+	var next_x := position.x
+	var next_y := position.y
+	var next_angle := int(bonus.get("angle", 0))
 	var base_y := float(bonus.get("base_y", position.y))
-	var next_y := base_y + next_x * BONUS_WAVE_SCALE * cos(deg_to_rad(float(next_angle)))
-	next_y = clampf(next_y, BONUS_MIN_Y, BONUS_MAX_Y)
+	var substep_accumulator := float(bonus.get("substep_accumulator", 0.0)) \
+		+ maxf(delta, 0.0) * ORIGINAL_BONUS_SUBSTEP_HZ
+	var substep_count := int(floorf(substep_accumulator))
+	substep_accumulator -= float(substep_count)
+
+	for _step in range(substep_count):
+		next_x += BONUS_STEP_X
+		next_angle = (next_angle + BONUS_ANGLE_STEP) % 360
+		next_y = base_y + next_x * BONUS_WAVE_SCALE * cos(deg_to_rad(float(next_angle)))
+		next_y = clampf(next_y, BONUS_MIN_Y, BONUS_MAX_Y)
+		if next_x > BONUS_EXPIRE_X:
+			bonus["active"] = false
+			substep_accumulator = 0.0
+			break
 
 	var frame_elapsed := float(bonus.get("frame_elapsed", 0.0)) + delta
 	var frame := int(bonus.get("frame", 0))
@@ -1434,8 +1452,7 @@ func _advance_falling_bonus(bonus: Dictionary, delta: float) -> void:
 	bonus["angle"] = next_angle
 	bonus["frame"] = frame
 	bonus["frame_elapsed"] = frame_elapsed
-	if next_x > BONUS_EXPIRE_X:
-		bonus["active"] = false
+	bonus["substep_accumulator"] = substep_accumulator
 
 
 func _update_projectile_fire(delta: float) -> void:
