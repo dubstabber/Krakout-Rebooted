@@ -332,6 +332,26 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.board_state.remaining_required_bricks == 143, "game session preserves required brick count")
 	_assert(session.active_ball_count() == 1, "game session shows a ready ball")
 	_assert(session.ball_rect(session.visible_balls()[0]).size == Vector2(18, 18), "game session defaults to original standard ball size")
+	_assert(
+		is_equal_approx(session.racket_rect().position.x - session.ball_rect(session.visible_balls()[0]).end.x, GameSessionScript.READY_BALL_GAP),
+		"ready ball uses the original short paddle gap"
+	)
+	_assert(is_equal_approx(GameSessionScript.BALL_FRAME_SECONDS, 0.1), "ball animation uses the original 100 ms frame gate")
+	var ready_ball_frame := int(session.visible_balls()[0].get("frame", 0))
+	session.update(GameSessionScript.BALL_FRAME_SECONDS)
+	_assert(
+		int(session.visible_balls()[0].get("frame", 0)) == (ready_ball_frame + 1) % GameSessionScript.BALL_FRAME_COUNT,
+		"ready ball animation advances even while the ball is attached to the racket"
+	)
+	var ready_enemy_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	ready_enemy_session.set_monster_rng_seed(3)
+	var ready_enemy_ball_position: Vector2 = ready_enemy_session.first_ball_position()
+	ready_enemy_session.update(GameSessionScript.MONSTER_SPAWN_INTERVAL_SECONDS)
+	_assert(ready_enemy_session.state == GameSessionScript.STATE_READY, "enemy spawn does not launch the ready ball")
+	_assert(ready_enemy_session.active_monster_count() == 1, "enemy spawn timer runs before the initial ball is launched")
+	_assert(ready_enemy_session.first_ball_position() == ready_enemy_ball_position, "ready ball remains attached while enemies spawn")
+	_assert(ready_enemy_session.first_ball_velocity().is_zero_approx(), "ready ball remains stationary while enemies spawn")
+	_assert(ready_enemy_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_SPAWN], "ready enemy spawn queues semantic SFX event")
 	_assert(session.racket_segment_count == GameSessionScript.RACKET_DEFAULT_SEGMENTS, "game session defaults to original racket segment count")
 	_assert(session.current_racket_height() == GameSessionScript.RACKET_HEIGHT, "game session defaults to original racket height")
 	_assert(session.racket_rect().size == Vector2(GameSessionScript.RACKET_WIDTH, GameSessionScript.RACKET_HEIGHT), "game session default racket rect uses original size")
@@ -360,6 +380,17 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.first_ball_velocity() == Vector2(-375, 0), "launched ball starts at original effective substep speed")
 	_assert(is_equal_approx(session.first_ball_velocity().length(), 375.0), "launched ball speed matches original default cadence")
 	_assert(session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BALL_LAUNCH], "launch queues semantic SFX event")
+
+	var stationary_ball_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	stationary_ball_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	var stationary_ball_frame := int(stationary_ball_session.visible_balls()[0].get("frame", 0))
+	var stationary_ball_position: Vector2 = stationary_ball_session.first_ball_position()
+	stationary_ball_session.update(GameSessionScript.BALL_FRAME_SECONDS)
+	_assert(stationary_ball_session.first_ball_position() == stationary_ball_position, "zero-velocity ball remains stationary")
+	_assert(
+		int(stationary_ball_session.visible_balls()[0].get("frame", 0)) == (stationary_ball_frame + 1) % GameSessionScript.BALL_FRAME_COUNT,
+		"zero-velocity active ball keeps animating from the session clock"
+	)
 
 	var wall_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	wall_session.force_ball(Vector2(300, GameSessionScript.BALL_TOP_Y), Vector2(-80, -120))

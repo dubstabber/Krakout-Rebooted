@@ -74,8 +74,7 @@ func _source_row_for_size(ball_size: float) -> Dictionary:
 
 
 func _frame_for_ball(ball: Dictionary) -> int:
-	var position: Vector2 = ball.get("position", Vector2.ZERO)
-	return int(absf(position.x + position.y) / 8.0) % BALL_FRAME_COUNT
+	return int(ball.get("frame", 0)) % BALL_FRAME_COUNT
 
 
 func _load_asset_texture(texture_name: String) -> Texture2D:

@@ -33,6 +33,7 @@ const BALL_SIZE := 18.0
 const BALL_MIN_SIZE := 10.0
 const BALL_MAX_SIZE := 42.0
 const BALL_SIZE_STEP := 8.0
+const BALL_FRAME_COUNT := 10
 const BALL_DEFAULT_SPEED_SCALE := 2.0
 const BALL_MIN_SPEED_SCALE := 2.0
 const BALL_MAX_SPEED_SCALE := 6.0
@@ -42,8 +43,11 @@ const BALL_BOTTOM_Y := PlayfieldSpecScript.WALL_INNER_BOTTOM_Y
 const BALL_LEFT_X := PlayfieldSpecScript.WALL_INNER_LEFT_X
 const BALL_LOST_X := 640.0
 const BACK_WALL_BOUNCE_X := PlayfieldSpecScript.WALL_INNER_RIGHT_X
-const READY_BALL_GAP := 10.0
+# sub_40E580 creates the ready ball at racket_x - 20 with a 20 px ball crop.
+const READY_BALL_GAP := 2.0
 const ORIGINAL_UPDATE_HZ := 50.0
+# sub_4012D0 gates Balls.tga frame changes on timeGetTime() + 100 ms.
+const BALL_FRAME_SECONDS := 0.1
 const ORIGINAL_BALL_STEPS_PER_UPDATE := 3.0
 # sub_40DAF0 invokes the original enemy updater three times per gameplay step.
 const ORIGINAL_ENEMY_STEPS_PER_UPDATE := 3.0
@@ -248,6 +252,7 @@ var bees: Array[Dictionary] = []
 var impact_effects: Array[Dictionary] = []
 var back_wall_time_remaining := 0.0
 var _bonus_rng = RandomScript.new()
+var _ball_animation_rng = RandomScript.new(31415)
 var _bonus_animation_rng = RandomScript.new(31415)
 var _monster_rng = RandomScript.new(31415)
 var _collision_rng = RandomScript.new(31415)
@@ -376,6 +381,7 @@ func launch_ready_ball() -> bool:
 func update(delta: float) -> void:
 	board_changed = false
 	_update_displayed_score()
+	_update_ball_animation(delta)
 	_update_bonus_timers(delta)
 	_update_impact_effects(delta)
 	_update_racket_visual(delta)
@@ -395,13 +401,14 @@ func update(delta: float) -> void:
 	if state == STATE_GAME_OVER:
 		return
 
+	_update_monsters(delta)
+	_update_bees(delta)
+
 	if state != STATE_PLAYING:
 		_attach_ready_balls()
 		return
 
 	_update_falling_bonuses(delta)
-	_update_monsters(delta)
-	_update_bees(delta)
 	_update_projectiles(delta)
 	if board_state != null and board_state.is_complete():
 		_mark_level_complete()
@@ -664,6 +671,8 @@ func force_ball(position: Vector2, velocity: Vector2, size: float = BALL_SIZE) -
 		"position": position,
 		"velocity": velocity,
 		"size": size,
+		"frame": 0,
+		"frame_elapsed": 0.0,
 		"speed_scale": ball_speed_scale,
 		"target_speed": _target_speed_for_new_ball(velocity),
 		"speed_hit_count": 0,
@@ -699,6 +708,8 @@ func _add_ball(position: Vector2, velocity: Vector2, active := true) -> bool:
 		"position": position,
 		"velocity": velocity,
 		"size": ball_size,
+		"frame": _ball_animation_rng.next_mod(BALL_FRAME_COUNT),
+		"frame_elapsed": 0.0,
 		"speed_scale": ball_speed_scale,
 		"target_speed": _target_speed_for_new_ball(velocity),
 		"speed_hit_count": 0,
@@ -772,6 +783,22 @@ func _advance_ball(ball: Dictionary, delta: float) -> void:
 	if _collide_ball_with_bees(ball):
 		return
 	_collide_with_board(ball, previous_position)
+
+
+func _update_ball_animation(delta: float) -> void:
+	for index in range(balls.size()):
+		var ball := balls[index]
+		if not bool(ball.get("active", false)):
+			continue
+
+		var frame_elapsed := float(ball.get("frame_elapsed", 0.0)) + delta
+		var frame := int(ball.get("frame", 0))
+		while frame_elapsed >= BALL_FRAME_SECONDS:
+			frame = (frame + 1) % BALL_FRAME_COUNT
+			frame_elapsed -= BALL_FRAME_SECONDS
+		ball["frame"] = frame
+		ball["frame_elapsed"] = frame_elapsed
+		balls[index] = ball
 
 
 func _collide_with_racket(ball: Dictionary) -> bool:

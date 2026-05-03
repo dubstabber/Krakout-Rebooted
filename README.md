@@ -45,8 +45,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - `KrakoutGameSession` now owns the first IDA-backed monster pool: five active
   slots, the original 3/6/10 type cycle, 4.5-second spawn gate, 6.5-second
   lifetime, 70ms animation cadence, original 1px/call 3-substep speed conversion,
-  paddle-following type-3 eye movement, ball/projectile collision scoring, ball
-  trajectory changes, wall-boundary reflection, and paddle contact handling.
+  pre-launch spawning while the ready ball stays attached, paddle-following type-3
+  eye movement, ball/projectile collision scoring, ball trajectory changes,
+  wall-boundary reflection, and paddle contact handling.
 - `KrakoutMonsterRenderer` draws those transient monsters from `Monsters.png`
   through the source 32x32 type/frame grid. `KrakoutBeeRenderer` adds the
   first Bee/type-9 floating hazard path, including the original-style
@@ -56,8 +57,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   the original `Exploision` 32x32 vertical-frame columns, with the original
   11-frame/50ms cadence.
 - `KrakoutBallRenderer` draws standard balls from the extracted `Balls` atlas
-  using the original visible size rows, so size-changing bonuses use matching
-  10/18/26/34/42 px ball frames instead of scaling a fixed crop.
+  using the original visible size rows, with the session advancing the stored
+  ball frame clock at the original 100ms cadence even while a ball is attached
+  to the racket or stationary, and the ready ball sits on the original short
+  2px paddle gap.
 - `Back Wall (30 sec)` now uses a timed session effect, reflects missed balls
   at the original right-side wall boundary, syncs the wall visual through the
   playfield renderer, and reports its countdown through the original
