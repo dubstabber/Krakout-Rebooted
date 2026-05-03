@@ -41,10 +41,14 @@ const BALL_MIN_SIZE := 10.0
 const BALL_MAX_SIZE := 42.0
 const BALL_SIZE_STEP := 8.0
 const BALL_FRAME_COUNT := 10
+const BALL_TYPE_STANDARD := 0
+const BALL_TYPE_FIREBALL := 1
+const BALL_TYPE_NON_STRICKED := 2
 const BALL_DEFAULT_SPEED_SCALE := 2.0
 const BALL_MIN_SPEED_SCALE := 2.0
 const BALL_MAX_SPEED_SCALE := 6.0
 const BALL_SPEED_STEP := 1.0
+const NON_STRICKED_DURATION_SECONDS := 8.0
 const BALL_TOP_Y := PlayfieldSpecScript.WALL_INNER_TOP_Y
 const BALL_BOTTOM_Y := PlayfieldSpecScript.WALL_INNER_BOTTOM_Y
 const BALL_LEFT_X := PlayfieldSpecScript.WALL_INNER_LEFT_X
@@ -208,6 +212,8 @@ const BONUS_TYPE_NAMES := [
 ]
 const SUPPORTED_BONUS_EFFECTS := {
 	BONUS_ADD_STANDARD_BALL: true,
+	BONUS_ADD_FIREBALL: true,
+	BONUS_NON_STRICKED_BALLS: true,
 	BONUS_DECREASE_BALL_SIZE: true,
 	BONUS_INCREASE_BALL_SIZE: true,
 	BONUS_INCREASE_BALL_SPEED: true,
@@ -219,6 +225,7 @@ const SUPPORTED_BONUS_EFFECTS := {
 	BONUS_BACK_WALL: true,
 	BONUS_EXTRA_LIFE: true,
 	BONUS_DESTROY_ONE_BALL: true,
+	BONUS_ONE_STRIKE_BRICKS: true,
 	BONUS_JUMP_TO_NEXT_LEVEL: true,
 }
 const CHAIN_SELECTOR_TILE_IDS := [68, 43]
@@ -805,12 +812,29 @@ func first_ball_velocity() -> Vector2:
 	return balls[0].get("velocity", Vector2.ZERO)
 
 
-func force_ball(position: Vector2, velocity: Vector2, size: float = BALL_SIZE) -> void:
+func first_ball_type_id() -> int:
+	if balls.is_empty():
+		return BALL_TYPE_STANDARD
+	return _ball_type(balls[0])
+
+
+func active_non_stricked_ball_count() -> int:
+	var count := 0
+	for ball: Dictionary in balls:
+		if bool(ball.get("active", false)) and _is_non_stricked_ball(ball):
+			count += 1
+	return count
+
+
+func force_ball(position: Vector2, velocity: Vector2, size: float = BALL_SIZE, type_id: int = BALL_TYPE_STANDARD) -> void:
 	balls = [{
 		"active": true,
 		"position": position,
 		"velocity": velocity,
 		"size": size,
+		"type_id": type_id,
+		"previous_type_id": BALL_TYPE_STANDARD,
+		"non_stricked_time_remaining": 0.0,
 		"frame": 0,
 		"frame_elapsed": 0.0,
 		"speed_scale": ball_speed_scale,
@@ -840,7 +864,7 @@ func _add_ready_ball() -> void:
 	_add_ball(_ready_ball_position(), Vector2.ZERO, true)
 
 
-func _add_ball(position: Vector2, velocity: Vector2, active := true) -> bool:
+func _add_ball(position: Vector2, velocity: Vector2, active := true, type_id := BALL_TYPE_STANDARD) -> bool:
 	if balls.size() >= MAX_BALLS:
 		return false
 	balls.append({
@@ -848,6 +872,9 @@ func _add_ball(position: Vector2, velocity: Vector2, active := true) -> bool:
 		"position": position,
 		"velocity": velocity,
 		"size": ball_size,
+		"type_id": type_id,
+		"previous_type_id": BALL_TYPE_STANDARD,
+		"non_stricked_time_remaining": 0.0,
 		"frame": _ball_animation_rng.next_mod(BALL_FRAME_COUNT),
 		"frame_elapsed": 0.0,
 		"speed_scale": ball_speed_scale,
@@ -858,7 +885,11 @@ func _add_ball(position: Vector2, velocity: Vector2, active := true) -> bool:
 
 
 func _add_active_standard_ball() -> bool:
-	return _add_ball(_ready_ball_position(), _velocity_for_current_speed(DEFAULT_BALL_VELOCITY), true)
+	return _add_ball(_ready_ball_position(), _velocity_for_current_speed(DEFAULT_BALL_VELOCITY), true, BALL_TYPE_STANDARD)
+
+
+func _add_active_fireball() -> bool:
+	return _add_ball(_ready_ball_position(), _velocity_for_current_speed(DEFAULT_BALL_VELOCITY), true, BALL_TYPE_FIREBALL)
 
 
 func _attach_ready_balls() -> void:
@@ -879,6 +910,32 @@ func _ready_ball_position() -> Vector2:
 		RACKET_X - ball_size - READY_BALL_GAP,
 		racket_y + current_racket_height() * 0.5 - ball_size * 0.5
 	)
+
+
+func _ball_type(ball: Dictionary) -> int:
+	return int(ball.get("type_id", BALL_TYPE_STANDARD))
+
+
+func _is_non_stricked_ball(ball: Dictionary) -> bool:
+	return _ball_type(ball) == BALL_TYPE_NON_STRICKED \
+		and float(ball.get("non_stricked_time_remaining", 0.0)) > 0.0
+
+
+func _ball_force_breaks_board(ball: Dictionary) -> bool:
+	return _ball_type(ball) == BALL_TYPE_FIREBALL
+
+
+func _ball_pierces_board(ball: Dictionary) -> bool:
+	return _ball_type(ball) == BALL_TYPE_FIREBALL
+
+
+func _restore_ball_type_after_non_stricked(ball: Dictionary) -> void:
+	var previous_type := int(ball.get("previous_type_id", BALL_TYPE_STANDARD))
+	if previous_type == BALL_TYPE_NON_STRICKED:
+		previous_type = BALL_TYPE_STANDARD
+	ball["type_id"] = previous_type
+	ball["non_stricked_time_remaining"] = 0.0
+	ball.erase("previous_type_id")
 
 
 func _reset_racket_to_ready_center() -> void:
@@ -1039,6 +1096,8 @@ func _collide_with_back_wall(ball: Dictionary) -> bool:
 func _collide_with_board(ball: Dictionary, previous_position: Vector2) -> bool:
 	if board_state == null:
 		return false
+	if _is_non_stricked_ball(ball):
+		return false
 
 	var rect := ball_rect(ball)
 	var hit := _first_board_hit(rect)
@@ -1048,8 +1107,11 @@ func _collide_with_board(ball: Dictionary, previous_position: Vector2) -> bool:
 	var column := int(hit["column"])
 	var row := int(hit["row"])
 	var tile_id := int(hit["tile_id"])
-	var hit_result := _resolve_board_tile_hit(column, row, tile_id)
+	var hit_result := _resolve_board_tile_hit(column, row, tile_id, _ball_force_breaks_board(ball))
 	_apply_board_hit_result(hit_result)
+
+	if _ball_pierces_board(ball):
+		return true
 
 	_reflect_from_tile(ball, previous_position, PlayfieldSpecScript.brick_rect(column, row))
 	_register_ball_speed_hit(ball)
@@ -1278,6 +1340,24 @@ func _update_bonus_timers(delta: float) -> void:
 		back_wall_time_remaining = maxf(0.0, back_wall_time_remaining - delta)
 	if _racket_stun_time_remaining > 0.0:
 		_racket_stun_time_remaining = maxf(0.0, _racket_stun_time_remaining - delta)
+	_update_non_stricked_balls(delta)
+
+
+func _update_non_stricked_balls(delta: float) -> void:
+	if delta <= 0.0:
+		return
+
+	for index in range(balls.size()):
+		var ball := balls[index]
+		if not _is_non_stricked_ball(ball):
+			continue
+
+		var remaining := maxf(0.0, float(ball.get("non_stricked_time_remaining", 0.0)) - delta)
+		if remaining > 0.0:
+			ball["non_stricked_time_remaining"] = remaining
+		else:
+			_restore_ball_type_after_non_stricked(ball)
+		balls[index] = ball
 
 
 func _set_racket_visual_target(visual_mode: int) -> void:
@@ -1945,6 +2025,10 @@ func _apply_bonus_effect(type_id: int) -> Dictionary:
 	match type_id:
 		BONUS_ADD_STANDARD_BALL:
 			return {"effect": "add_standard_ball", "applied": _add_active_standard_ball()}
+		BONUS_ADD_FIREBALL:
+			return {"effect": "add_fireball", "applied": _add_active_fireball()}
+		BONUS_NON_STRICKED_BALLS:
+			return _activate_non_stricked_balls()
 		BONUS_DECREASE_BALL_SIZE:
 			return _adjust_ball_size(-BALL_SIZE_STEP)
 		BONUS_INCREASE_BALL_SIZE:
@@ -1968,6 +2052,8 @@ func _apply_bonus_effect(type_id: int) -> Dictionary:
 			return {"effect": "extra_life", "lives_remaining": lives_remaining}
 		BONUS_DESTROY_ONE_BALL:
 			return {"effect": "destroy_one_ball", "applied": _destroy_one_active_ball()}
+		BONUS_ONE_STRIKE_BRICKS:
+			return _activate_one_strike_bricks()
 		BONUS_JUMP_TO_NEXT_LEVEL:
 			_mark_level_complete()
 			return {"effect": "jump_to_next_level"}
@@ -2002,6 +2088,27 @@ func _adjust_ball_speed(delta_speed: float) -> Dictionary:
 	return {"effect": "ball_speed", "ball_speed_scale": ball_speed_scale}
 
 
+func _activate_non_stricked_balls() -> Dictionary:
+	var affected_count := 0
+	for index in range(balls.size()):
+		var ball := balls[index]
+		if not bool(ball.get("active", false)):
+			continue
+
+		var current_type := _ball_type(ball)
+		if current_type != BALL_TYPE_NON_STRICKED:
+			ball["previous_type_id"] = current_type
+		ball["type_id"] = BALL_TYPE_NON_STRICKED
+		ball["non_stricked_time_remaining"] = NON_STRICKED_DURATION_SECONDS
+		balls[index] = ball
+		affected_count += 1
+	return {
+		"effect": "non_stricked_balls",
+		"seconds_remaining": NON_STRICKED_DURATION_SECONDS,
+		"affected": affected_count,
+	}
+
+
 func _adjust_racket_segments(delta_segments: int) -> Dictionary:
 	if delta_segments < 0:
 		if racket_segment_count > RACKET_SHRINK_LIMIT_SEGMENTS:
@@ -2022,6 +2129,18 @@ func _adjust_racket_segments(delta_segments: int) -> Dictionary:
 func _activate_back_wall() -> Dictionary:
 	back_wall_time_remaining = BACK_WALL_DURATION_SECONDS
 	return {"effect": "back_wall", "seconds_remaining": back_wall_time_remaining}
+
+
+func _activate_one_strike_bricks() -> Dictionary:
+	var changed_count := 0
+	if board_state != null and board_state.has_method("weaken_all_for_one_strike"):
+		changed_count = int(board_state.call("weaken_all_for_one_strike"))
+	if changed_count > 0:
+		board_changed = true
+	return {
+		"effect": "one_strike_bricks",
+		"changed": changed_count,
+	}
 
 
 func _activate_shooting_paddle_one_shot() -> Dictionary:

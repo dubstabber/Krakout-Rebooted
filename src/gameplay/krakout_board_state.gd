@@ -87,6 +87,20 @@ func explode_at(column: int, row: int) -> int:
 	return cleared_tiles
 
 
+func weaken_all_for_one_strike() -> int:
+	var changed_count := 0
+	for row_index in range(rows_count):
+		for column_index in range(columns):
+			var tile_id := tile_at(column_index, row_index)
+			if not BrickSemanticsScript.is_active_tile(tile_id):
+				continue
+
+			var next_tile_id: int = BrickSemanticsScript.one_strike_tile_id(tile_id)
+			if next_tile_id != tile_id and set_tile(column_index, row_index, next_tile_id):
+				changed_count += 1
+	return changed_count
+
+
 func convert_to_chain_explosion_tile(column: int, row: int, tile_id: int) -> bool:
 	if not _is_in_bounds(column, row):
 		return false

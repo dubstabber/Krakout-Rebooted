@@ -115,5 +115,58 @@ static func downgraded_tile_id(tile_id: int) -> int:
 	return int(DOWNGRADE_TILE_ID_BY_BEHAVIOR_CASE.get(behavior_case(tile_id), 0))
 
 
+static func one_strike_tile_id(tile_id: int) -> int:
+	match tile_id:
+		8:
+			return 7
+		15, 40:
+			return 14
+		39:
+			return 37
+		42:
+			return 44
+		69:
+			return 32
+		70, 90:
+			return 24
+		71, 82:
+			return 16
+		72, 83:
+			return 17
+		73, 84:
+			return 18
+		74, 85:
+			return 19
+		75, 86:
+			return 20
+		76, 87:
+			return 21
+		77, 88:
+			return 22
+		78, 89:
+			return 23
+		79, 91:
+			return 25
+		80, 92:
+			return 26
+		81, 93:
+			return 27
+		101:
+			return 67
+		133:
+			return 132
+		137:
+			return 136
+		139:
+			return 138
+		141:
+			return 140
+		143:
+			return 142
+		145:
+			return 144
+	return tile_id
+
+
 static func can_spawn_bonus(tile_id: int) -> bool:
 	return is_active_tile(tile_id) and behavior_case(tile_id) == 0

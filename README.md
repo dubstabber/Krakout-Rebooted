@@ -31,10 +31,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   selector hits into chain tiles, and stacks collected bonuses up to the original
   16-entry cap.
 - Pressing Space now activates the first collected bonus in the original stack
-  order. The current supported effects are standard ball, ball size/speed,
-  paddle size, shooting paddle projectiles, extra life, destroy one ball, back
-  wall, and jump to next level; fireball, magnet, random, and explosion-family
-  effects remain explicit pending parity work.
+  order. The current supported effects are standard ball, fireball,
+  non-stricked balls, ball size/speed, paddle size, shooting paddle projectiles,
+  extra life, destroy one ball, one-strike bricks, back wall, and jump to next
+  level; double/magnet/drunk paddle, random, and explosion-family effects remain
+  explicit pending parity work.
 - `KrakoutBonusRenderer` draws falling bonuses, collected stack entries, and the
   stack pointer from the extracted `Bonuses_a`, `Bonuses_aa`, and
   `PointToBonusInStack` sheets.
@@ -57,11 +58,12 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - `KrakoutImpactEffectRenderer` draws enemy spawn, timeout, and hit effects from
   the original `Exploision` 32x32 vertical-frame columns, with the original
   11-frame/50ms cadence.
-- `KrakoutBallRenderer` draws standard balls from the extracted `Balls` atlas
-  using the original visible size rows, with the session advancing the stored
-  ball frame clock at the original 100ms cadence even while a ball is attached
-  to the racket or stationary, and the ready ball sits on the original short
-  2px paddle gap.
+- `KrakoutBallRenderer` draws standard balls from the extracted `Balls` atlas,
+  tints non-stricked balls, and composes fireballs from a warm-tinted `Balls`
+  base plus the extracted native 24px `Fb` overlay, with the session advancing
+  the stored ball frame clock at the original 100ms cadence even while a ball is
+  attached to the racket or stationary, and the ready ball sits on the original
+  short 2px paddle gap.
 - `Back Wall (30 sec)` now uses a timed session effect, reflects missed balls
   at the original right-side wall boundary, syncs the wall visual through the
   playfield renderer, and reports its countdown through the original

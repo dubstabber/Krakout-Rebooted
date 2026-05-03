@@ -269,6 +269,16 @@ func _validate_brick_semantics() -> void:
 	_assert(BrickSemanticsScript.downgraded_tile_id(15) == 14, "tile 15 downgrades to original next stage")
 	_assert(BrickSemanticsScript.downgraded_tile_id(42) == 44, "tile 42 downgrades to original animated next stage")
 	_assert(BrickSemanticsScript.downgraded_tile_id(70) == 90, "tile 70 downgrades to original high-range next stage")
+	_assert(BrickSemanticsScript.one_strike_tile_id(8) == 7, "one-strike bonus weakens tile 8 through the original table")
+	_assert(BrickSemanticsScript.one_strike_tile_id(15) == 14, "one-strike bonus weakens tile 15 through the original table")
+	_assert(BrickSemanticsScript.one_strike_tile_id(40) == 14, "one-strike bonus weakens tile 40 through the original table")
+	_assert(BrickSemanticsScript.one_strike_tile_id(69) == 32, "one-strike bonus weakens tile 69 through the original table")
+	_assert(BrickSemanticsScript.one_strike_tile_id(70) == 24, "one-strike bonus weakens tile 70 through the original table")
+	_assert(BrickSemanticsScript.one_strike_tile_id(90) == 24, "one-strike bonus weakens tile 90 through the original table")
+	_assert(BrickSemanticsScript.one_strike_tile_id(101) == 67, "one-strike bonus weakens tile 101 through the original table")
+	_assert(BrickSemanticsScript.one_strike_tile_id(133) == 132, "one-strike bonus weakens tile 133 through the original table")
+	_assert(BrickSemanticsScript.one_strike_tile_id(145) == 144, "one-strike bonus weakens tile 145 through the original table")
+	_assert(BrickSemanticsScript.one_strike_tile_id(1) == 1, "one-strike bonus leaves ordinary one-hit bricks unchanged")
 
 
 func _validate_original_rng() -> void:
@@ -326,6 +336,25 @@ func _validate_board_state(default_level: KrakoutLevelData) -> void:
 	_assert(converted_chain_state.convert_to_chain_explosion_tile(0, 0, 68), "board state can convert a tile into a delayed chain explosion")
 	_assert(converted_chain_state.tile_at(0, 0) == 68, "converted chain tile is stored in board state")
 	_assert(converted_chain_state.pending_chain_explosion_count() == 1, "converted chain tile is scheduled")
+
+	var one_strike_state = _board_state_from_level(_make_level_from_rows([[8, 15, 40, 39, 42, 69, 70, 71, 101, 133, 137, 139, 141, 143, 145, 1]]))
+	_assert(one_strike_state.weaken_all_for_one_strike() == 15, "one-strike board helper weakens every mapped original tile")
+	_assert(one_strike_state.tile_at(0, 0) == 7, "one-strike board helper maps tile 8 to 7")
+	_assert(one_strike_state.tile_at(1, 0) == 14, "one-strike board helper maps tile 15 to 14")
+	_assert(one_strike_state.tile_at(2, 0) == 14, "one-strike board helper maps tile 40 to 14")
+	_assert(one_strike_state.tile_at(3, 0) == 37, "one-strike board helper maps tile 39 to 37")
+	_assert(one_strike_state.tile_at(4, 0) == 44, "one-strike board helper maps tile 42 to 44")
+	_assert(one_strike_state.tile_at(5, 0) == 32, "one-strike board helper maps tile 69 to 32")
+	_assert(one_strike_state.tile_at(6, 0) == 24, "one-strike board helper maps tile 70 to 24")
+	_assert(one_strike_state.tile_at(7, 0) == 16, "one-strike board helper maps tile 71 to 16")
+	_assert(one_strike_state.tile_at(8, 0) == 67, "one-strike board helper maps tile 101 to 67")
+	_assert(one_strike_state.tile_at(9, 0) == 132, "one-strike board helper maps tile 133 to 132")
+	_assert(one_strike_state.tile_at(10, 0) == 136, "one-strike board helper maps tile 137 to 136")
+	_assert(one_strike_state.tile_at(11, 0) == 138, "one-strike board helper maps tile 139 to 138")
+	_assert(one_strike_state.tile_at(12, 0) == 140, "one-strike board helper maps tile 141 to 140")
+	_assert(one_strike_state.tile_at(13, 0) == 142, "one-strike board helper maps tile 143 to 142")
+	_assert(one_strike_state.tile_at(14, 0) == 144, "one-strike board helper maps tile 145 to 144")
+	_assert(one_strike_state.tile_at(15, 0) == 1, "one-strike board helper leaves ordinary tile 1 unchanged")
 
 
 func _validate_game_session(default_level: KrakoutLevelData) -> void:
@@ -751,7 +780,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(empty_bonus_result["status"] == "empty", "empty bonus stack reports empty activation")
 
 	var unsupported_bonus_session = _playing_session_from_level(_make_level_from_rows([[1]]))
-	_stack_bonus(unsupported_bonus_session, GameSessionScript.BONUS_ADD_FIREBALL)
+	_stack_bonus(unsupported_bonus_session, GameSessionScript.BONUS_DOUBLE_PADDLE)
 	var unsupported_bonus_result: Dictionary = unsupported_bonus_session.activate_next_bonus()
 	_assert(unsupported_bonus_result["status"] == "unsupported", "unsupported bonus reports explicit status")
 	_assert(unsupported_bonus_session.bonus_stack_entries().size() == 1, "unsupported bonus remains stacked")
@@ -1099,6 +1128,120 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(add_ball_session.bonus_stack_entries().is_empty(), "applied bonus consumes first stack entry")
 	_assert(add_ball_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BONUS_APPLY], "applied non-projectile bonus queues bonus-apply SFX event")
 
+	var fireball_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(fireball_session, GameSessionScript.BONUS_ADD_FIREBALL)
+	var fireball_result: Dictionary = fireball_session.activate_next_bonus()
+	_assert(fireball_result["status"] == "applied", "fireball bonus applies")
+	_assert(fireball_result["effect"] == "add_fireball", "fireball bonus reports effect")
+	_assert(fireball_session.active_ball_count() == 2, "fireball bonus adds an active ball")
+	var fireball_count := 0
+	for ball: Dictionary in fireball_session.visible_balls():
+		if int(ball.get("type_id", GameSessionScript.BALL_TYPE_STANDARD)) == GameSessionScript.BALL_TYPE_FIREBALL:
+			fireball_count += 1
+	_assert(fireball_count == 1, "fireball bonus marks exactly one added ball as fireball")
+	while fireball_session.active_ball_count() < GameSessionScript.MAX_BALLS:
+		_stack_bonus(fireball_session, GameSessionScript.BONUS_ADD_FIREBALL)
+		fireball_session.activate_next_bonus()
+	_stack_bonus(fireball_session, GameSessionScript.BONUS_ADD_FIREBALL)
+	var capped_fireball_result: Dictionary = fireball_session.activate_next_bonus()
+	_assert(not bool(capped_fireball_result["applied"]), "fireball bonus respects original five-ball pool cap")
+	_assert(fireball_session.active_ball_count() == GameSessionScript.MAX_BALLS, "fireball bonus cannot overflow active balls")
+
+	var fireball_hard_session = _playing_session_from_level(_make_level_from_rows([[8, 1]]))
+	fireball_hard_session.force_ball(
+		PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2),
+		Vector2(-80, 0),
+		GameSessionScript.BALL_SIZE,
+		GameSessionScript.BALL_TYPE_FIREBALL
+	)
+	fireball_hard_session.update(0.01)
+	_assert(fireball_hard_session.board_state.tile_at(0, 0) == 0, "fireball force-breaks hard brick")
+	_assert(fireball_hard_session.score == GameSessionScript.HARD_BRICK_FORCE_SCORE, "fireball hard-brick hit awards original force-break score")
+	_assert(fireball_hard_session.first_ball_velocity().x < 0.0, "fireball keeps moving through hard brick instead of bouncing")
+
+	var fireball_pierce_session = _playing_session_from_level(_make_level_from_rows([[1, 1, 1]]))
+	fireball_pierce_session.force_ball(
+		PlayfieldSpecScript.GRID_ORIGIN + Vector2(22, 2),
+		Vector2(-80, 0),
+		GameSessionScript.BALL_SIZE,
+		GameSessionScript.BALL_TYPE_FIREBALL
+	)
+	fireball_pierce_session.update(0.01)
+	_assert(fireball_pierce_session.board_state.tile_at(1, 0) == 0, "fireball clears the first brick in its path")
+	_assert(fireball_pierce_session.first_ball_velocity().x < 0.0, "fireball keeps its travel direction after the first brick")
+	fireball_pierce_session.update(0.25)
+	_assert(fireball_pierce_session.board_state.tile_at(0, 0) == 0, "fireball continues through and clears the next brick")
+	_assert(fireball_pierce_session.first_ball_velocity().x < 0.0, "fireball remains piercing after multiple brick hits")
+
+	var fireball_downgrade_session = _playing_session_from_level(_make_level_from_rows([[15, 1]]))
+	fireball_downgrade_session.force_ball(
+		PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2),
+		Vector2(-80, 0),
+		GameSessionScript.BALL_SIZE,
+		GameSessionScript.BALL_TYPE_FIREBALL
+	)
+	fireball_downgrade_session.update(0.01)
+	_assert(fireball_downgrade_session.board_state.tile_at(0, 0) == 0, "fireball clears downgrade brick instead of stepping it down")
+	_assert(fireball_downgrade_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "fireball downgrade hit keeps original downgrade score")
+
+	var non_stricked_session = _playing_session_from_level(_make_level_from_rows([[1, 1]]))
+	non_stricked_session.force_ball(
+		PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2),
+		Vector2.ZERO,
+		GameSessionScript.BALL_SIZE,
+		GameSessionScript.BALL_TYPE_FIREBALL
+	)
+	_stack_bonus(non_stricked_session, GameSessionScript.BONUS_NON_STRICKED_BALLS)
+	var non_stricked_result: Dictionary = non_stricked_session.activate_next_bonus()
+	_assert(non_stricked_result["status"] == "applied", "non-stricked bonus applies")
+	_assert(non_stricked_result["effect"] == "non_stricked_balls", "non-stricked bonus reports effect")
+	_assert(non_stricked_session.active_non_stricked_ball_count() == 1, "non-stricked bonus marks active balls")
+	_assert(non_stricked_session.first_ball_type_id() == GameSessionScript.BALL_TYPE_NON_STRICKED, "non-stricked ball type is exposed")
+	_assert(int(non_stricked_session.balls[0]["previous_type_id"]) == GameSessionScript.BALL_TYPE_FIREBALL, "non-stricked bonus preserves previous fireball type")
+	non_stricked_session.update(0.01)
+	_assert(non_stricked_session.board_state.tile_at(0, 0) == 1, "non-stricked balls pass through board bricks")
+	_assert(non_stricked_session.score == 0, "non-stricked board pass-through awards no score")
+	_assert(not non_stricked_session.consume_board_changed(), "non-stricked board pass-through does not redraw the board")
+	_stack_bonus(non_stricked_session, GameSessionScript.BONUS_NON_STRICKED_BALLS)
+	non_stricked_session.activate_next_bonus()
+	_assert(int(non_stricked_session.balls[0]["previous_type_id"]) == GameSessionScript.BALL_TYPE_FIREBALL, "reapplying non-stricked preserves original previous type")
+	_assert(is_equal_approx(float(non_stricked_session.balls[0]["non_stricked_time_remaining"]), GameSessionScript.NON_STRICKED_DURATION_SECONDS), "reapplying non-stricked resets the original timer")
+	non_stricked_session.force_ball(
+		Vector2(300, 200),
+		Vector2.ZERO,
+		GameSessionScript.BALL_SIZE,
+		GameSessionScript.BALL_TYPE_FIREBALL
+	)
+	_stack_bonus(non_stricked_session, GameSessionScript.BONUS_NON_STRICKED_BALLS)
+	non_stricked_session.activate_next_bonus()
+	non_stricked_session.update(GameSessionScript.NON_STRICKED_DURATION_SECONDS)
+	_assert(non_stricked_session.first_ball_type_id() == GameSessionScript.BALL_TYPE_FIREBALL, "non-stricked expiry restores previous fireball type")
+
+	var one_strike_session = _playing_session_from_level(_make_level_from_rows([[8, 15, 40, 39, 42, 69, 70, 71, 101, 133, 137, 139, 141, 143, 145, 1]]))
+	_stack_bonus(one_strike_session, GameSessionScript.BONUS_ONE_STRIKE_BRICKS)
+	var one_strike_result: Dictionary = one_strike_session.activate_next_bonus()
+	_assert(one_strike_result["status"] == "applied", "one-strike bonus applies")
+	_assert(one_strike_result["effect"] == "one_strike_bricks", "one-strike bonus reports effect")
+	_assert(int(one_strike_result["changed"]) == 15, "one-strike bonus weakens mapped board tiles")
+	_assert(one_strike_session.score == 0, "one-strike bonus does not award score by itself")
+	_assert(one_strike_session.consume_board_changed(), "one-strike bonus marks the board dirty")
+	_assert(one_strike_session.board_state.tile_at(0, 0) == 7, "one-strike session maps tile 8 to 7")
+	_assert(one_strike_session.board_state.tile_at(1, 0) == 14, "one-strike session maps tile 15 to 14")
+	_assert(one_strike_session.board_state.tile_at(2, 0) == 14, "one-strike session maps tile 40 to 14")
+	_assert(one_strike_session.board_state.tile_at(3, 0) == 37, "one-strike session maps tile 39 to 37")
+	_assert(one_strike_session.board_state.tile_at(4, 0) == 44, "one-strike session maps tile 42 to 44")
+	_assert(one_strike_session.board_state.tile_at(5, 0) == 32, "one-strike session maps tile 69 to 32")
+	_assert(one_strike_session.board_state.tile_at(6, 0) == 24, "one-strike session maps tile 70 to 24")
+	_assert(one_strike_session.board_state.tile_at(7, 0) == 16, "one-strike session maps tile 71 to 16")
+	_assert(one_strike_session.board_state.tile_at(8, 0) == 67, "one-strike session maps tile 101 to 67")
+	_assert(one_strike_session.board_state.tile_at(9, 0) == 132, "one-strike session maps tile 133 to 132")
+	_assert(one_strike_session.board_state.tile_at(10, 0) == 136, "one-strike session maps tile 137 to 136")
+	_assert(one_strike_session.board_state.tile_at(11, 0) == 138, "one-strike session maps tile 139 to 138")
+	_assert(one_strike_session.board_state.tile_at(12, 0) == 140, "one-strike session maps tile 141 to 140")
+	_assert(one_strike_session.board_state.tile_at(13, 0) == 142, "one-strike session maps tile 143 to 142")
+	_assert(one_strike_session.board_state.tile_at(14, 0) == 144, "one-strike session maps tile 145 to 144")
+	_assert(one_strike_session.board_state.tile_at(15, 0) == 1, "one-strike session leaves ordinary tile 1 unchanged")
+
 	var stack_shift_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(stack_shift_session, GameSessionScript.BONUS_EXTRA_LIFE)
 	_stack_bonus(stack_shift_session, GameSessionScript.BONUS_JUMP_TO_NEXT_LEVEL)
@@ -1235,6 +1378,15 @@ func _validate_level_grid_renderer_defaults() -> void:
 	_assert(ball_renderer.source_rect_for_size(GameSessionScript.BALL_SIZE, 0) == Rect2(Vector2(1, 13), Vector2(18, 18)), "ball renderer maps default standard ball atlas row")
 	_assert(ball_renderer.source_rect_for_size(26.0, 2) == Rect2(Vector2(57, 33), Vector2(26, 26)), "ball renderer maps increased ball frame")
 	_assert(ball_renderer.source_rect_for_size(GameSessionScript.BALL_MAX_SIZE, 9) == Rect2(Vector2(397, 97), Vector2(42, 42)), "ball renderer maps largest atlas row")
+	_assert(BallRendererScript.fireball_source_rect(0) == Rect2(Vector2(0, 0), Vector2(24, 24)), "ball renderer maps first fireball frame from Fb sheet")
+	_assert(BallRendererScript.fireball_source_rect(5) == Rect2(Vector2(0, 120), Vector2(24, 24)), "ball renderer maps final fireball frame from Fb sheet")
+	_assert(BallRendererScript.fireball_source_rect(6) == Rect2(Vector2(0, 0), Vector2(24, 24)), "ball renderer wraps fireball frames")
+	_assert(BallRendererScript.modulate_for_ball_type(GameSessionScript.BALL_TYPE_STANDARD) == Color.WHITE, "standard balls draw with original atlas color")
+	_assert(BallRendererScript.modulate_for_ball_type(GameSessionScript.BALL_TYPE_FIREBALL) == BallRendererScript.FIREBALL_BALL_MODULATE, "fireballs tint the base ball toward the original warm Fb colors")
+	_assert(BallRendererScript.modulate_for_ball_type(GameSessionScript.BALL_TYPE_NON_STRICKED) == BallRendererScript.NON_STRICKED_BALL_MODULATE, "non-stricked balls draw with a distinct tint")
+	_assert(BallRendererScript.source_size_for_ball_type(GameSessionScript.BALL_TYPE_FIREBALL, GameSessionScript.BALL_SIZE) == BallRendererScript.FIREBALL_FRAME_SIZE.x, "fireballs use the native Fb footprint instead of the smaller default ball size")
+	_assert(BallRendererScript.visual_rect_for_ball_type(GameSessionScript.BALL_TYPE_FIREBALL, Rect2(Vector2(10, 20), Vector2(18, 18))) == Rect2(Vector2(7, 17), Vector2(24, 24)), "fireballs center the native Fb sprite over the gameplay ball")
+	_assert(BallRendererScript.FIREBALL_EFFECT_MODULATE == Color.WHITE, "fireballs preserve the extracted Fb sheet colors and alpha")
 	var hidden_ball_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	hidden_ball_session.start_level_ready_sequence(false)
 	ball_renderer.set_session(hidden_ball_session)

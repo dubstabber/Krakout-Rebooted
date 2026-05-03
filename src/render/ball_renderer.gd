@@ -2,6 +2,14 @@ extends Node2D
 class_name KrakoutBallRenderer
 
 const BALL_FRAME_COUNT := 10
+const BALL_TYPE_STANDARD := 0
+const BALL_TYPE_FIREBALL := 1
+const BALL_TYPE_NON_STRICKED := 2
+const FIREBALL_FRAME_COUNT := 6
+const FIREBALL_FRAME_SIZE := Vector2(24, 24)
+const FIREBALL_BALL_MODULATE := Color(1.0, 0.68, 0.24, 1.0)
+const FIREBALL_EFFECT_MODULATE := Color.WHITE
+const NON_STRICKED_BALL_MODULATE := Color(0.45, 0.85, 1.0, 1.0)
 const BALL_SOURCE_ROWS: Array[Dictionary] = [
 	{"size": 10.0, "origin": Vector2(1, 1), "pitch": 12.0},
 	{"size": 18.0, "origin": Vector2(1, 13), "pitch": 20.0},
@@ -12,6 +20,7 @@ const BALL_SOURCE_ROWS: Array[Dictionary] = [
 
 var session
 var ball_texture: Texture2D
+var fireball_texture: Texture2D
 var tracks_visible := true
 
 
@@ -19,6 +28,8 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	if ball_texture == null:
 		ball_texture = _load_asset_texture("Balls")
+	if fireball_texture == null:
+		fireball_texture = _load_asset_texture("Fb")
 
 
 func set_session(value) -> void:
@@ -53,11 +64,23 @@ func _draw() -> void:
 
 	for ball: Dictionary in session.visible_balls():
 		var ball_size := float(ball.get("size", 18.0))
+		var type_id := int(ball.get("type_id", BALL_TYPE_STANDARD))
+		var frame := _frame_for_ball(ball)
+		var ball_rect: Rect2 = session.ball_rect(ball)
+		var visual_rect := visual_rect_for_ball_type(type_id, ball_rect)
 		draw_texture_rect_region(
 			ball_texture,
-			session.ball_rect(ball),
-			source_rect_for_size(ball_size, _frame_for_ball(ball))
+			visual_rect,
+			source_rect_for_size(source_size_for_ball_type(type_id, ball_size), frame),
+			modulate_for_ball_type(type_id)
 		)
+		if type_id == BALL_TYPE_FIREBALL and fireball_texture != null:
+			draw_texture_rect_region(
+				fireball_texture,
+				visual_rect,
+				fireball_source_rect(frame),
+				FIREBALL_EFFECT_MODULATE
+			)
 
 
 func source_rect_for_size(ball_size: float, frame: int = 0) -> Rect2:
@@ -70,6 +93,38 @@ func source_rect_for_size(ball_size: float, frame: int = 0) -> Rect2:
 		Vector2(source_origin.x + source_pitch * clamped_frame, source_origin.y),
 		Vector2(source_size, source_size)
 	)
+
+
+static func fireball_source_rect(frame: int = 0) -> Rect2:
+	return Rect2(
+		Vector2(0, float(posmod(frame, FIREBALL_FRAME_COUNT)) * FIREBALL_FRAME_SIZE.y),
+		FIREBALL_FRAME_SIZE
+	)
+
+
+static func modulate_for_ball_type(type_id: int) -> Color:
+	if type_id == BALL_TYPE_FIREBALL:
+		return FIREBALL_BALL_MODULATE
+	if type_id == BALL_TYPE_NON_STRICKED:
+		return NON_STRICKED_BALL_MODULATE
+	return Color.WHITE
+
+
+static func source_size_for_ball_type(type_id: int, ball_size: float) -> float:
+	if type_id == BALL_TYPE_FIREBALL:
+		return maxf(ball_size, FIREBALL_FRAME_SIZE.x)
+	return ball_size
+
+
+static func visual_rect_for_ball_type(type_id: int, ball_rect: Rect2) -> Rect2:
+	if type_id != BALL_TYPE_FIREBALL:
+		return ball_rect
+
+	var visual_size := Vector2(
+		maxf(ball_rect.size.x, FIREBALL_FRAME_SIZE.x),
+		maxf(ball_rect.size.y, FIREBALL_FRAME_SIZE.y)
+	)
+	return Rect2(ball_rect.get_center() - visual_size * 0.5, visual_size)
 
 
 func _source_row_for_size(ball_size: float) -> Dictionary:
