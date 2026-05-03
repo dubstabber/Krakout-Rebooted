@@ -72,6 +72,8 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - Confirming the Escape leave-board prompt first shows the original Game Over
   summary, then mouse confirmation reuses the qualifying-score name-entry and
   persisted high-score table route.
+- Right-side ball misses now wait for the original off-screen x=640 threshold
+  instead of ending as soon as the ball passes the racket/back-wall line.
 - The project stretch settings explicitly preserve the original 4:3 canvas, so
   widescreen windows keep centered gameplay with black side bars instead of
   stretching the playfield.

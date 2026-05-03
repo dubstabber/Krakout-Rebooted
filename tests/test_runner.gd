@@ -358,6 +358,13 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(left_wall_session.first_ball_velocity().x > 0.0, "ball bounces off left wall")
 	_assert(left_wall_session.first_ball_position().x == GameSessionScript.BALL_LEFT_X, "left wall clamps ball to original inner boundary")
 
+	var right_miss_grace_session = _playing_session_from_level(default_level)
+	right_miss_grace_session.force_ball(Vector2(PlayfieldSpecScript.WALL_INNER_RIGHT_X + 1.0, 350), Vector2(120, 0))
+	right_miss_grace_session.update(0.016)
+	_assert(right_miss_grace_session.state == GameSessionScript.STATE_PLAYING, "ball can pass the original right-wall line before being lost")
+	_assert(right_miss_grace_session.lives_remaining == GameSessionScript.INITIAL_LIVES, "right-side miss waits for the original screen-edge threshold")
+	_assert(GameSessionScript.BALL_LOST_X == 640.0, "ball loss threshold matches original off-screen comparison")
+
 	var speedup_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	speedup_session.force_ball(Vector2(500, GameSessionScript.BALL_TOP_Y), Vector2(-300, -1))
 	var speedup_ball: Dictionary = speedup_session.balls[0]
