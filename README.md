@@ -33,9 +33,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - Pressing Space now activates the first collected bonus in the original stack
   order. The current supported effects are standard ball, fireball,
   non-stricked balls, ball size/speed, paddle size, shooting paddle projectiles,
-  extra life, destroy one ball, one-strike bricks, back wall, and jump to next
-  level; double/magnet/drunk paddle, random, and explosion-family effects remain
-  explicit pending parity work.
+  extra life, destroy one ball, random bonus stacking, one-strike bricks,
+  expanding exploding bricks, exploding all chain bricks, back wall, and jump to
+  next level; double/magnet/drunk paddle effects remain explicit pending parity
+  work.
 - `KrakoutBonusRenderer` draws falling bonuses, collected stack entries, and the
   stack pointer from the extracted `Bonuses_a`, `Bonuses_aa`, and
   `PointToBonusInStack` sheets.

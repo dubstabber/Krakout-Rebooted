@@ -230,8 +230,11 @@ const SUPPORTED_BONUS_EFFECTS := {
 	BONUS_BACK_WALL: true,
 	BONUS_EXTRA_LIFE: true,
 	BONUS_DESTROY_ONE_BALL: true,
+	BONUS_RANDOM_BONUS: true,
 	BONUS_ONE_STRIKE_BRICKS: true,
+	BONUS_EXPAND_EXPLODING: true,
 	BONUS_JUMP_TO_NEXT_LEVEL: true,
+	BONUS_EXPLODE_ALL_EXPLODINGS: true,
 }
 const CHAIN_SELECTOR_TILE_IDS := [68, 43]
 const BONUS_DISPLAY_INCREMENT_IDS := {
@@ -731,8 +734,8 @@ func activate_next_bonus() -> Dictionary:
 			"name": bonus_type_name(type_id),
 		}
 
-	var result := _apply_bonus_effect(type_id)
 	_consume_next_bonus()
+	var result := _apply_bonus_effect(type_id)
 	result["status"] = "applied"
 	result["type_id"] = type_id
 	result["name"] = bonus_type_name(type_id)
@@ -2087,11 +2090,17 @@ func _apply_bonus_effect(type_id: int) -> Dictionary:
 			return {"effect": "extra_life", "lives_remaining": lives_remaining}
 		BONUS_DESTROY_ONE_BALL:
 			return {"effect": "destroy_one_ball", "applied": _destroy_one_active_ball()}
+		BONUS_RANDOM_BONUS:
+			return _activate_random_bonus()
 		BONUS_ONE_STRIKE_BRICKS:
 			return _activate_one_strike_bricks()
+		BONUS_EXPAND_EXPLODING:
+			return _activate_expand_exploding()
 		BONUS_JUMP_TO_NEXT_LEVEL:
 			_mark_level_complete()
 			return {"effect": "jump_to_next_level"}
+		BONUS_EXPLODE_ALL_EXPLODINGS:
+			return _activate_explode_all_explodings()
 	return {"effect": "unsupported"}
 
 
@@ -2175,6 +2184,42 @@ func _activate_one_strike_bricks() -> Dictionary:
 	return {
 		"effect": "one_strike_bricks",
 		"changed": changed_count,
+	}
+
+
+func _activate_random_bonus() -> Dictionary:
+	var selected_type_id := BONUS_RANDOM_BONUS
+	while selected_type_id == BONUS_RANDOM_BONUS:
+		selected_type_id = _bonus_rng.next_mod(BONUS_TYPE_COUNT)
+
+	var pushed := _push_bonus_stack(selected_type_id)
+	return {
+		"effect": "random_bonus",
+		"selected_type_id": selected_type_id,
+		"selected_name": bonus_type_name(selected_type_id),
+		"stacked": pushed,
+	}
+
+
+func _activate_expand_exploding() -> Dictionary:
+	var changed_count := 0
+	if board_state != null and board_state.has_method("expand_exploding_tiles"):
+		changed_count = int(board_state.call("expand_exploding_tiles"))
+	if changed_count > 0:
+		board_changed = true
+	return {
+		"effect": "expand_exploding",
+		"changed": changed_count,
+	}
+
+
+func _activate_explode_all_explodings() -> Dictionary:
+	var scheduled_count := 0
+	if board_state != null and board_state.has_method("schedule_all_chain_explosions"):
+		scheduled_count = int(board_state.call("schedule_all_chain_explosions"))
+	return {
+		"effect": "explode_all_explodings",
+		"scheduled": scheduled_count,
 	}
 
 

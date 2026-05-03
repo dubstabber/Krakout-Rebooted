@@ -101,6 +101,37 @@ func weaken_all_for_one_strike() -> int:
 	return changed_count
 
 
+func expand_exploding_tiles() -> int:
+	var snapshot: Array = []
+	for row: Array in tile_ids:
+		snapshot.append(row.duplicate())
+
+	var changed_count := 0
+	for row_index in range(rows_count):
+		for column_index in range(columns):
+			var tile_id := int(snapshot[row_index][column_index])
+			if not BrickSemanticsScript.is_chain_explosion_tile(tile_id):
+				continue
+
+			for scan_row in range(row_index - 1, row_index + 2):
+				for scan_column in range(column_index - 1, column_index + 2):
+					if not _is_in_bounds(scan_column, scan_row):
+						continue
+					if set_tile(scan_column, scan_row, tile_id):
+						changed_count += 1
+	return changed_count
+
+
+func schedule_all_chain_explosions() -> int:
+	var scheduled_count := 0
+	for row_index in range(rows_count):
+		for column_index in range(columns):
+			if BrickSemanticsScript.is_chain_explosion_tile(tile_at(column_index, row_index)):
+				_schedule_chain_explosion(column_index, row_index)
+				scheduled_count += 1
+	return scheduled_count
+
+
 func convert_to_chain_explosion_tile(column: int, row: int, tile_id: int) -> bool:
 	if not _is_in_bounds(column, row):
 		return false

@@ -1281,6 +1281,74 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(one_strike_session.board_state.tile_at(14, 0) == 144, "one-strike session maps tile 145 to 144")
 	_assert(one_strike_session.board_state.tile_at(15, 0) == 1, "one-strike session leaves ordinary tile 1 unchanged")
 
+	var random_bonus_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	random_bonus_session.set_bonus_rng_seed(9)
+	_stack_bonus(random_bonus_session, GameSessionScript.BONUS_RANDOM_BONUS)
+	var random_bonus_result: Dictionary = random_bonus_session.activate_next_bonus()
+	_assert(random_bonus_result["status"] == "applied", "random bonus applies")
+	_assert(random_bonus_result["effect"] == "random_bonus", "random bonus reports effect")
+	_assert(int(random_bonus_result["selected_type_id"]) == GameSessionScript.BONUS_EXTRA_LIFE, "random bonus uses the original LCG selection")
+	_assert(random_bonus_session.bonus_stack_entries().size() == 1, "random bonus appends the selected bonus after consuming itself")
+	_assert(int(random_bonus_session.bonus_stack_entries()[0]["type_id"]) == GameSessionScript.BONUS_EXTRA_LIFE, "random bonus stacks the selected item without applying it")
+	_assert(random_bonus_session.lives_remaining == GameSessionScript.INITIAL_LIVES, "random-selected extra life waits for a second activation")
+	random_bonus_session.activate_next_bonus()
+	_assert(random_bonus_session.lives_remaining == GameSessionScript.INITIAL_LIVES + 1, "random-selected stacked bonus can be activated normally")
+
+	var random_unsupported_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	random_unsupported_session.set_bonus_rng_seed(8)
+	_stack_bonus(random_unsupported_session, GameSessionScript.BONUS_RANDOM_BONUS)
+	var random_unsupported_result: Dictionary = random_unsupported_session.activate_next_bonus()
+	_assert(int(random_unsupported_result["selected_type_id"]) == GameSessionScript.BONUS_DOUBLE_PADDLE, "random bonus can select a still-unsupported original item")
+	_assert(int(random_unsupported_session.bonus_stack_entries()[0]["type_id"]) == GameSessionScript.BONUS_DOUBLE_PADDLE, "unsupported random result remains stacked")
+	var random_unsupported_apply_result: Dictionary = random_unsupported_session.activate_next_bonus()
+	_assert(random_unsupported_apply_result["status"] == "unsupported", "unsupported random result keeps the explicit unsupported status")
+	_assert(random_unsupported_session.bonus_stack_entries().size() == 1, "unsupported random result is not consumed")
+
+	var random_reroll_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	random_reroll_session.set_bonus_rng_seed(29)
+	_stack_bonus(random_reroll_session, GameSessionScript.BONUS_RANDOM_BONUS)
+	var random_reroll_result: Dictionary = random_reroll_session.activate_next_bonus()
+	_assert(int(random_reroll_result["selected_type_id"]) == GameSessionScript.BONUS_EXPAND_EXPLODING, "random bonus rerolls when it selects itself")
+	_assert(int(random_reroll_session.bonus_stack_entries()[0]["type_id"]) == GameSessionScript.BONUS_EXPAND_EXPLODING, "rerolled random bonus stacks the replacement item")
+
+	var expand_exploding_session = _playing_session_from_level(_make_level_from_rows([
+		[0, 0, 0, 0],
+		[0, 43, 0, 0],
+		[0, 0, 0, 0],
+		[0, 0, 0, 0],
+	]))
+	_stack_bonus(expand_exploding_session, GameSessionScript.BONUS_EXPAND_EXPLODING)
+	var expand_exploding_result: Dictionary = expand_exploding_session.activate_next_bonus()
+	_assert(expand_exploding_result["status"] == "applied", "expand-exploding bonus applies")
+	_assert(expand_exploding_result["effect"] == "expand_exploding", "expand-exploding bonus reports effect")
+	_assert(int(expand_exploding_result["changed"]) == 8, "expand-exploding bonus spreads from the original chain-tile snapshot")
+	_assert(expand_exploding_session.consume_board_changed(), "expand-exploding bonus marks board dirty")
+	_assert(expand_exploding_session.score == 0, "expand-exploding bonus does not award score by itself")
+	for expand_row in range(3):
+		for expand_column in range(3):
+			_assert(expand_exploding_session.board_state.tile_at(expand_column, expand_row) == 43, "expand-exploding fills the original 3x3 neighborhood")
+	_assert(expand_exploding_session.board_state.tile_at(3, 3) == 0, "expand-exploding does not cascade from newly-created chain tiles")
+
+	var explode_all_session = _playing_session_from_level(_make_level_from_rows([
+		[43, 0, 0, 0],
+		[0, 0, 0, 0],
+		[0, 0, 68, 1],
+	]))
+	_stack_bonus(explode_all_session, GameSessionScript.BONUS_EXPLODE_ALL_EXPLODINGS)
+	var explode_all_result: Dictionary = explode_all_session.activate_next_bonus()
+	_assert(explode_all_result["status"] == "applied", "explode-all-explodings bonus applies")
+	_assert(explode_all_result["effect"] == "explode_all_explodings", "explode-all-explodings bonus reports effect")
+	_assert(int(explode_all_result["scheduled"]) == 2, "explode-all-explodings schedules every current chain tile")
+	_assert(explode_all_session.board_state.pending_chain_explosion_count() == 2, "scheduled chain tiles wait for the normal delay")
+	_assert(explode_all_session.score == 0, "explode-all-explodings does not score before delayed resolution")
+	explode_all_session.update(0.031)
+	_assert(explode_all_session.board_state.tile_at(0, 0) == 0, "explode-all clears the first scheduled chain tile")
+	_assert(explode_all_session.board_state.tile_at(2, 2) == 0, "explode-all clears the second scheduled chain tile")
+	_assert(explode_all_session.board_state.tile_at(3, 2) == 0, "explode-all chain resolution clears neighboring active bricks")
+	_assert(explode_all_session.score == GameSessionScript.CHAIN_BRICK_SCORE * 3, "explode-all scoring follows delayed chain clears")
+	var explode_all_audio_events: Array[String] = explode_all_session.pop_audio_events()
+	_assert(explode_all_audio_events.has(GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION), "explode-all delayed clear queues chain-explosion SFX event")
+
 	var stack_shift_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(stack_shift_session, GameSessionScript.BONUS_EXTRA_LIFE)
 	_stack_bonus(stack_shift_session, GameSessionScript.BONUS_JUMP_TO_NEXT_LEVEL)
