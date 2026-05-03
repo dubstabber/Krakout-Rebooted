@@ -299,6 +299,7 @@ var _level_ready_animation_time_remaining := 0.0
 var _level_ready_roller_offset := 0.0
 var _level_ready_roller_frame := 0
 var _level_ready_roller_step_elapsed := 0.0
+var _level_ready_auto_launch_pending := false
 var _audio_events: Array[String] = []
 
 
@@ -440,6 +441,7 @@ func update(delta: float) -> void:
 
 	if state != STATE_PLAYING:
 		_attach_ready_balls()
+		_auto_launch_ready_ball_if_needed()
 		return
 
 	_update_falling_bonuses(delta)
@@ -599,6 +601,7 @@ func start_level_ready_sequence(queue_audio := true) -> void:
 	_level_ready_roller_offset = 0.0
 	_level_ready_roller_frame = 0
 	_level_ready_roller_step_elapsed = 0.0
+	_level_ready_auto_launch_pending = false
 	if queue_audio:
 		_queue_audio_event(SFX_EVENT_LEVEL_READY)
 
@@ -951,6 +954,8 @@ func _update_ball_animation(delta: float) -> void:
 func _update_level_ready_sequence(delta: float) -> void:
 	if level_ready_time_remaining > 0.0:
 		level_ready_time_remaining = maxf(0.0, level_ready_time_remaining - delta)
+		if level_ready_time_remaining <= 0.0:
+			_level_ready_auto_launch_pending = true
 	if _level_ready_animation_time_remaining > 0.0:
 		_level_ready_roller_step_elapsed += delta
 		while _level_ready_roller_step_elapsed + LEVEL_READY_ROLLER_STEP_EPSILON >= LEVEL_READY_ROLLER_STEP_SECONDS and _level_ready_animation_time_remaining > 0.0:
@@ -971,6 +976,14 @@ func _clear_level_ready_sequence() -> void:
 	_level_ready_roller_offset = 0.0
 	_level_ready_roller_frame = 0
 	_level_ready_roller_step_elapsed = 0.0
+	_level_ready_auto_launch_pending = false
+
+
+func _auto_launch_ready_ball_if_needed() -> bool:
+	if not _level_ready_auto_launch_pending:
+		return false
+	_level_ready_auto_launch_pending = false
+	return launch_ready_ball()
 
 
 func _collide_with_racket(ball: Dictionary) -> bool:
