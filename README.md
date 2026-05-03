@@ -74,9 +74,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   bonus use, pause, the Escape leave-board confirmation, FPS, bonus-stack
   visibility, ball-track visibility, and a provisional background-cycle action.
   Runtime presentation toggles persist through `KrakoutProfile`.
-- `GameScreen` hides the system cursor while the player is on the game map and
-  restores it for menu, episode, name-entry, high-score, options, and credits
-  screens; paused gameplay keeps the original hourglass cursor overlay visible.
+- `KrakoutApp` hides the system cursor on menu, episode, name-entry, high-score,
+  options, and credits screens and draws the original `Cursor` asset as a shared
+  overlay with the `Welogo` 30-frame animation inset; gameplay keeps the system
+  cursor hidden and paused gameplay keeps the original hourglass cursor overlay
+  visible.
 - Confirming the Escape leave-board prompt first shows the original Game Over
   summary, then mouse confirmation reuses the qualifying-score name-entry and
   persisted high-score table route.

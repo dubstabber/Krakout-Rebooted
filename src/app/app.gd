@@ -9,14 +9,30 @@ const NameEntryScreenScene := preload("res://scenes/menu/name_entry_screen.tscn"
 const OptionsScreenScene := preload("res://scenes/menu/options_screen.tscn")
 const CreditsScreenScene := preload("res://scenes/menu/credits_screen.tscn")
 const AudioCueCatalogScript := preload("res://src/audio/krakout_audio_cue_catalog.gd")
+const CursorOverlayScript := preload("res://src/app/krakout_cursor_overlay.gd")
 
 var _current_screen: Node
+var _cursor_overlay: Control
+var _previous_mouse_mode: int = Input.MOUSE_MODE_VISIBLE
+var _owns_mouse_mode := false
+var _system_cursor_hidden_for_menu := false
 
 
 func _ready() -> void:
 	RenderingServer.set_default_clear_color(Color.BLACK)
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	_previous_mouse_mode = Input.get_mouse_mode()
+	_owns_mouse_mode = true
+	_ensure_cursor_overlay()
 	_show_main_menu()
+
+
+func _exit_tree() -> void:
+	if not _owns_mouse_mode:
+		return
+	Input.set_mouse_mode(_previous_mouse_mode)
+	_system_cursor_hidden_for_menu = false
+	_owns_mouse_mode = false
 
 
 func _show_main_menu() -> void:
@@ -90,11 +106,12 @@ func _set_screen(screen: Node) -> void:
 	if _current_screen != null:
 		_current_screen.queue_free()
 
-	if not (screen is GameScreen):
-		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	var is_game_screen := screen is GameScreen
+	_set_original_cursor_active(not is_game_screen)
 
 	_current_screen = screen
 	add_child(screen)
+	_raise_cursor_overlay()
 
 
 func _on_start_game_requested() -> void:
@@ -124,10 +141,41 @@ func _on_quit_requested() -> void:
 	get_tree().quit()
 
 
+func is_original_cursor_active() -> bool:
+	return _cursor_overlay != null and bool(_cursor_overlay.call("is_cursor_active"))
+
+
+func is_system_cursor_hidden_for_menu() -> bool:
+	return _system_cursor_hidden_for_menu
+
+
 func _play_music_context(context_name: String) -> void:
 	var audio := get_node_or_null("/root/KrakoutAudio")
 	if audio != null and audio.has_method("play_music_context"):
 		audio.call("play_music_context", context_name)
+
+
+func _ensure_cursor_overlay() -> void:
+	if _cursor_overlay != null:
+		return
+	_cursor_overlay = CursorOverlayScript.new()
+	_cursor_overlay.name = "KrakoutCursorOverlay"
+	add_child(_cursor_overlay)
+
+
+func _raise_cursor_overlay() -> void:
+	_ensure_cursor_overlay()
+	move_child(_cursor_overlay, get_child_count() - 1)
+
+
+func _set_original_cursor_active(is_active: bool) -> void:
+	_ensure_cursor_overlay()
+	if is_active:
+		Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+		_system_cursor_hidden_for_menu = true
+	else:
+		_system_cursor_hidden_for_menu = false
+	_cursor_overlay.set_cursor_active(is_active)
 
 
 func _profile_service() -> Node:

@@ -58,9 +58,23 @@ func _run() -> void:
 	_assert(_assets.level_count() == 441, "expected 441 levels")
 
 	_assert(_assets.texture_path("Bricks") == "res://assets/krakout/textures/Bricks.png", "Bricks texture path is indexed")
+	_assert(_assets.texture_path("Cursor") == "res://assets/krakout/textures/Cursor.png", "Cursor texture path is indexed")
+	_assert(_assets.texture_path("Welogo") == "res://assets/krakout/textures/Welogo.png", "Welogo texture path is indexed")
 	_assert(_assets.music_path("theme1") == "res://assets/krakout/audio/music/theme1.ogg", "theme1 music path is indexed")
 	_assert(ResourceLoader.exists(_assets.texture_path("Bricks")), "Bricks texture is loadable")
+	_assert(ResourceLoader.exists(_assets.texture_path("Cursor")), "Cursor texture is loadable")
+	_assert(ResourceLoader.exists(_assets.texture_path("Welogo")), "Welogo texture is loadable")
 	_assert(ResourceLoader.exists(_assets.music_path("theme1")), "theme1 music is loadable")
+	var cursor_texture := _assets.load_texture("Cursor") as Texture2D
+	_assert(
+		cursor_texture != null and Vector2i(cursor_texture.get_width(), cursor_texture.get_height()) == Vector2i(68, 58),
+		"Cursor texture preserves extracted 68x58 dimensions"
+	)
+	var welogo_texture := _assets.load_texture("Welogo") as Texture2D
+	_assert(
+		welogo_texture != null and Vector2i(welogo_texture.get_width(), welogo_texture.get_height()) == Vector2i(200, 240),
+		"Welogo texture preserves extracted 5x6 40px animation sheet dimensions"
+	)
 
 	var episode_slugs: Array = _assets.episode_slugs()
 	_assert(episode_slugs.has("Default"), "Default episode is indexed")
@@ -1900,7 +1914,8 @@ func _validate_menu_and_game_scenes() -> void:
 	var app := AppScene.instantiate()
 	root.add_child(app)
 	await process_frame
-	_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "app starts menu screens with the system cursor visible")
+	_assert_app_original_cursor(app, "app starts menu screens with the original cursor overlay")
+	_assert_app_original_cursor_animation(app, "app animates the original cursor logo overlay")
 
 	var app_menu := app.find_child("MainMenuScreen", true, false)
 	_assert(app_menu != null, "app starts on main menu screen")
@@ -1912,6 +1927,7 @@ func _validate_menu_and_game_scenes() -> void:
 		await process_frame
 		var app_rules := app.find_child("RulesScreen", true, false)
 		_assert(app_rules != null, "app switches from menu to rules screen")
+		_assert_app_original_cursor(app, "rules screen keeps the original cursor overlay")
 		if _audio != null and _audio.has_method("current_music_context"):
 			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_RULES, "rules screen uses rules music context")
 			_assert(String(_audio.call("current_music_name")) == "Abnormal", "rules screen keeps original main-menu music")
@@ -1920,6 +1936,7 @@ func _validate_menu_and_game_scenes() -> void:
 			await process_frame
 		app_menu = app.find_child("MainMenuScreen", true, false)
 		_assert(app_menu != null, "app returns from rules screen to main menu")
+		_assert_app_original_cursor(app, "rules back restores the original cursor overlay")
 		if _audio != null and _audio.has_method("current_music_context"):
 			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_MAIN_MENU, "rules back restores main-menu music context")
 
@@ -1928,6 +1945,7 @@ func _validate_menu_and_game_scenes() -> void:
 		await process_frame
 		var app_high_score := app.find_child("HighScoreScreen", true, false)
 		_assert(app_high_score != null, "app switches from menu to high-score screen")
+		_assert_app_original_cursor(app, "high-score screen keeps the original cursor overlay")
 		if _audio != null and _audio.has_method("current_music_context"):
 			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_HIGH_SCORE, "high-score screen uses high-score music context")
 			_assert(String(_audio.call("current_music_name")) == "theme2", "high-score screen uses original theme2 music")
@@ -1936,12 +1954,14 @@ func _validate_menu_and_game_scenes() -> void:
 			await process_frame
 		app_menu = app.find_child("MainMenuScreen", true, false)
 		_assert(app_menu != null, "app returns from high-score screen to main menu")
+		_assert_app_original_cursor(app, "high-score back restores the original cursor overlay")
 
 	if app_menu != null:
 		app_menu.emit_signal("options_requested")
 		await process_frame
 		var app_options := app.find_child("OptionsScreen", true, false)
 		_assert(app_options != null, "app switches from menu to options screen")
+		_assert_app_original_cursor(app, "options screen keeps the original cursor overlay")
 		if _audio != null and _audio.has_method("current_music_context"):
 			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_OPTIONS, "options screen uses options music context")
 			_assert(String(_audio.call("current_music_name")) == "Abnormal", "options screen keeps original main-menu music")
@@ -1950,12 +1970,14 @@ func _validate_menu_and_game_scenes() -> void:
 			await process_frame
 		app_menu = app.find_child("MainMenuScreen", true, false)
 		_assert(app_menu != null, "app returns from options screen to main menu")
+		_assert_app_original_cursor(app, "options back restores the original cursor overlay")
 
 	if app_menu != null:
 		app_menu.emit_signal("credits_requested")
 		await process_frame
 		var app_credits := app.find_child("CreditsScreen", true, false)
 		_assert(app_credits != null, "app switches from menu to credits screen")
+		_assert_app_original_cursor(app, "credits screen keeps the original cursor overlay")
 		if _audio != null and _audio.has_method("current_music_context"):
 			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_CREDITS, "credits screen uses credits music context")
 			_assert(String(_audio.call("current_music_name")) == "theme5", "credits screen uses original theme5 music")
@@ -1964,12 +1986,14 @@ func _validate_menu_and_game_scenes() -> void:
 			await process_frame
 		app_menu = app.find_child("MainMenuScreen", true, false)
 		_assert(app_menu != null, "app returns from credits screen to main menu")
+		_assert_app_original_cursor(app, "credits back restores the original cursor overlay")
 
 	if app_menu != null:
 		app_menu.emit_signal("start_game_requested")
 		await process_frame
 		var app_episode_select := app.find_child("EpisodeSelectScreen", true, false)
 		_assert(app_episode_select != null, "app switches from menu to episode select screen")
+		_assert_app_original_cursor(app, "episode select keeps the original cursor overlay")
 		if _audio != null and _audio.has_method("current_music_context"):
 			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_EPISODE_SELECT, "episode select uses episode-select music context")
 			_assert(String(_audio.call("current_music_name")) == "theme1", "episode select uses original theme1 music")
@@ -1979,6 +2003,7 @@ func _validate_menu_and_game_scenes() -> void:
 			var app_game := app.find_child("GameScreen", true, false)
 			_assert(app_game != null, "app switches from episode select to game screen")
 			_assert(app_game != null and bool(app_game.call("is_system_cursor_hidden")), "app hides the system cursor after entering gameplay")
+			_assert_app_original_cursor_inactive(app, "game screen disables the menu cursor overlay")
 			if _audio != null and _audio.has_method("current_music_context"):
 				_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_GAMEPLAY, "game screen uses gameplay music context")
 				_assert(String(_audio.call("current_music_name")) == "theme4", "game screen uses original theme4 music")
@@ -1994,7 +2019,7 @@ func _validate_menu_and_game_scenes() -> void:
 					await process_frame
 					var app_name_entry := app.find_child("NameEntryScreen", true, false)
 					_assert(app_name_entry != null, "app routes qualifying game-over score to name entry")
-					_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "app restores the system cursor for name entry")
+					_assert_app_original_cursor(app, "app restores the original cursor overlay for name entry")
 					if _audio != null and _audio.has_method("current_music_context"):
 						_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_NAME_ENTRY, "name entry uses name-entry music context")
 						_assert(String(_audio.call("current_music_name")) == "theme3", "name entry uses original theme3 music")
@@ -2006,6 +2031,7 @@ func _validate_menu_and_game_scenes() -> void:
 						_assert(not submitted_entries.is_empty() and submitted_entries[0]["name"] == "Ada", "app persists submitted high-score name")
 						_assert(not submitted_entries.is_empty() and submitted_entries[0]["score"] == 1200, "app persists submitted high-score score")
 						_assert(app.find_child("HighScoreScreen", true, false) != null, "app routes submitted score to high-score table")
+						_assert_app_original_cursor(app, "score submission keeps the original cursor overlay for high-score table")
 						if _audio != null and _audio.has_method("current_music_context"):
 							_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_HIGH_SCORE, "score submission routes to high-score music context")
 						var routed_high_score := app.find_child("HighScoreScreen", true, false)
@@ -2014,7 +2040,7 @@ func _validate_menu_and_game_scenes() -> void:
 							await process_frame
 				await process_frame
 				_assert(app.find_child("MainMenuScreen", true, false) != null, "app returns from submitted high-score table to main menu")
-				_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "app keeps the system cursor visible after returning to menu")
+				_assert_app_original_cursor(app, "app keeps the original cursor overlay after returning to menu")
 				if _audio != null and _audio.has_method("current_music_context"):
 					_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_MAIN_MENU, "high-score back restores main-menu music context")
 					_assert(String(_audio.call("current_music_name")) == "Abnormal", "high-score back restores original main-menu music")
@@ -2043,7 +2069,7 @@ func _validate_menu_and_game_scenes() -> void:
 					non_qualifying_game.call("_input", _action_event(GameScreenScript.ACTION_LAUNCH_BALL))
 					await process_frame
 					_assert(app.find_child("MainMenuScreen", true, false) != null, "app returns non-qualifying game-over score to main menu")
-					_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "non-qualifying game-over route restores menu cursor")
+					_assert_app_original_cursor(app, "non-qualifying game-over route restores the original cursor overlay")
 	app_menu = app.find_child("MainMenuScreen", true, false)
 	if app_menu != null:
 		app_menu.emit_signal("start_game_requested")
@@ -2073,7 +2099,7 @@ func _validate_menu_and_game_scenes() -> void:
 				await process_frame
 				var exit_name_entry := app.find_child("NameEntryScreen", true, false)
 				_assert(exit_name_entry != null, "mouse-confirmed leave-board game-over summary routes to name entry")
-				_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "leave-board route restores cursor for name entry")
+				_assert_app_original_cursor(app, "leave-board route restores the original cursor overlay for name entry")
 				if _audio != null and _audio.has_method("current_music_context"):
 					_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_NAME_ENTRY, "confirmed leave-board score uses name-entry music context")
 				if exit_name_entry != null:
@@ -2084,6 +2110,7 @@ func _validate_menu_and_game_scenes() -> void:
 					_assert(not exit_entries.is_empty() and exit_entries[0]["name"] == "Exit", "confirmed leave-board name is saved to high-score table")
 					_assert(not exit_entries.is_empty() and exit_entries[0]["score"] == 1200, "confirmed leave-board score is saved to high-score table")
 					_assert(app.find_child("HighScoreScreen", true, false) != null, "confirmed leave-board submission routes to high-score table")
+					_assert_app_original_cursor(app, "confirmed leave-board submission keeps the original cursor overlay for high-score table")
 					if _audio != null and _audio.has_method("current_music_context"):
 						_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_HIGH_SCORE, "confirmed leave-board submission uses high-score music context")
 	app.queue_free()
@@ -2224,6 +2251,35 @@ func _find_summary(summaries: Array, slug: String) -> Dictionary:
 		if summary.get("slug", "") == slug:
 			return summary
 	return {}
+
+
+func _assert_app_original_cursor(app: Node, message: String) -> void:
+	var cursor_overlay := app.find_child("KrakoutCursorOverlay", true, false)
+	_assert(cursor_overlay != null, "%s exists" % message)
+	if cursor_overlay == null:
+		return
+	_assert(bool(cursor_overlay.call("is_cursor_active")), "%s is active" % message)
+	_assert(cursor_overlay.call("cursor_texture_size") == Vector2i(68, 58), "%s uses extracted Cursor texture" % message)
+	_assert(cursor_overlay.call("logo_texture_size") == Vector2i(200, 240), "%s uses extracted Welogo animation sheet" % message)
+	_assert(bool(app.call("is_system_cursor_hidden_for_menu")), "%s hides the system cursor" % message)
+
+
+func _assert_app_original_cursor_animation(app: Node, message: String) -> void:
+	var cursor_overlay := app.find_child("KrakoutCursorOverlay", true, false)
+	_assert(cursor_overlay != null, "%s exists" % message)
+	if cursor_overlay == null:
+		return
+	var first_frame := int(cursor_overlay.call("current_logo_frame_index"))
+	cursor_overlay.call("advance_animation", 0.031)
+	_assert(int(cursor_overlay.call("current_logo_frame_index")) == (first_frame + 1) % 30, "%s advances at original 30 ms cadence" % message)
+
+
+func _assert_app_original_cursor_inactive(app: Node, message: String) -> void:
+	var cursor_overlay := app.find_child("KrakoutCursorOverlay", true, false)
+	_assert(cursor_overlay != null, "%s exists" % message)
+	if cursor_overlay == null:
+		return
+	_assert(not bool(cursor_overlay.call("is_cursor_active")), "%s is inactive" % message)
 
 
 func _assert(condition: bool, message: String) -> void:
