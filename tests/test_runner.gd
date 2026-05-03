@@ -368,6 +368,28 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(not session.is_racket_stunned(), "game session starts with active racket control")
 	_assert(session.pop_audio_events().is_empty(), "game session starts without queued SFX events")
 
+	var level_ready_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	level_ready_session.start_level_ready_sequence()
+	_assert(level_ready_session.is_level_ready_sequence_active(), "level-ready sequence starts explicit level-opening timer")
+	_assert(level_ready_session.level_ready_animation_progress() == 0.0, "level-ready sequence starts its prompt animation at the first frame")
+	_assert(level_ready_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_LEVEL_READY], "level-ready sequence queues get-ready SFX event")
+	var ready_indicators: Array[Dictionary] = level_ready_session.active_bonus_indicators()
+	_assert(not ready_indicators.is_empty(), "level-ready sequence exposes original status countdown indicator")
+	_assert(int(ready_indicators[0]["icon_index"]) == GameSessionScript.LEVEL_READY_STATUS_ICON_INDEX, "level-ready status indicator uses original level-start icon slot")
+	_assert(int(ready_indicators[0]["value"]) == int(GameSessionScript.LEVEL_READY_SEQUENCE_SECONDS), "level-ready status indicator starts at original 30 second count")
+	level_ready_session.update(1.0)
+	_assert(level_ready_session.is_level_ready_sequence_active(), "level-ready sequence keeps counting while waiting for launch")
+	_assert(level_ready_session.level_ready_animation_progress() > 0.0 and level_ready_session.level_ready_animation_progress() < 1.0, "level-ready prompt animation advances before launch")
+	_assert(int(level_ready_session.active_bonus_indicators()[0]["value"]) == 29, "level-ready status indicator counts down once per second")
+	_assert(level_ready_session.launch_ready_ball(), "level-ready ball still launches")
+	_assert(not level_ready_session.is_level_ready_sequence_active(), "launch clears level-ready sequence")
+	_assert(level_ready_session.pop_audio_events().is_empty(), "initial launch stays silent like the original")
+
+	var reset_only_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	reset_only_session.reset_round()
+	_assert(not reset_only_session.is_level_ready_sequence_active(), "plain round reset does not start level-ready sequence")
+	_assert(reset_only_session.pop_audio_events().is_empty(), "plain round reset does not queue get-ready SFX event")
+
 	session.move_racket_to(-100.0)
 	_assert(session.racket_rect().position.y == GameSessionScript.RACKET_MIN_Y, "racket clamps to top bound")
 	session.move_racket_to(10000.0)
@@ -379,7 +401,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(GameSessionScript.ORIGINAL_DEFAULT_BALL_SPEED_PER_TICK == 2.5, "launched ball uses the faster original default speed tick")
 	_assert(session.first_ball_velocity() == Vector2(-375, 0), "launched ball starts at original effective substep speed")
 	_assert(is_equal_approx(session.first_ball_velocity().length(), 375.0), "launched ball speed matches original default cadence")
-	_assert(session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BALL_LAUNCH], "launch queues semantic SFX event")
+	_assert(session.pop_audio_events().is_empty(), "initial ready-ball launch queues no SFX event")
+	_assert(GameSessionScript.PROJECTILE_STEP_X == 7.0, "shooting-paddle projectile uses faster parity-tuned step")
+	_assert(GameSessionScript.PROJECTILE_SIZE == Vector2(30, 13), "shooting-paddle projectile uses smaller parity-tuned hitbox")
+	_assert(GameSessionScript.PROJECTILE_TRAIL_SIZE == Vector2(17, 13), "shooting-paddle projectile trail uses smaller parity-tuned draw size")
+	_assert(GameSessionScript.PROJECTILE_TRAIL_OFFSET == Vector2(26, 0), "shooting-paddle projectile trail stays attached after target-size reduction")
 
 	var stationary_ball_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	stationary_ball_session.force_ball(Vector2(300, 200), Vector2.ZERO)
@@ -1097,6 +1123,11 @@ func _validate_level_grid_renderer_defaults() -> void:
 	)
 	_assert(single_shot_region["source"] == Rect2(Vector2(169, 74), Vector2(38, 36)), "racket renderer maps the original single-shot launcher final frame")
 
+	var bullet_renderer: KrakoutBulletRenderer = BulletRendererScript.new()
+	_assert(bullet_renderer.head_target_rect(Vector2(100, 200)) == Rect2(Vector2(100, 200), GameSessionScript.PROJECTILE_SIZE), "bullet renderer draws a smaller rocket head target")
+	_assert(bullet_renderer.trail_target_rect(Vector2(100, 200)) == Rect2(Vector2(126, 200), GameSessionScript.PROJECTILE_TRAIL_SIZE), "bullet renderer draws a smaller rocket trail target")
+	bullet_renderer.free()
+
 	var monster_renderer = MonsterRendererScript.new()
 	_assert(monster_renderer.source_rect_for_monster(3, 0) == Rect2(Vector2(96, 0), Vector2(32, 32)), "monster renderer maps original type 3 frame")
 	_assert(monster_renderer.source_rect_for_monster(10, 7) == Rect2(Vector2(320, 224), Vector2(32, 32)), "monster renderer maps original type 10 animation row")
@@ -1257,7 +1288,6 @@ func _validate_audio_cue_catalog() -> void:
 	_assert(not AudioCueCatalogScript.has_sfx_event("missing_sfx_event"), "audio cue catalog rejects unknown SFX events")
 
 	var expected_sfx_names := {
-		GameSessionScript.SFX_EVENT_BALL_LAUNCH: "eff05",
 		GameSessionScript.SFX_EVENT_RACKET_BOUNCE: "eff07",
 		GameSessionScript.SFX_EVENT_BRICK_CLEAR: "eff23",
 		GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION: "eff10",
@@ -1269,6 +1299,7 @@ func _validate_audio_cue_catalog() -> void:
 		GameSessionScript.SFX_EVENT_MONSTER_HIT: "eff09",
 		GameSessionScript.SFX_EVENT_BEE_SPAWN: "EffBee",
 		GameSessionScript.SFX_EVENT_LIFE_LOST: "eff16",
+		GameSessionScript.SFX_EVENT_LEVEL_READY: "eff05",
 		GameSessionScript.SFX_EVENT_LEVEL_COMPLETE: "eff19",
 		GameSessionScript.SFX_EVENT_GAME_OVER: "eff18",
 	}
@@ -1280,10 +1311,13 @@ func _validate_audio_cue_catalog() -> void:
 	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BACK_WALL_BOUNCE) == "", "audio cue catalog leaves unproven back-wall bounce silent")
 	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BONUS_APPLY) == "", "audio cue catalog leaves generic bonus-apply silent")
 	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_PROJECTILE_HIT) == "", "audio cue catalog leaves generic projectile-hit silent")
+	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BALL_LAUNCH) == "", "audio cue catalog leaves initial ball launch silent")
+	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_LEVEL_READY) != AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_LEVEL_COMPLETE), "audio cue catalog keeps start and ending cues distinct")
 	_assert(AudioCueCatalogScript.sfx_name_for_event("missing_sfx_event") == "", "audio cue catalog leaves unknown SFX events silent")
 	var sfx_events: Array[String] = AudioCueCatalogScript.known_sfx_events()
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "audio cue catalog exposes bonus-apply event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BEE_SPAWN), "audio cue catalog exposes bee-spawn event in known event list")
+	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_LEVEL_READY), "audio cue catalog exposes level-ready event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_MONSTER_EXPIRE), "audio cue catalog exposes monster-expire event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_GAME_OVER), "audio cue catalog exposes game-over event in known event list")
 
@@ -1322,7 +1356,7 @@ func _validate_audio_service() -> void:
 	_assert(bool(_audio.call("has_sfx_event", GameSessionScript.SFX_EVENT_PROJECTILE_FIRE)), "audio service recognizes projectile-fire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BRICK_CLEAR)) == "eff23", "audio service maps brick-clear SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION)) == "eff10", "audio service maps chain-explosion SFX event")
-	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BALL_LAUNCH)) == "eff05", "audio service maps ball-launch SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BALL_LAUNCH)) == "", "audio service leaves initial ball launch silent")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_RACKET_BOUNCE)) == "eff07", "audio service maps racket-bounce SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_SPAWN)) == "eff11", "audio service maps bonus-spawn SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_COLLECT)) == "eff15", "audio service maps bonus-collect SFX event")
@@ -1332,6 +1366,7 @@ func _validate_audio_service() -> void:
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_HIT)) == "eff09", "audio service maps monster-hit SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BEE_SPAWN)) == "EffBee", "audio service maps bee-spawn SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_LIFE_LOST)) == "eff16", "audio service maps life-lost SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_LEVEL_READY)) == "eff05", "audio service maps level-ready SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_LEVEL_COMPLETE)) == "eff19", "audio service maps level-complete SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_GAME_OVER)) == "eff18", "audio service maps game-over SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_APPLY)) == "", "audio service leaves generic bonus-apply unmapped")
@@ -1417,6 +1452,26 @@ func _validate_game_hud_presentation() -> void:
 	_assert(values["lives"] == 0, "game hud defaults spare balls to zero without a session")
 	_assert(values["level"] == 1, "game hud defaults display level to one")
 	_assert(values["best_score"] == 0, "game hud defaults high score to zero")
+	_assert(not bool(hud.ready_prompt_layout().get("visible", false)), "game hud hides ready prompt without a session")
+
+	var ready_prompt_session = GameSessionScript.new()
+	ready_prompt_session.display_level_number = 7
+	hud.set_session(ready_prompt_session)
+	var ready_prompt_layout: Dictionary = hud.ready_prompt_layout()
+	_assert(bool(ready_prompt_layout["visible"]), "game hud shows ready prompt during ready state")
+	_assert(ready_prompt_layout["level_text"] == "Level #7", "game hud renders original ready level text")
+	_assert(ready_prompt_layout["ready_text"] == "Get Ready!", "game hud renders original get-ready text")
+	_assert(ready_prompt_layout["hint_text"] == "(Press Mouse Button when ready)", "game hud renders original ready hint text")
+	_assert(ready_prompt_layout["level_position"] == Vector2(320, 215), "game hud places ready level text at original y")
+	_assert(ready_prompt_layout["ready_position"] == Vector2(320, 240), "game hud places get-ready text at original y before animation")
+	_assert(ready_prompt_layout["hint_position"] == Vector2(320, 428), "game hud places ready hint at original y")
+	ready_prompt_session.start_level_ready_sequence(false)
+	ready_prompt_session.update(GameSessionScript.LEVEL_READY_ANIMATION_SECONDS * 0.5)
+	var animated_ready_prompt_layout: Dictionary = hud.ready_prompt_layout()
+	_assert(animated_ready_prompt_layout["ready_position"] != ready_prompt_layout["ready_position"], "game hud animates get-ready prompt while level starts")
+	ready_prompt_session.launch_ready_ball()
+	_assert(not bool(hud.ready_prompt_layout().get("visible", false)), "game hud hides ready prompt after launch")
+	hud.set_session(null)
 
 	root.add_child(hud)
 	await process_frame
@@ -1787,6 +1842,9 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(game.call("is_fps_visible"), "game screen loads FPS visibility setting")
 			_assert(game.call("current_background_type") == 1, "game screen loads background type setting")
 			_assert(game.call("is_background_movable") == false, "game screen loads background movable setting")
+			_assert(gameplay.is_level_ready_sequence_active(), "game screen starts level-ready sequence when board is loaded")
+			var startup_indicators: Array[Dictionary] = gameplay.active_bonus_indicators()
+			_assert(not startup_indicators.is_empty() and int(startup_indicators[0]["icon_index"]) == GameSessionScript.LEVEL_READY_STATUS_ICON_INDEX, "game screen exposes level-start countdown indicator")
 			var game_bonus_renderer := game.find_child("BonusRenderer", true, false)
 			if game_bonus_renderer != null:
 				_assert(not game_bonus_renderer.call("is_stack_visible"), "bonus renderer applies hidden stack setting")
@@ -1809,6 +1867,11 @@ func _validate_menu_and_game_scenes() -> void:
 				_assert(game_hud_bitmap_status["statistic_texture"], "game screen hud loads Statistic header strip")
 				_assert(game_hud_bitmap_status["font_text"], "game screen hud binds original Font renderer for header values")
 				_assert(game_hud_bitmap_status["digit_text"], "game screen hud binds original Digits renderer for timed status values")
+				var startup_ready_prompt: Dictionary = hud.call("ready_prompt_layout")
+				_assert(bool(startup_ready_prompt["visible"]), "game screen hud shows ready prompt at level start")
+				_assert(startup_ready_prompt["ready_text"] == "Get Ready!", "game screen hud uses original get-ready prompt")
+				_assert(startup_ready_prompt["level_text"] == "Level #1", "game screen hud shows current level in ready prompt")
+				_assert(startup_ready_prompt["hint_text"] == "(Press Mouse Button when ready)", "game screen hud uses original launch hint")
 			gameplay.award_score(1000)
 			game.call("_process", 0.0)
 			if _profile != null and _profile.has_method("best_score"):
@@ -1818,6 +1881,7 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("_input", _action_event(GameScreenScript.ACTION_LAUNCH_BALL))
 			await process_frame
 			_assert(gameplay.state == GameSessionScript.STATE_PLAYING, "game screen launch enters playing state")
+			_assert(not gameplay.is_level_ready_sequence_active(), "game screen launch clears level-ready sequence")
 			_stack_bonus(gameplay, GameSessionScript.BONUS_EXTRA_LIFE)
 			game.call("_input", _action_event(GameScreenScript.ACTION_USE_BONUS))
 			await process_frame
@@ -1923,6 +1987,18 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("_input", _action_event(GameScreenScript.ACTION_FIRE_PADDLE))
 			await process_frame
 			_assert(gameplay.active_projectile_count() == 1, "game screen routes right-click shooting-paddle fire")
+			gameplay.projectiles.clear()
+			_stack_bonus(gameplay, GameSessionScript.BONUS_SHOOTING_PADDLE_CONTINUOUS)
+			var continuous_shooting_result: Dictionary = game.call("activate_next_bonus")
+			await process_frame
+			_assert(continuous_shooting_result["effect"] == "shooting_paddle_continuous", "game screen routes continuous shooting bonus activation")
+			gameplay._projectile_fire_cooldown = 0.0
+			Input.action_press(GameScreenScript.ACTION_FIRE_PADDLE)
+			game.call("_process", 0.0)
+			_assert(gameplay.active_projectile_count() == 1, "held fire shoots continuous launcher immediately")
+			game.call("_process", GameSessionScript.PROJECTILE_FIRE_COOLDOWN_SECONDS)
+			Input.action_release(GameScreenScript.ACTION_FIRE_PADDLE)
+			_assert(gameplay.active_projectile_count() == 2, "held fire auto-shoots continuous launcher after cooldown")
 			if hud != null:
 				gameplay.state = GameSessionScript.STATE_GAME_OVER
 				gameplay.lives_remaining = -1

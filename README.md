@@ -40,8 +40,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   `PointToBonusInStack` sheets.
 - `KrakoutBulletRenderer` draws the one-shot and continuous shooting-paddle
   projectiles from the extracted `Bullets` sheet, while `KrakoutGameSession`
-  owns the original-backed 10-projectile pool, 250ms fire gate, leftward travel,
-  and brick-hit routing.
+  owns the original-backed 10-projectile pool, 250ms fire gate, faster
+  parity-tuned leftward travel, smaller rocket target rectangles, brick-hit
+  routing, and held-button repeat fire through the screen input loop.
 - `KrakoutGameSession` now owns the first IDA-backed monster pool: five active
   slots, the original 3/6/10 type cycle, 4.5-second spawn gate, 6.5-second
   lifetime, 70ms animation cadence, original 1px/call 3-substep speed conversion,
@@ -73,6 +74,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - The gameplay presentation keeps the original 640x480 aspect ratio, uses the
   source `Statistic` header strip, and draws dynamic HUD digits through the
   IDA-backed original bitmap width tables instead of heuristic glyph cropping.
+- Level starts now trigger an explicit 30-second ready sequence: `eff05` plays
+  once when the board is loaded, the original `Get Ready!`, `Level #`, and
+  mouse-button prompt text appears at the original y positions, and the
+  `InfoIcons` countdown runs until launch.
 - Gameplay controls now flow through Godot InputMap actions for launching,
   bonus use, pause, the Escape leave-board confirmation, FPS, bonus-stack
   visibility, ball-track visibility, and a provisional background-cycle action.
@@ -113,10 +118,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   and name entry uses `theme3`.
 - Gameplay now queues semantic SFX events from the session and drains them
   through `KrakoutAudio` in the Godot scene layer. IDA-backed mappings now cover
-  launch, racket bounce, brick clear, chain explosion, bonus spawn/collect,
-  projectile fire, monster spawn/timeout/hit, life lost, level complete, and
-  game over; back-wall bounce, generic bonus apply, and generic projectile hit
-  remain named but silent until original evidence proves a direct sample.
+  racket bounce, brick clear, chain explosion, bonus spawn/collect, projectile
+  fire, monster spawn/timeout/hit, life lost, level-ready, level complete, and
+  game over; initial ball launch, back-wall bounce, generic bonus apply, and
+  generic projectile hit remain named but silent until original evidence proves
+  a direct sample.
 
 ## Validation
 

@@ -79,12 +79,16 @@ const BONUS_STACK_FRAME_SECONDS := 0.07
 const BONUS_POINTER_FRAME_SECONDS := 0.05
 const BACK_WALL_DURATION_SECONDS := 30.0
 const BACK_WALL_STATUS_ICON_INDEX := 3
+const LEVEL_READY_SEQUENCE_SECONDS := 30.0
+const LEVEL_READY_ANIMATION_SECONDS := 1.5
+const LEVEL_READY_STATUS_ICON_INDEX := 2
 const MAX_PROJECTILES := 10
 const PROJECTILE_FIRE_COOLDOWN_SECONDS := 0.25
-const PROJECTILE_STEP_X := 5.0
+const PROJECTILE_STEP_X := 7.0
 const PROJECTILE_EXPIRE_X := 27.0
-const PROJECTILE_SIZE := Vector2(35, 15)
-const PROJECTILE_TRAIL_OFFSET := Vector2(30, 0)
+const PROJECTILE_SIZE := Vector2(30, 13)
+const PROJECTILE_TRAIL_SIZE := Vector2(17, 13)
+const PROJECTILE_TRAIL_OFFSET := Vector2(26, 0)
 const PROJECTILE_HEAD_FRAME_COUNT := 5
 const PROJECTILE_TRAIL_FRAME_COUNT := 10
 const PROJECTILE_HEAD_FRAME_SECONDS := 0.05
@@ -224,6 +228,7 @@ const SFX_EVENT_MONSTER_EXPIRE := "monster_expire"
 const SFX_EVENT_MONSTER_HIT := "monster_hit"
 const SFX_EVENT_BEE_SPAWN := "bee_spawn"
 const SFX_EVENT_LIFE_LOST := "life_lost"
+const SFX_EVENT_LEVEL_READY := "level_ready"
 const SFX_EVENT_LEVEL_COMPLETE := "level_complete"
 const SFX_EVENT_GAME_OVER := "game_over"
 
@@ -251,6 +256,7 @@ var monsters: Array[Dictionary] = []
 var bees: Array[Dictionary] = []
 var impact_effects: Array[Dictionary] = []
 var back_wall_time_remaining := 0.0
+var level_ready_time_remaining := 0.0
 var _bonus_rng = RandomScript.new()
 var _ball_animation_rng = RandomScript.new(31415)
 var _bonus_animation_rng = RandomScript.new(31415)
@@ -269,6 +275,7 @@ var _racket_visual_elapsed := 0.0
 var _single_shot_projectile_armed := false
 var _monster_spawn_cooldown := MONSTER_SPAWN_INTERVAL_SECONDS
 var _monster_type_cycle_index := 0
+var _level_ready_animation_time_remaining := 0.0
 var _audio_events: Array[String] = []
 
 
@@ -325,6 +332,7 @@ func reset_round() -> void:
 	falling_bonuses.clear()
 	_clear_monster_state()
 	_clear_timed_bonus_state()
+	_clear_level_ready_sequence()
 	_reset_bonus_drop_gate()
 	_add_ready_ball()
 
@@ -374,7 +382,7 @@ func launch_ready_ball() -> bool:
 	ball["speed_hit_count"] = 0
 	balls[0] = ball
 	state = STATE_PLAYING
-	_queue_audio_event(SFX_EVENT_BALL_LAUNCH)
+	_clear_level_ready_sequence()
 	return true
 
 
@@ -382,6 +390,7 @@ func update(delta: float) -> void:
 	board_changed = false
 	_update_displayed_score()
 	_update_ball_animation(delta)
+	_update_level_ready_sequence(delta)
 	_update_bonus_timers(delta)
 	_update_impact_effects(delta)
 	_update_racket_visual(delta)
@@ -495,12 +504,34 @@ func bonus_stack_entries() -> Array[Dictionary]:
 
 func active_bonus_indicators() -> Array[Dictionary]:
 	var indicators: Array[Dictionary] = []
+	if is_level_ready_sequence_active():
+		indicators.append({
+			"icon_index": LEVEL_READY_STATUS_ICON_INDEX,
+			"value": ceili(level_ready_time_remaining),
+		})
 	if is_back_wall_active():
 		indicators.append({
 			"icon_index": BACK_WALL_STATUS_ICON_INDEX,
 			"value": ceili(back_wall_time_remaining),
 		})
 	return indicators
+
+
+func start_level_ready_sequence(queue_audio := true) -> void:
+	level_ready_time_remaining = LEVEL_READY_SEQUENCE_SECONDS
+	_level_ready_animation_time_remaining = LEVEL_READY_ANIMATION_SECONDS
+	if queue_audio:
+		_queue_audio_event(SFX_EVENT_LEVEL_READY)
+
+
+func is_level_ready_sequence_active() -> bool:
+	return level_ready_time_remaining > 0.0
+
+
+func level_ready_animation_progress() -> float:
+	if LEVEL_READY_ANIMATION_SECONDS <= 0.0:
+		return 1.0
+	return 1.0 - clampf(_level_ready_animation_time_remaining / LEVEL_READY_ANIMATION_SECONDS, 0.0, 1.0)
 
 
 func is_back_wall_active() -> bool:
@@ -799,6 +830,18 @@ func _update_ball_animation(delta: float) -> void:
 		ball["frame"] = frame
 		ball["frame_elapsed"] = frame_elapsed
 		balls[index] = ball
+
+
+func _update_level_ready_sequence(delta: float) -> void:
+	if level_ready_time_remaining > 0.0:
+		level_ready_time_remaining = maxf(0.0, level_ready_time_remaining - delta)
+	if _level_ready_animation_time_remaining > 0.0:
+		_level_ready_animation_time_remaining = maxf(0.0, _level_ready_animation_time_remaining - delta)
+
+
+func _clear_level_ready_sequence() -> void:
+	level_ready_time_remaining = 0.0
+	_level_ready_animation_time_remaining = 0.0
 
 
 func _collide_with_racket(ball: Dictionary) -> bool:

@@ -1,9 +1,10 @@
 extends Node2D
 class_name KrakoutBulletRenderer
 
+const GameSessionScript := preload("res://src/gameplay/krakout_game_session.gd")
+
 const HEAD_SOURCE_SIZE := Vector2(35, 15)
 const TRAIL_SOURCE_SIZE := Vector2(20, 15)
-const TRAIL_TARGET_OFFSET := Vector2(30, 0)
 const CONTINUOUS_HEAD_SOURCE_Y := 0.0
 const STRONG_HEAD_SOURCE_Y := 15.0
 const TRAIL_SOURCE_Y := 30.0
@@ -43,14 +44,22 @@ func _draw_projectile(projectile: Dictionary) -> void:
 
 	draw_texture_rect_region(
 		bullet_texture,
-		Rect2(position, HEAD_SOURCE_SIZE),
+		head_target_rect(position),
 		Rect2(Vector2(head_frame * HEAD_SOURCE_SIZE.x, head_source_y), HEAD_SOURCE_SIZE)
 	)
 	draw_texture_rect_region(
 		bullet_texture,
-		Rect2(position + TRAIL_TARGET_OFFSET, TRAIL_SOURCE_SIZE),
+		trail_target_rect(position),
 		Rect2(Vector2(trail_frame * TRAIL_SOURCE_SIZE.x, TRAIL_SOURCE_Y), TRAIL_SOURCE_SIZE)
 	)
+
+
+func head_target_rect(position: Vector2) -> Rect2:
+	return Rect2(position, GameSessionScript.PROJECTILE_SIZE)
+
+
+func trail_target_rect(position: Vector2) -> Rect2:
+	return Rect2(position + GameSessionScript.PROJECTILE_TRAIL_OFFSET, GameSessionScript.PROJECTILE_TRAIL_SIZE)
 
 
 func _load_asset_texture(texture_name: String) -> Texture2D:

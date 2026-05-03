@@ -152,6 +152,7 @@ func _process(delta: float) -> void:
 		return
 
 	gameplay_session.update(delta)
+	_update_held_shooting_paddle()
 	_record_best_score()
 	_play_pending_audio_events()
 	if gameplay_session.consume_board_changed() and playfield_renderer != null:
@@ -276,6 +277,12 @@ func fire_shooting_paddle() -> Dictionary:
 	_refresh_actor_renderers()
 	_refresh_hud()
 	return result
+
+
+func _update_held_shooting_paddle() -> void:
+	if not Input.is_action_pressed(ACTION_FIRE_PADDLE):
+		return
+	gameplay_session.fire_shooting_paddle()
 
 
 func toggle_bonus_stack_visible() -> bool:
@@ -408,10 +415,12 @@ func _apply_level() -> void:
 			var starting_best_score: int = maxi(int(gameplay_session.best_score), _profile_best_score())
 			gameplay_session.start_run(level, level_number, starting_best_score)
 			_run_started = true
+		gameplay_session.start_level_ready_sequence(true)
 		playfield_renderer.set_board_state(gameplay_session.board_state)
 		_refresh_playfield_effects()
 		_refresh_actor_renderers()
 		_refresh_hud()
+		_play_pending_audio_events()
 
 
 func _load_level() -> KrakoutLevelData:

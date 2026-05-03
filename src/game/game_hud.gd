@@ -4,6 +4,8 @@ class_name KrakoutGameHud
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 const BitmapTextScript := preload("res://src/render/krakout_bitmap_text.gd")
 
+const READY_STATE := "ready"
+const BALL_LOST_STATE := "ball_lost"
 const GAME_OVER_STATE := "game_over"
 const CAPTION_TEXTS := ["Your Score", "Balls Left", "Level", "High Score"]
 const STATISTIC_SOURCE := Rect2(Vector2.ZERO, Vector2(640, 39))
@@ -16,6 +18,12 @@ const STATUS_VALUE_POSITION := Vector2(576, 73)
 const STATUS_ROW_STEP := 30.0
 const STATUS_ICON_SIZE := Vector2(28, 28)
 const STATUS_ICON_COUNT := 6
+const READY_LEVEL_POSITION := Vector2(320, 215)
+const READY_TEXT_POSITION := Vector2(320, 240)
+const READY_HINT_POSITION := Vector2(320, 428)
+const READY_TEXT := "Get Ready!"
+const READY_HINT_TEXT := "(Press Mouse Button when ready)"
+const READY_TEXT_BOB_PIXELS := 6.0
 
 var session
 var _game_over_title: Label
@@ -124,6 +132,34 @@ func status_indicator_slots() -> int:
 	return STATUS_ICON_COUNT
 
 
+func ready_prompt_layout() -> Dictionary:
+	if session == null:
+		return {"visible": false}
+
+	var session_state := String(session.state)
+	if session_state != READY_STATE and session_state != BALL_LOST_STATE:
+		return {"visible": false}
+
+	var progress := 1.0
+	if session.has_method("level_ready_animation_progress"):
+		progress = clampf(float(session.call("level_ready_animation_progress")), 0.0, 1.0)
+
+	var text_position := READY_TEXT_POSITION
+	if progress < 1.0:
+		text_position.y -= roundf(sin(progress * PI) * READY_TEXT_BOB_PIXELS)
+
+	return {
+		"visible": true,
+		"level_text": "Level #%d" % int(session.display_level_number),
+		"ready_text": READY_TEXT,
+		"hint_text": READY_HINT_TEXT,
+		"level_position": READY_LEVEL_POSITION,
+		"ready_position": text_position,
+		"hint_position": READY_HINT_POSITION,
+		"animation_progress": progress,
+	}
+
+
 func digit_text_bounds(value: int, anchor: Vector2, alignment: HorizontalAlignment) -> Rect2:
 	return header_value_text_bounds(value, anchor, alignment)
 
@@ -200,6 +236,7 @@ func _set_game_over_visible(is_visible: bool) -> void:
 
 func _draw() -> void:
 	_draw_status_hud()
+	_draw_ready_prompt()
 
 
 func _draw_status_hud() -> void:
@@ -256,6 +293,20 @@ func _draw_active_bonus_indicators() -> void:
 		)
 		if indicator.has("value"):
 			_draw_digits(int(indicator["value"]), layout["value_position"], HORIZONTAL_ALIGNMENT_LEFT)
+
+
+func _draw_ready_prompt() -> void:
+	var layout := ready_prompt_layout()
+	if not bool(layout.get("visible", false)):
+		return
+
+	_ensure_font_text()
+	if _font_text == null:
+		return
+
+	_font_text.draw_text(self, String(layout["level_text"]), layout["level_position"], HORIZONTAL_ALIGNMENT_CENTER)
+	_font_text.draw_text(self, String(layout["ready_text"]), layout["ready_position"], HORIZONTAL_ALIGNMENT_CENTER)
+	_font_text.draw_text(self, String(layout["hint_text"]), layout["hint_position"], HORIZONTAL_ALIGNMENT_CENTER)
 
 
 func _load_hud_textures() -> void:
