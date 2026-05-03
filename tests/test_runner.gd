@@ -1038,6 +1038,7 @@ func _validate_project_input_map() -> void:
 		GameScreenScript.ACTION_TOGGLE_BALL_TRACKS,
 		GameScreenScript.ACTION_TOGGLE_FPS,
 		GameScreenScript.ACTION_PAUSE,
+		GameScreenScript.ACTION_TERMINATE_GAME,
 		GameScreenScript.ACTION_CYCLE_BACKGROUND,
 	]
 	for action_name: String in expected_actions:
@@ -1050,7 +1051,8 @@ func _validate_project_input_map() -> void:
 	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_BALL_TRACKS, KEY_T, true), "ball-tracks action binds Ctrl+T")
 	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_FPS, KEY_F5), "FPS action binds F5")
 	_assert(_action_has_key(GameScreenScript.ACTION_PAUSE, KEY_P), "pause action binds P")
-	_assert(_action_has_key(GameScreenScript.ACTION_CYCLE_BACKGROUND, KEY_B), "background-cycle action binds B")
+	_assert(_action_has_key(GameScreenScript.ACTION_TERMINATE_GAME, KEY_ESCAPE), "terminate-game action binds Escape")
+	_assert(_action_has_key(GameScreenScript.ACTION_CYCLE_BACKGROUND, KEY_G), "background-cycle action binds G")
 
 
 func _validate_profile_service() -> void:
@@ -1739,11 +1741,76 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("_input", _action_event(GameScreenScript.ACTION_PAUSE))
 			await process_frame
 			_assert(game.call("is_game_paused"), "game screen routes pause action")
-			var pause_overlay := game.find_child("PauseOverlay", true, false) as Label
-			_assert(pause_overlay != null and pause_overlay.visible, "game screen shows pause overlay")
+			var hourglass_cursor := game.find_child("HourglassCursorOverlay", true, false)
+			_assert(hourglass_cursor != null and bool(hourglass_cursor.call("is_cursor_visible")), "game screen shows original hourglass cursor on pause")
+			if hourglass_cursor != null:
+				var paused_ball_position: Vector2 = gameplay.call("first_ball_position")
+				var hourglass_frame := int(hourglass_cursor.call("current_frame_index"))
+				game.call("_process", 0.12)
+				_assert(gameplay.call("first_ball_position") == paused_ball_position, "pause freezes gameplay movement")
+				_assert(int(hourglass_cursor.call("current_frame_index")) != hourglass_frame, "pause hourglass cursor animates")
+			game.call("_input", _action_event(GameScreenScript.ACTION_TERMINATE_GAME))
+			await process_frame
+			_assert(game.call("is_exit_confirmation_visible"), "Escape opens leave-board confirmation while paused")
+			var confirmation_prompt := game.find_child("ExitConfirmationPrompt", true, false) as Label
+			_assert(confirmation_prompt != null and confirmation_prompt.visible, "game screen shows leave-board prompt")
+			if confirmation_prompt != null:
+				_assert(confirmation_prompt.text == "Are You sure to leave\nthis board (Y / N)", "leave-board prompt uses original text")
+			game.call("_input", _action_event(GameScreenScript.ACTION_PAUSE))
+			await process_frame
+			_assert(game.call("is_game_paused"), "pause toggle is ignored while leave-board confirmation is visible")
+			game.call("_input", _key_event(KEY_N, 110))
+			await process_frame
+			_assert(not game.call("is_exit_confirmation_visible"), "N cancels leave-board confirmation")
+			_assert(game.call("is_game_paused"), "canceling leave-board confirmation restores paused state")
+			if hourglass_cursor != null:
+				_assert(bool(hourglass_cursor.call("is_cursor_visible")), "paused hourglass remains visible after canceled leave-board confirmation")
 			game.call("_input", _action_event(GameScreenScript.ACTION_PAUSE))
 			await process_frame
 			_assert(not game.call("is_game_paused"), "game screen routes pause resume action")
+			game.call("_input", _action_event(GameScreenScript.ACTION_TERMINATE_GAME))
+			await process_frame
+			_assert(game.call("is_exit_confirmation_visible"), "Escape opens leave-board confirmation while playing")
+			_stack_bonus(gameplay, GameSessionScript.BONUS_EXTRA_LIFE)
+			var lives_before_confirm_input := int(gameplay.lives_remaining)
+			game.call("_input", _action_event(GameScreenScript.ACTION_USE_BONUS))
+			await process_frame
+			_assert(gameplay.lives_remaining == lives_before_confirm_input, "leave-board confirmation blocks gameplay input")
+			gameplay.bonus_stack.clear()
+			game.call("_input", _key_event(KEY_N, 110))
+			await process_frame
+			_assert(not game.call("is_exit_confirmation_visible"), "N cancels playing leave-board confirmation")
+			var direct_exit_signal_state := {
+				"confirmed": false,
+				"score": 0,
+				"level": 0,
+				"episode": "",
+			}
+			game.game_over_confirmed.connect(func(score: int, level_number: int, confirmed_episode: String) -> void:
+				direct_exit_signal_state["confirmed"] = true
+				direct_exit_signal_state["score"] = score
+				direct_exit_signal_state["level"] = level_number
+				direct_exit_signal_state["episode"] = confirmed_episode
+			)
+			game.call("_input", _action_event(GameScreenScript.ACTION_TERMINATE_GAME))
+			await process_frame
+			game.call("_input", _key_event(KEY_Y, 121))
+			await process_frame
+			_assert(not direct_exit_signal_state["confirmed"], "Y confirms leave-board route into game-over summary before score confirmation")
+			_assert(gameplay.state == GameSessionScript.STATE_GAME_OVER, "confirmed leave-board route enters game-over summary state")
+			if hud != null:
+				hud.call("refresh")
+				var exit_game_over_title := hud.find_child("GameOverTitle", true, false) as Label
+				var exit_game_over_summary := hud.find_child("GameOverSummary", true, false) as Label
+				_assert(exit_game_over_title != null and exit_game_over_title.visible, "confirmed leave-board route shows game-over title before name entry")
+				_assert(exit_game_over_summary != null and exit_game_over_summary.text == "Your Level #%d, and Score %d" % [int(gameplay.display_level_number), int(gameplay.score)], "confirmed leave-board route shows game-over summary before name entry")
+			game.call("_input", _action_event(GameScreenScript.ACTION_LAUNCH_BALL))
+			await process_frame
+			_assert(direct_exit_signal_state["confirmed"], "mouse confirms leave-board game-over summary into score confirmation")
+			_assert(direct_exit_signal_state["score"] == int(gameplay.score), "leave-board confirmation carries current score")
+			_assert(direct_exit_signal_state["level"] == int(gameplay.display_level_number), "leave-board confirmation carries current level")
+			_assert(direct_exit_signal_state["episode"] == game.episode_slug, "leave-board confirmation carries current episode")
+			gameplay.state = GameSessionScript.STATE_PLAYING
 			_stack_bonus(gameplay, GameSessionScript.BONUS_BACK_WALL)
 			game.call("activate_next_bonus")
 			await process_frame
@@ -1915,6 +1982,47 @@ func _validate_menu_and_game_scenes() -> void:
 					non_qualifying_game.call("_input", _action_event(GameScreenScript.ACTION_LAUNCH_BALL))
 					await process_frame
 					_assert(app.find_child("MainMenuScreen", true, false) != null, "app returns non-qualifying game-over score to main menu")
+	app_menu = app.find_child("MainMenuScreen", true, false)
+	if app_menu != null:
+		app_menu.emit_signal("start_game_requested")
+		await process_frame
+		var exit_episode_select := app.find_child("EpisodeSelectScreen", true, false)
+		if exit_episode_select != null:
+			exit_episode_select.emit_signal("episode_selected", "Default", 1)
+			await process_frame
+			var exit_game := app.find_child("GameScreen", true, false)
+			_assert(exit_game != null, "app starts leave-board confirmation test game")
+			if exit_game != null:
+				var exit_session = exit_game.call("current_game_session")
+				if exit_session != null:
+					exit_session.score = 1200
+					exit_session.display_level_number = 4
+				exit_game.call("_input", _action_event(GameScreenScript.ACTION_TERMINATE_GAME))
+				await process_frame
+				_assert(exit_game.call("is_exit_confirmation_visible"), "app game opens leave-board confirmation on Escape")
+				exit_game.call("_input", _key_event(KEY_Y, 121))
+				await process_frame
+				_assert(app.find_child("GameScreen", true, false) != null, "confirmed leave-board route stays on game-over summary before name entry")
+				var exit_game_hud = exit_game.call("current_hud")
+				if exit_game_hud != null:
+					var exit_game_over_title := exit_game_hud.find_child("GameOverTitle", true, false) as Label
+					_assert(exit_game_over_title != null and exit_game_over_title.visible, "app confirmed leave-board route shows game-over summary before name entry")
+				exit_game.call("_input", _action_event(GameScreenScript.ACTION_LAUNCH_BALL))
+				await process_frame
+				var exit_name_entry := app.find_child("NameEntryScreen", true, false)
+				_assert(exit_name_entry != null, "mouse-confirmed leave-board game-over summary routes to name entry")
+				if _audio != null and _audio.has_method("current_music_context"):
+					_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_NAME_ENTRY, "confirmed leave-board score uses name-entry music context")
+				if exit_name_entry != null:
+					exit_name_entry.call("set_player_name", "Exit")
+					exit_name_entry.call("submit_name")
+					await process_frame
+					var exit_entries: Array = _profile.call("high_score_entries") if _profile != null else []
+					_assert(not exit_entries.is_empty() and exit_entries[0]["name"] == "Exit", "confirmed leave-board name is saved to high-score table")
+					_assert(not exit_entries.is_empty() and exit_entries[0]["score"] == 1200, "confirmed leave-board score is saved to high-score table")
+					_assert(app.find_child("HighScoreScreen", true, false) != null, "confirmed leave-board submission routes to high-score table")
+					if _audio != null and _audio.has_method("current_music_context"):
+						_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_HIGH_SCORE, "confirmed leave-board submission uses high-score music context")
 	app.queue_free()
 	await process_frame
 

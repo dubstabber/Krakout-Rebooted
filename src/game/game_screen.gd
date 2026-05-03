@@ -23,7 +23,67 @@ const ACTION_TOGGLE_BONUS_STACK := "krakout_toggle_bonus_stack"
 const ACTION_TOGGLE_BALL_TRACKS := "krakout_toggle_ball_tracks"
 const ACTION_TOGGLE_FPS := "krakout_toggle_fps"
 const ACTION_PAUSE := "krakout_pause"
+const ACTION_TERMINATE_GAME := "krakout_terminate_game"
 const ACTION_CYCLE_BACKGROUND := "krakout_cycle_background"
+const EXIT_CONFIRMATION_TEXT := "Are You sure to leave\nthis board (Y / N)"
+
+
+class HourglassCursorOverlay:
+	extends Control
+
+	const FRAME_SIZE := Vector2(100, 100)
+	const FRAME_COUNT := 20
+	const FRAME_SECONDS := 0.05
+
+	var _clock_texture: Texture2D
+	var _cursor_position := Vector2(320, 240)
+	var _elapsed := 0.0
+	var _frame_index := 0
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		size = Vector2(640, 480)
+		visible = false
+		_clock_texture = _load_clock_texture()
+
+	func set_hourglass_visible(is_visible: bool) -> void:
+		visible = is_visible
+		if is_visible:
+			queue_redraw()
+
+	func set_cursor_position(cursor_position: Vector2) -> void:
+		_cursor_position = cursor_position
+		if visible:
+			queue_redraw()
+
+	func advance(delta: float) -> void:
+		if not visible:
+			return
+		_elapsed += delta
+		while _elapsed >= FRAME_SECONDS:
+			_elapsed -= FRAME_SECONDS
+			_frame_index = (_frame_index + 1) % FRAME_COUNT
+			queue_redraw()
+
+	func is_cursor_visible() -> bool:
+		return visible
+
+	func current_frame_index() -> int:
+		return _frame_index
+
+	func _draw() -> void:
+		if not visible or _clock_texture == null:
+			return
+		var destination := Rect2(_cursor_position - FRAME_SIZE * 0.5, FRAME_SIZE)
+		var source := Rect2(Vector2(0, _frame_index * int(FRAME_SIZE.y)), FRAME_SIZE)
+		draw_texture_rect_region(_clock_texture, destination, source)
+
+	func _load_clock_texture() -> Texture2D:
+		var assets := get_node_or_null("/root/KrakoutAssets")
+		if assets == null or not assets.has_method("load_texture"):
+			return null
+		return assets.call("load_texture", "Clock") as Texture2D
 
 @export var episode_slug := PlayfieldSpecScript.DEFAULT_EPISODE
 @export var level_number := PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER
@@ -46,7 +106,9 @@ var _fps_visible := false
 var _background_movable := true
 var _background_type := 2
 var _paused := false
-var _pause_label: Label
+var _exit_confirmation_visible := false
+var _hourglass_cursor: HourglassCursorOverlay
+var _exit_confirmation_label: Label
 var _fps_label: Label
 var _fps_elapsed := 0.0
 var _fps_frames := 0
@@ -64,9 +126,11 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_update_fps_overlay(delta)
+	if _hourglass_cursor != null:
+		_hourglass_cursor.advance(delta)
 	if gameplay_session == null:
 		return
-	if _paused:
+	if _paused or _exit_confirmation_visible:
 		_refresh_hud()
 		return
 
@@ -90,6 +154,10 @@ func _input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventMouseMotion:
+		if _hourglass_cursor != null:
+			_hourglass_cursor.set_cursor_position(event.position)
+		if _paused or _exit_confirmation_visible:
+			return
 		gameplay_session.move_racket_to(event.position.y)
 		_refresh_actor_renderers()
 		return
@@ -97,7 +165,13 @@ func _input(event: InputEvent) -> void:
 	if _is_repeated_key_event(event):
 		return
 
-	if event.is_action_pressed(ACTION_TOGGLE_FPS):
+	if _exit_confirmation_visible:
+		_handle_exit_confirmation_input(event)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(ACTION_TERMINATE_GAME):
+		show_exit_confirmation()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(ACTION_TOGGLE_FPS):
 		toggle_fps_visible()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed(ACTION_TOGGLE_BONUS_STACK):
@@ -136,6 +210,7 @@ func start_game(selected_episode_slug: String, selected_level_number: int) -> vo
 	level_number = max(1, selected_level_number)
 	_run_started = false
 	_paused = false
+	_exit_confirmation_visible = false
 	_apply_level()
 	_apply_pause_overlay()
 
@@ -270,6 +345,8 @@ func is_background_movable() -> bool:
 func toggle_pause() -> bool:
 	if gameplay_session != null and gameplay_session.state == GameSessionScript.STATE_GAME_OVER:
 		return _paused
+	if _exit_confirmation_visible:
+		return _paused
 	_paused = not _paused
 	_apply_pause_overlay()
 	return _paused
@@ -277,6 +354,17 @@ func toggle_pause() -> bool:
 
 func is_game_paused() -> bool:
 	return _paused
+
+
+func show_exit_confirmation() -> void:
+	if gameplay_session != null and gameplay_session.state == GameSessionScript.STATE_GAME_OVER:
+		return
+	_exit_confirmation_visible = true
+	_apply_pause_overlay()
+
+
+func is_exit_confirmation_visible() -> bool:
+	return _exit_confirmation_visible
 
 
 func _fit_to_baseline_viewport() -> void:
@@ -486,19 +574,24 @@ func _source_level_number() -> int:
 
 
 func _ensure_overlay_nodes() -> void:
-	if _pause_label == null:
-		_pause_label = Label.new()
-		_pause_label.name = "PauseOverlay"
-		_pause_label.position = Vector2(0, 212)
-		_pause_label.size = Vector2(640, 40)
-		_pause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_pause_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		_pause_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_pause_label.add_theme_color_override("font_color", Color.WHITE)
-		_pause_label.add_theme_font_size_override("font_size", 22)
-		_pause_label.text = "Pause"
-		_pause_label.visible = false
-		add_child(_pause_label)
+	if _hourglass_cursor == null:
+		_hourglass_cursor = HourglassCursorOverlay.new()
+		_hourglass_cursor.name = "HourglassCursorOverlay"
+		add_child(_hourglass_cursor)
+
+	if _exit_confirmation_label == null:
+		_exit_confirmation_label = Label.new()
+		_exit_confirmation_label.name = "ExitConfirmationPrompt"
+		_exit_confirmation_label.position = Vector2(0, 198)
+		_exit_confirmation_label.size = Vector2(640, 84)
+		_exit_confirmation_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_exit_confirmation_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_exit_confirmation_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_exit_confirmation_label.add_theme_color_override("font_color", Color.WHITE)
+		_exit_confirmation_label.add_theme_font_size_override("font_size", 22)
+		_exit_confirmation_label.text = EXIT_CONFIRMATION_TEXT
+		_exit_confirmation_label.visible = false
+		add_child(_exit_confirmation_label)
 
 	if _fps_label == null:
 		_fps_label = Label.new()
@@ -515,8 +608,41 @@ func _ensure_overlay_nodes() -> void:
 
 
 func _apply_pause_overlay() -> void:
-	if _pause_label != null:
-		_pause_label.visible = _paused
+	if _hourglass_cursor != null:
+		if _paused:
+			_hourglass_cursor.set_cursor_position(get_viewport().get_mouse_position())
+		_hourglass_cursor.set_hourglass_visible(_paused)
+	if _exit_confirmation_label != null:
+		_exit_confirmation_label.visible = _exit_confirmation_visible
+
+
+func _handle_exit_confirmation_input(event: InputEvent) -> void:
+	if event.is_action_pressed(ACTION_TERMINATE_GAME):
+		_cancel_exit_confirmation()
+		return
+
+	var key_event := event as InputEventKey
+	if key_event == null or not key_event.pressed:
+		return
+
+	match key_event.keycode:
+		KEY_Y:
+			_confirm_exit_to_game_over_summary()
+		KEY_N:
+			_cancel_exit_confirmation()
+
+
+func _confirm_exit_to_game_over_summary() -> void:
+	_exit_confirmation_visible = false
+	_paused = false
+	gameplay_session.state = GameSessionScript.STATE_GAME_OVER
+	_apply_pause_overlay()
+	_refresh_hud()
+
+
+func _cancel_exit_confirmation() -> void:
+	_exit_confirmation_visible = false
+	_apply_pause_overlay()
 
 
 func _update_fps_overlay(delta: float) -> void:

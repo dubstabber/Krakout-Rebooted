@@ -66,9 +66,12 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   source `Statistic` header strip, and draws dynamic HUD digits through the
   IDA-backed original bitmap width tables instead of heuristic glyph cropping.
 - Gameplay controls now flow through Godot InputMap actions for launching,
-  bonus use, pause, FPS, bonus-stack visibility, ball-track visibility, and a
-  provisional background-cycle action. Runtime presentation toggles persist
-  through `KrakoutProfile`.
+  bonus use, pause, the Escape leave-board confirmation, FPS, bonus-stack
+  visibility, ball-track visibility, and a provisional background-cycle action.
+  Runtime presentation toggles persist through `KrakoutProfile`.
+- Confirming the Escape leave-board prompt first shows the original Game Over
+  summary, then mouse confirmation reuses the qualifying-score name-entry and
+  persisted high-score table route.
 - The project stretch settings explicitly preserve the original 4:3 canvas, so
   widescreen windows keep centered gameplay with black side bars instead of
   stretching the playfield.
