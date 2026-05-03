@@ -617,6 +617,27 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(full_stack_session.bonus_stack_entries().size() == GameSessionScript.MAX_STACKED_BONUSES, "bonus stack enforces original cap")
 	_assert(full_stack_session.visible_falling_bonuses().size() == 1, "full stack does not consume overlapping falling bonus")
 
+	var debug_stack_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	var invalid_debug_add: Dictionary = debug_stack_session.debug_add_bonus_to_stack(-1)
+	_assert(invalid_debug_add["status"] == "invalid", "debug bonus stack rejects invalid type IDs")
+	var debug_add: Dictionary = debug_stack_session.debug_add_bonus_to_stack(GameSessionScript.BONUS_EXTRA_LIFE)
+	_assert(debug_add["status"] == "added", "debug bonus stack can add an item")
+	_assert(int(debug_stack_session.bonus_stack_entries()[0]["type_id"]) == GameSessionScript.BONUS_EXTRA_LIFE, "debug-added item keeps requested type")
+	var debug_remove_invalid: Dictionary = debug_stack_session.debug_remove_bonus_from_stack(4)
+	_assert(debug_remove_invalid["status"] == "invalid", "debug bonus stack rejects invalid remove indexes")
+	var debug_remove: Dictionary = debug_stack_session.debug_remove_bonus_from_stack(0)
+	_assert(debug_remove["status"] == "removed", "debug bonus stack can remove an item")
+	_assert(debug_stack_session.bonus_stack_entries().is_empty(), "debug remove updates bonus stack")
+	debug_stack_session.debug_add_bonus_to_stack(GameSessionScript.BONUS_ADD_FIREBALL)
+	debug_stack_session.debug_add_bonus_to_stack(GameSessionScript.BONUS_JUMP_TO_NEXT_LEVEL)
+	_assert(debug_stack_session.debug_clear_bonus_stack() == 2, "debug clear reports removed stack count")
+	_assert(debug_stack_session.bonus_stack_entries().is_empty(), "debug clear empties bonus stack")
+	for debug_index in range(GameSessionScript.MAX_STACKED_BONUSES):
+		_assert(debug_stack_session.debug_add_bonus_to_stack(debug_index % GameSessionScript.BONUS_TYPE_COUNT)["status"] == "added", "debug add fills stack")
+	var debug_full_result: Dictionary = debug_stack_session.debug_add_bonus_to_stack(GameSessionScript.BONUS_EXTRA_LIFE)
+	_assert(debug_full_result["status"] == "full", "debug bonus stack reports full capacity")
+	_assert(debug_stack_session.bonus_stack_entries().size() == GameSessionScript.MAX_STACKED_BONUSES, "debug add does not overflow stack")
+
 	var chain_selector_session = _game_session_from_level(_make_level_from_rows([[1]], _make_bonus_tail([1])))
 	chain_selector_session.set_bonus_rng_seed(23)
 	chain_selector_session.force_bonus_drop_ready()
@@ -1163,6 +1184,7 @@ func _validate_project_input_map() -> void:
 		GameScreenScript.ACTION_PAUSE,
 		GameScreenScript.ACTION_TERMINATE_GAME,
 		GameScreenScript.ACTION_CYCLE_BACKGROUND,
+		GameScreenScript.ACTION_DEBUG_CHEATS,
 	]
 	for action_name: String in expected_actions:
 		_assert(InputMap.has_action(action_name), "project input action exists: %s" % action_name)
@@ -1176,6 +1198,7 @@ func _validate_project_input_map() -> void:
 	_assert(_action_has_key(GameScreenScript.ACTION_PAUSE, KEY_P), "pause action binds P")
 	_assert(_action_has_key(GameScreenScript.ACTION_TERMINATE_GAME, KEY_ESCAPE), "terminate-game action binds Escape")
 	_assert(_action_has_key(GameScreenScript.ACTION_CYCLE_BACKGROUND, KEY_G), "background-cycle action binds G")
+	_assert(_action_has_key(GameScreenScript.ACTION_DEBUG_CHEATS, KEY_D), "debug-cheats action binds D")
 
 
 func _validate_profile_service() -> void:
@@ -1886,6 +1909,47 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("_input", _action_event(GameScreenScript.ACTION_USE_BONUS))
 			await process_frame
 			_assert(gameplay.lives_remaining == GameSessionScript.INITIAL_LIVES + 1, "game screen routes use-bonus action to bonus activation")
+			game.call("_input", _action_event(GameScreenScript.ACTION_DEBUG_CHEATS))
+			await process_frame
+			_assert(game.call("is_debug_cheats_visible"), "debug-cheats action opens the debug stack window")
+			_assert(game.call("is_game_paused"), "debug stack window pauses gameplay")
+			_assert(not bool(game.call("is_system_cursor_hidden")), "debug stack window shows the system cursor for UI controls")
+			var debug_overlay := game.call("current_debug_cheats_overlay") as Control
+			_assert(debug_overlay != null and debug_overlay.visible, "game screen creates the debug cheats overlay")
+			if debug_overlay != null:
+				var debug_add_button := debug_overlay.find_child("AddBonus%d" % GameSessionScript.BONUS_EXTRA_LIFE, true, false) as Button
+				_assert(debug_add_button != null and not debug_add_button.disabled, "debug cheats overlay exposes add buttons")
+				if debug_add_button != null:
+					debug_add_button.emit_signal("pressed")
+					await process_frame
+					_assert(gameplay.bonus_stack_entries().size() == 1, "debug cheats add button appends to stack")
+					_assert(int(gameplay.bonus_stack_entries()[0]["type_id"]) == GameSessionScript.BONUS_EXTRA_LIFE, "debug cheats add button preserves item type")
+				var debug_remove_button := debug_overlay.find_child("RemoveStackEntry0", true, false) as Button
+				_assert(debug_remove_button != null, "debug cheats overlay exposes remove buttons")
+				if debug_remove_button != null:
+					debug_remove_button.emit_signal("pressed")
+					await process_frame
+					_assert(gameplay.bonus_stack_entries().is_empty(), "debug cheats remove button deletes selected stack item")
+				for debug_stack_type in [GameSessionScript.BONUS_ADD_FIREBALL, GameSessionScript.BONUS_JUMP_TO_NEXT_LEVEL]:
+					gameplay.debug_add_bonus_to_stack(debug_stack_type)
+				debug_overlay.call("refresh")
+				var debug_clear_button := debug_overlay.find_child("ClearStackButton", true, false) as Button
+				_assert(debug_clear_button != null and not debug_clear_button.disabled, "debug cheats overlay exposes clear-stack button")
+				if debug_clear_button != null:
+					debug_clear_button.emit_signal("pressed")
+					await process_frame
+					_assert(gameplay.bonus_stack_entries().is_empty(), "debug cheats clear button empties stack")
+				for full_debug_index in range(GameSessionScript.MAX_STACKED_BONUSES):
+					gameplay.debug_add_bonus_to_stack(full_debug_index % GameSessionScript.BONUS_TYPE_COUNT)
+				debug_overlay.call("refresh")
+				var disabled_add_button := debug_overlay.find_child("AddBonus%d" % GameSessionScript.BONUS_EXTRA_LIFE, true, false) as Button
+				_assert(disabled_add_button != null and disabled_add_button.disabled, "debug cheats overlay disables add buttons when stack is full")
+				gameplay.bonus_stack.clear()
+			game.call("_input", _action_event(GameScreenScript.ACTION_TERMINATE_GAME))
+			await process_frame
+			_assert(not game.call("is_debug_cheats_visible"), "Escape closes the debug stack window first")
+			_assert(not game.call("is_exit_confirmation_visible"), "Escape does not open leave-board confirmation while closing debug cheats")
+			_assert(not game.call("is_game_paused"), "closing debug cheats restores active gameplay")
 			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_BONUS_STACK))
 			await process_frame
 			_assert(game.call("is_bonus_stack_visible"), "game screen routes bonus-stack toggle")
@@ -1913,6 +1977,18 @@ func _validate_menu_and_game_scenes() -> void:
 				game.call("_process", 0.12)
 				_assert(gameplay.call("first_ball_position") == paused_ball_position, "pause freezes gameplay movement")
 				_assert(int(hourglass_cursor.call("current_frame_index")) != hourglass_frame, "pause hourglass cursor animates")
+			game.call("_input", _action_event(GameScreenScript.ACTION_DEBUG_CHEATS))
+			await process_frame
+			_assert(game.call("is_debug_cheats_visible"), "debug cheats can open while the game is already paused")
+			_assert(game.call("is_game_paused"), "debug cheats keeps existing pause state")
+			if hourglass_cursor != null:
+				_assert(not bool(hourglass_cursor.call("is_cursor_visible")), "debug cheats hides the pause hourglass while interactive")
+			game.call("_input", _action_event(GameScreenScript.ACTION_DEBUG_CHEATS))
+			await process_frame
+			_assert(not game.call("is_debug_cheats_visible"), "debug-cheats action closes the debug window")
+			_assert(game.call("is_game_paused"), "closing debug cheats restores the previous paused state")
+			if hourglass_cursor != null:
+				_assert(bool(hourglass_cursor.call("is_cursor_visible")), "pause hourglass returns after closing debug cheats from pause")
 			game.call("_input", _action_event(GameScreenScript.ACTION_TERMINATE_GAME))
 			await process_frame
 			_assert(game.call("is_exit_confirmation_visible"), "Escape opens leave-board confirmation while paused")

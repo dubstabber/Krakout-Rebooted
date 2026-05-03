@@ -15,6 +15,7 @@ const MonsterRendererScript := preload("res://src/render/monster_renderer.gd")
 const BeeRendererScript := preload("res://src/render/bee_renderer.gd")
 const ImpactEffectRendererScript := preload("res://src/render/impact_effect_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
+const DebugCheatsOverlayScript := preload("res://src/game/debug_cheats_overlay.gd")
 
 const ACTION_LAUNCH_BALL := "krakout_launch_ball"
 const ACTION_FIRE_PADDLE := "krakout_fire_paddle"
@@ -25,6 +26,7 @@ const ACTION_TOGGLE_FPS := "krakout_toggle_fps"
 const ACTION_PAUSE := "krakout_pause"
 const ACTION_TERMINATE_GAME := "krakout_terminate_game"
 const ACTION_CYCLE_BACKGROUND := "krakout_cycle_background"
+const ACTION_DEBUG_CHEATS := "debug_cheats"
 const EXIT_CONFIRMATION_TEXT := "Are You sure to leave\nthis board (Y / N)"
 
 
@@ -110,12 +112,14 @@ var _exit_confirmation_visible := false
 var _hourglass_cursor: HourglassCursorOverlay
 var _exit_confirmation_label: Label
 var _fps_label: Label
+var debug_cheats_overlay
 var _fps_elapsed := 0.0
 var _fps_frames := 0
 var _fps_value := 0
 var _previous_mouse_mode: int = Input.MOUSE_MODE_VISIBLE
 var _owns_mouse_mode := false
 var _system_cursor_hidden_for_game_map := false
+var _debug_cheats_previous_pause := false
 
 
 func _enter_tree() -> void:
@@ -174,7 +178,7 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		if _hourglass_cursor != null:
 			_hourglass_cursor.set_cursor_position(event.position)
-		if _paused or _exit_confirmation_visible:
+		if is_debug_cheats_visible() or _paused or _exit_confirmation_visible:
 			return
 		gameplay_session.move_racket_to(event.position.y)
 		_refresh_actor_renderers()
@@ -183,8 +187,17 @@ func _input(event: InputEvent) -> void:
 	if _is_repeated_key_event(event):
 		return
 
+	if is_debug_cheats_visible():
+		if event.is_action_pressed(ACTION_DEBUG_CHEATS) or event.is_action_pressed(ACTION_TERMINATE_GAME):
+			close_debug_cheats()
+			get_viewport().set_input_as_handled()
+		return
+
 	if _exit_confirmation_visible:
 		_handle_exit_confirmation_input(event)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed(ACTION_DEBUG_CHEATS):
+		open_debug_cheats()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed(ACTION_TERMINATE_GAME):
 		show_exit_confirmation()
@@ -229,6 +242,7 @@ func start_game(selected_episode_slug: String, selected_level_number: int) -> vo
 	_run_started = false
 	_paused = false
 	_exit_confirmation_visible = false
+	_hide_debug_cheats_overlay()
 	_apply_level()
 	_apply_pause_overlay()
 
@@ -393,6 +407,47 @@ func is_exit_confirmation_visible() -> bool:
 
 func is_system_cursor_hidden() -> bool:
 	return _system_cursor_hidden_for_game_map
+
+
+func open_debug_cheats() -> void:
+	if gameplay_session == null:
+		return
+	if gameplay_session.state == GameSessionScript.STATE_GAME_OVER:
+		return
+	if _exit_confirmation_visible:
+		return
+	_ensure_overlay_nodes()
+	_debug_cheats_previous_pause = _paused
+	_paused = true
+	if debug_cheats_overlay != null:
+		debug_cheats_overlay.set_session(gameplay_session)
+		debug_cheats_overlay.open()
+	_apply_pause_overlay()
+
+
+func close_debug_cheats() -> void:
+	if not is_debug_cheats_visible():
+		return
+	var previous_pause := _debug_cheats_previous_pause
+	_hide_debug_cheats_overlay()
+	_paused = previous_pause
+	_apply_pause_overlay()
+
+
+func toggle_debug_cheats() -> bool:
+	if is_debug_cheats_visible():
+		close_debug_cheats()
+	else:
+		open_debug_cheats()
+	return is_debug_cheats_visible()
+
+
+func is_debug_cheats_visible() -> bool:
+	return debug_cheats_overlay != null and bool(debug_cheats_overlay.call("is_debug_visible"))
+
+
+func current_debug_cheats_overlay():
+	return debug_cheats_overlay
 
 
 func _fit_to_baseline_viewport() -> void:
@@ -636,13 +691,29 @@ func _ensure_overlay_nodes() -> void:
 		_fps_label.visible = _fps_visible
 		add_child(_fps_label)
 
+	if debug_cheats_overlay == null:
+		debug_cheats_overlay = DebugCheatsOverlayScript.new()
+		debug_cheats_overlay.name = "DebugCheatsOverlay"
+		debug_cheats_overlay.add_bonus_requested.connect(_on_debug_add_bonus_requested)
+		debug_cheats_overlay.remove_stack_entry_requested.connect(_on_debug_remove_stack_entry_requested)
+		debug_cheats_overlay.clear_stack_requested.connect(_on_debug_clear_stack_requested)
+		debug_cheats_overlay.close_requested.connect(close_debug_cheats)
+		add_child(debug_cheats_overlay)
+
+	if debug_cheats_overlay != null:
+		debug_cheats_overlay.set_session(gameplay_session)
+
 
 func _apply_pause_overlay() -> void:
-	_hide_system_cursor_for_game_map()
+	if is_debug_cheats_visible():
+		_show_system_cursor_for_debug_cheats()
+	else:
+		_hide_system_cursor_for_game_map()
 	if _hourglass_cursor != null:
-		if _paused:
+		var show_hourglass := _paused and not is_debug_cheats_visible()
+		if show_hourglass:
 			_hourglass_cursor.set_cursor_position(get_viewport().get_mouse_position())
-		_hourglass_cursor.set_hourglass_visible(_paused)
+		_hourglass_cursor.set_hourglass_visible(show_hourglass)
 	if _exit_confirmation_label != null:
 		_exit_confirmation_label.visible = _exit_confirmation_visible
 
@@ -650,6 +721,59 @@ func _apply_pause_overlay() -> void:
 func _hide_system_cursor_for_game_map() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 	_system_cursor_hidden_for_game_map = true
+
+
+func _show_system_cursor_for_debug_cheats() -> void:
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	_system_cursor_hidden_for_game_map = false
+
+
+func _hide_debug_cheats_overlay() -> void:
+	if debug_cheats_overlay != null:
+		debug_cheats_overlay.close()
+	_debug_cheats_previous_pause = false
+
+
+func _on_debug_add_bonus_requested(type_id: int) -> void:
+	if gameplay_session == null or not gameplay_session.has_method("debug_add_bonus_to_stack"):
+		return
+	var result: Dictionary = gameplay_session.call("debug_add_bonus_to_stack", type_id)
+	_refresh_after_debug_stack_change(_debug_bonus_result_status(result))
+
+
+func _on_debug_remove_stack_entry_requested(index: int) -> void:
+	if gameplay_session == null or not gameplay_session.has_method("debug_remove_bonus_from_stack"):
+		return
+	var result: Dictionary = gameplay_session.call("debug_remove_bonus_from_stack", index)
+	_refresh_after_debug_stack_change(_debug_bonus_result_status(result))
+
+
+func _on_debug_clear_stack_requested() -> void:
+	if gameplay_session == null or not gameplay_session.has_method("debug_clear_bonus_stack"):
+		return
+	var removed_count := int(gameplay_session.call("debug_clear_bonus_stack"))
+	_refresh_after_debug_stack_change("Cleared %d item%s" % [removed_count, "" if removed_count == 1 else "s"])
+
+
+func _refresh_after_debug_stack_change(status_text: String) -> void:
+	_refresh_actor_renderers()
+	_refresh_hud()
+	if debug_cheats_overlay != null:
+		debug_cheats_overlay.refresh(status_text)
+
+
+func _debug_bonus_result_status(result: Dictionary) -> String:
+	var status := String(result.get("status", ""))
+	match status:
+		"added":
+			return "Added %s" % String(result.get("name", "bonus"))
+		"removed":
+			return "Removed %s" % String(result.get("name", "bonus"))
+		"full":
+			return "Stack full"
+		"invalid":
+			return "Invalid item"
+	return status
 
 
 func _handle_exit_confirmation_input(event: InputEvent) -> void:

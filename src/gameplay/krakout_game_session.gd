@@ -502,6 +502,56 @@ func bonus_stack_entries() -> Array[Dictionary]:
 	return entries
 
 
+func debug_add_bonus_to_stack(type_id: int) -> Dictionary:
+	if type_id < 0 or type_id >= BONUS_TYPE_COUNT:
+		return {
+			"status": "invalid",
+			"type_id": type_id,
+			"count": bonus_stack.size(),
+			"limit": MAX_STACKED_BONUSES,
+		}
+	if not _push_bonus_stack(type_id):
+		return {
+			"status": "full",
+			"type_id": type_id,
+			"name": bonus_type_name(type_id),
+			"count": bonus_stack.size(),
+			"limit": MAX_STACKED_BONUSES,
+		}
+	return {
+		"status": "added",
+		"type_id": type_id,
+		"name": bonus_type_name(type_id),
+		"count": bonus_stack.size(),
+		"limit": MAX_STACKED_BONUSES,
+	}
+
+
+func debug_remove_bonus_from_stack(index: int) -> Dictionary:
+	if index < 0 or index >= bonus_stack.size():
+		return {
+			"status": "invalid",
+			"index": index,
+			"count": bonus_stack.size(),
+		}
+	var removed_entry: Dictionary = bonus_stack[index].duplicate()
+	bonus_stack.remove_at(index)
+	var type_id := int(removed_entry.get("type_id", -1))
+	return {
+		"status": "removed",
+		"index": index,
+		"type_id": type_id,
+		"name": bonus_type_name(type_id),
+		"count": bonus_stack.size(),
+	}
+
+
+func debug_clear_bonus_stack() -> int:
+	var removed_count := bonus_stack.size()
+	bonus_stack.clear()
+	return removed_count
+
+
 func active_bonus_indicators() -> Array[Dictionary]:
 	var indicators: Array[Dictionary] = []
 	if is_level_ready_sequence_active():
