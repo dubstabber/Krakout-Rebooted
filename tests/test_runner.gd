@@ -342,6 +342,8 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.launch_ready_ball(), "ready ball launches")
 	_assert(session.state == GameSessionScript.STATE_PLAYING, "game session enters playing state")
 	_assert(session.first_ball_velocity().x < 0.0, "launched ball starts toward board")
+	_assert(session.first_ball_velocity() == Vector2(-300, 0), "launched ball starts at original effective substep speed")
+	_assert(is_equal_approx(session.first_ball_velocity().length(), 300.0), "launched ball speed matches original default cadence")
 	_assert(session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BALL_LAUNCH], "launch queues semantic SFX event")
 
 	var wall_session = _game_session_from_level(_make_level_from_rows([[1]]))
@@ -365,7 +367,25 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	)
 	racket_session.update(0.1)
 	_assert(racket_session.first_ball_velocity().x < 0.0, "ball bounces off racket")
+	_assert(is_equal_approx(racket_session.first_ball_velocity().length(), 200.0), "racket bounce preserves forced ball speed")
 	_assert(racket_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_RACKET_BOUNCE], "racket bounce queues semantic SFX event")
+
+	var angled_racket_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	angled_racket_session.move_racket_to(220.0)
+	angled_racket_session.launch_ready_ball()
+	var expected_racket_bounce_speed: float = angled_racket_session.first_ball_velocity().length()
+	angled_racket_session.pop_audio_events()
+	var slowed_racket_ball: Dictionary = angled_racket_session.balls[0]
+	slowed_racket_ball["position"] = Vector2(
+		GameSessionScript.RACKET_X - GameSessionScript.BALL_SIZE + 1.0,
+		angled_racket_session.racket_rect().end.y - GameSessionScript.BALL_SIZE
+	)
+	slowed_racket_ball["velocity"] = Vector2(12, 0)
+	angled_racket_session.balls[0] = slowed_racket_ball
+	angled_racket_session.update(0.0)
+	_assert(angled_racket_session.first_ball_velocity().x < 0.0, "angled racket hit sends the ball back toward the board")
+	_assert(absf(angled_racket_session.first_ball_velocity().y) > 0.0, "angled racket hit changes vertical trajectory")
+	_assert(is_equal_approx(angled_racket_session.first_ball_velocity().length(), expected_racket_bounce_speed), "angled racket hit preserves active ball speed")
 
 	var missed_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	missed_session.force_ball(Vector2(GameSessionScript.BALL_LOST_X + 1.0, 350), Vector2(120, 0))
@@ -704,6 +724,17 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(monster_ball_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_HIT], "monster collision queues monster-hit SFX event")
 	monster_ball_hit_session.update(GameSessionScript.IMPACT_EFFECT_DURATION_SECONDS)
 	_assert(monster_ball_hit_session.visible_impact_effects().is_empty(), "monster hit VFX expires through the session effect pool")
+
+	var monster_speed_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	monster_speed_session.launch_ready_ball()
+	var expected_enemy_hit_speed: float = monster_speed_session.first_ball_velocity().length()
+	var slowed_ball: Dictionary = monster_speed_session.balls[0]
+	slowed_ball["position"] = Vector2(220, 200)
+	slowed_ball["velocity"] = Vector2(-40, 0)
+	monster_speed_session.balls[0] = slowed_ball
+	monster_speed_session.force_monster(Vector2(220, 200), 3, 0)
+	monster_speed_session.update(0.0)
+	_assert(is_equal_approx(monster_speed_session.first_ball_velocity().length(), expected_enemy_hit_speed), "enemy collision restores the active ball speed instead of preserving a slowed vector")
 
 	var monster_racket_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	monster_racket_hit_session.move_racket_to(220.0)

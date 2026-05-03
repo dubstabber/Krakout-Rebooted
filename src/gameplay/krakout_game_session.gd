@@ -43,7 +43,14 @@ const BALL_LEFT_X := PlayfieldSpecScript.WALL_INNER_LEFT_X
 const BALL_LOST_X := 575.0
 const BACK_WALL_BOUNCE_X := PlayfieldSpecScript.WALL_INNER_RIGHT_X
 const READY_BALL_GAP := 10.0
-const DEFAULT_BALL_VELOCITY := Vector2(-260.0, -90.0)
+const ORIGINAL_UPDATE_HZ := 50.0
+const ORIGINAL_BALL_STEPS_PER_UPDATE := 3.0
+const ORIGINAL_DEFAULT_BALL_SPEED_PER_TICK := 2.0
+const DEFAULT_BALL_VELOCITY := Vector2(
+	-ORIGINAL_DEFAULT_BALL_SPEED_PER_TICK * ORIGINAL_BALL_STEPS_PER_UPDATE * ORIGINAL_UPDATE_HZ,
+	0.0
+)
+const RACKET_BOUNCE_MAX_Y_SPEED := 180.0
 const BONUS_TYPE_COUNT := 22
 const BONUS_SELECTOR_COUNT := 23
 const MAX_FALLING_BONUSES := 20
@@ -347,6 +354,7 @@ func launch_ready_ball() -> bool:
 	var ball := balls[0]
 	ball["active"] = true
 	ball["velocity"] = _velocity_for_current_speed(DEFAULT_BALL_VELOCITY)
+	ball["target_speed"] = Vector2(ball["velocity"]).length()
 	balls[0] = ball
 	state = STATE_PLAYING
 	_queue_audio_event(SFX_EVENT_BALL_LAUNCH)
@@ -645,6 +653,7 @@ func force_ball(position: Vector2, velocity: Vector2, size: float = BALL_SIZE) -
 		"velocity": velocity,
 		"size": size,
 		"speed_scale": ball_speed_scale,
+		"target_speed": _target_speed_for_new_ball(velocity),
 	}]
 	state = STATE_PLAYING
 
@@ -678,6 +687,7 @@ func _add_ball(position: Vector2, velocity: Vector2, active := true) -> bool:
 		"velocity": velocity,
 		"size": ball_size,
 		"speed_scale": ball_speed_scale,
+		"target_speed": _target_speed_for_new_ball(velocity),
 	})
 	return true
 
@@ -694,6 +704,7 @@ func _attach_ready_balls() -> void:
 		ball["velocity"] = Vector2.ZERO
 		ball["size"] = ball_size
 		ball["speed_scale"] = ball_speed_scale
+		ball["target_speed"] = _target_speed_for_new_ball(_velocity_for_current_speed(DEFAULT_BALL_VELOCITY))
 		balls[index] = ball
 
 
@@ -758,10 +769,14 @@ func _collide_with_racket(ball: Dictionary) -> bool:
 	var racket_center := racket_y + racket_height * 0.5
 	var ball_center := rect.position.y + rect.size.y * 0.5
 	var normalized_hit := clampf((ball_center - racket_center) / (racket_height * 0.5), -1.0, 1.0)
-	velocity.y = normalized_hit * 180.0
+	var speed := _target_speed_for_ball(ball)
+	var max_y_speed := minf(RACKET_BOUNCE_MAX_Y_SPEED, speed * 0.95)
+	velocity.y = normalized_hit * max_y_speed
+	velocity.x = -sqrt(maxf(0.0, speed * speed - velocity.y * velocity.y))
 
 	ball["position"] = rect.position
 	ball["velocity"] = velocity
+	ball["target_speed"] = speed
 	_queue_audio_event(SFX_EVENT_RACKET_BOUNCE)
 	return true
 
@@ -1422,9 +1437,7 @@ func _score_for_monster_ball_contact(monster: Dictionary) -> int:
 
 func _rotate_ball_from_enemy_contact(ball: Dictionary) -> void:
 	var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
-	var speed := velocity.length()
-	if speed <= 0.0:
-		speed = _velocity_for_current_speed(DEFAULT_BALL_VELOCITY).length()
+	var speed := _target_speed_for_ball(ball)
 
 	var current_angle := 0
 	if not velocity.is_zero_approx():
@@ -1434,6 +1447,7 @@ func _rotate_ball_from_enemy_contact(ball: Dictionary) -> void:
 		360
 	)
 	ball["velocity"] = _monster_motion_vector(next_angle, speed)
+	ball["target_speed"] = speed
 
 
 func _compact_monsters() -> void:
@@ -1702,8 +1716,10 @@ func _adjust_ball_speed(delta_speed: float) -> Dictionary:
 	for index in range(balls.size()):
 		var ball := balls[index]
 		var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
+		var target_speed := _target_speed_for_ball(ball)
 		if not velocity.is_zero_approx():
 			ball["velocity"] = velocity * ratio
+		ball["target_speed"] = target_speed * ratio
 		ball["speed_scale"] = ball_speed_scale
 		balls[index] = ball
 	return {"effect": "ball_speed", "ball_speed_scale": ball_speed_scale}
@@ -1762,6 +1778,23 @@ func _destroy_one_active_ball() -> bool:
 
 func _velocity_for_current_speed(base_velocity: Vector2) -> Vector2:
 	return base_velocity * (ball_speed_scale / BALL_DEFAULT_SPEED_SCALE)
+
+
+func _target_speed_for_new_ball(velocity: Vector2) -> float:
+	if not velocity.is_zero_approx():
+		return velocity.length()
+	return _velocity_for_current_speed(DEFAULT_BALL_VELOCITY).length()
+
+
+func _target_speed_for_ball(ball: Dictionary) -> float:
+	var target_speed := float(ball.get("target_speed", 0.0))
+	if target_speed > 0.0:
+		return target_speed
+
+	var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
+	if not velocity.is_zero_approx():
+		return velocity.length()
+	return _velocity_for_current_speed(DEFAULT_BALL_VELOCITY).length()
 
 
 func _handle_round_lost() -> void:
