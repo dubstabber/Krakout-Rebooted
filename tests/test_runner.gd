@@ -1032,7 +1032,7 @@ func _validate_level_grid_renderer_defaults() -> void:
 func _validate_project_presentation_settings() -> void:
 	_assert(ProjectSettings.get_setting("display/window/size/viewport_width") == 640, "project keeps original viewport width")
 	_assert(ProjectSettings.get_setting("display/window/size/viewport_height") == 480, "project keeps original viewport height")
-	_assert(ProjectSettings.get_setting("display/window/stretch/mode") == "canvas_items", "project stretches the original canvas")
+	_assert(ProjectSettings.get_setting("display/window/stretch/mode") == "viewport", "project stretches the fixed original viewport")
 	_assert(ProjectSettings.get_setting("display/window/stretch/aspect") == "keep", "project keeps the original 4:3 aspect ratio")
 
 

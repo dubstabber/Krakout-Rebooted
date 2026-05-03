@@ -74,9 +74,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   persisted high-score table route.
 - Right-side ball misses now wait for the original off-screen x=640 threshold
   instead of ending as soon as the ball passes the racket/back-wall line.
-- The project stretch settings explicitly preserve the original 4:3 canvas, so
-  widescreen windows keep centered gameplay with black side bars instead of
-  stretching the playfield.
+- The project stretch settings render through the original 640x480 viewport and
+  preserve the original 4:3 aspect ratio, so resized widescreen windows scale
+  the game with black side bars instead of reshaping the playfield.
 - `KrakoutProfile` persists both the compatibility best score and a Godot-native
   top-10 high-score table through a narrow `user://` profile file. Table entries
   keep player name, score, reached level, and episode slug while preserving the
