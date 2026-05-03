@@ -90,6 +90,9 @@ func _set_screen(screen: Node) -> void:
 	if _current_screen != null:
 		_current_screen.queue_free()
 
+	if not (screen is GameScreen):
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
 	_current_screen = screen
 	add_child(screen)
 

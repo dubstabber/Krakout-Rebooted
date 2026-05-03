@@ -1445,6 +1445,9 @@ func _validate_gameplay_sheet_catalog() -> void:
 
 
 func _validate_menu_and_game_scenes() -> void:
+	var saved_mouse_mode := Input.get_mouse_mode()
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+
 	_assert(ResourceLoader.exists("res://scenes/menu/main_menu_screen.tscn"), "main menu scene exists")
 	_assert(ResourceLoader.exists("res://scenes/menu/episode_select_screen.tscn"), "episode select scene exists")
 	_assert(ResourceLoader.exists("res://scenes/menu/rules_screen.tscn"), "rules scene exists")
@@ -1713,6 +1716,7 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(game.level_number == PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER, "game screen defaults to shared level number")
 	root.add_child(game)
 	await process_frame
+	_assert(bool(game.call("is_system_cursor_hidden")), "game screen reports hidden system cursor while active")
 
 	var playfield := game.find_child("PlayfieldRenderer", true, false)
 	_assert(playfield != null, "game screen creates playfield renderer")
@@ -1791,6 +1795,7 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("_input", _action_event(GameScreenScript.ACTION_PAUSE))
 			await process_frame
 			_assert(game.call("is_game_paused"), "game screen routes pause action")
+			_assert(bool(game.call("is_system_cursor_hidden")), "pause keeps the system cursor hidden behind the original hourglass")
 			var hourglass_cursor := game.find_child("HourglassCursorOverlay", true, false)
 			_assert(hourglass_cursor != null and bool(hourglass_cursor.call("is_cursor_visible")), "game screen shows original hourglass cursor on pause")
 			if hourglass_cursor != null:
@@ -1884,6 +1889,8 @@ func _validate_menu_and_game_scenes() -> void:
 				_assert(game_over_title != null and game_over_title.visible, "game hud shows game over title")
 				_assert(game_over_summary != null and game_over_summary.text == "Your Level #3, and Score 45", "game hud shows game over run summary")
 	game.queue_free()
+	await process_frame
+	_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "leaving the game map restores the system cursor")
 
 	if _profile != null and _profile.has_method("set_music_enabled"):
 		_profile.call("set_music_enabled", false)
@@ -1893,6 +1900,7 @@ func _validate_menu_and_game_scenes() -> void:
 	var app := AppScene.instantiate()
 	root.add_child(app)
 	await process_frame
+	_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "app starts menu screens with the system cursor visible")
 
 	var app_menu := app.find_child("MainMenuScreen", true, false)
 	_assert(app_menu != null, "app starts on main menu screen")
@@ -1970,6 +1978,7 @@ func _validate_menu_and_game_scenes() -> void:
 			await process_frame
 			var app_game := app.find_child("GameScreen", true, false)
 			_assert(app_game != null, "app switches from episode select to game screen")
+			_assert(app_game != null and bool(app_game.call("is_system_cursor_hidden")), "app hides the system cursor after entering gameplay")
 			if _audio != null and _audio.has_method("current_music_context"):
 				_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_GAMEPLAY, "game screen uses gameplay music context")
 				_assert(String(_audio.call("current_music_name")) == "theme4", "game screen uses original theme4 music")
@@ -1985,6 +1994,7 @@ func _validate_menu_and_game_scenes() -> void:
 					await process_frame
 					var app_name_entry := app.find_child("NameEntryScreen", true, false)
 					_assert(app_name_entry != null, "app routes qualifying game-over score to name entry")
+					_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "app restores the system cursor for name entry")
 					if _audio != null and _audio.has_method("current_music_context"):
 						_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_NAME_ENTRY, "name entry uses name-entry music context")
 						_assert(String(_audio.call("current_music_name")) == "theme3", "name entry uses original theme3 music")
@@ -2004,6 +2014,7 @@ func _validate_menu_and_game_scenes() -> void:
 							await process_frame
 				await process_frame
 				_assert(app.find_child("MainMenuScreen", true, false) != null, "app returns from submitted high-score table to main menu")
+				_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "app keeps the system cursor visible after returning to menu")
 				if _audio != null and _audio.has_method("current_music_context"):
 					_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_MAIN_MENU, "high-score back restores main-menu music context")
 					_assert(String(_audio.call("current_music_name")) == "Abnormal", "high-score back restores original main-menu music")
@@ -2032,6 +2043,7 @@ func _validate_menu_and_game_scenes() -> void:
 					non_qualifying_game.call("_input", _action_event(GameScreenScript.ACTION_LAUNCH_BALL))
 					await process_frame
 					_assert(app.find_child("MainMenuScreen", true, false) != null, "app returns non-qualifying game-over score to main menu")
+					_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "non-qualifying game-over route restores menu cursor")
 	app_menu = app.find_child("MainMenuScreen", true, false)
 	if app_menu != null:
 		app_menu.emit_signal("start_game_requested")
@@ -2061,6 +2073,7 @@ func _validate_menu_and_game_scenes() -> void:
 				await process_frame
 				var exit_name_entry := app.find_child("NameEntryScreen", true, false)
 				_assert(exit_name_entry != null, "mouse-confirmed leave-board game-over summary routes to name entry")
+				_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "leave-board route restores cursor for name entry")
 				if _audio != null and _audio.has_method("current_music_context"):
 					_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_NAME_ENTRY, "confirmed leave-board score uses name-entry music context")
 				if exit_name_entry != null:
@@ -2075,6 +2088,7 @@ func _validate_menu_and_game_scenes() -> void:
 						_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_HIGH_SCORE, "confirmed leave-board submission uses high-score music context")
 	app.queue_free()
 	await process_frame
+	Input.set_mouse_mode(saved_mouse_mode)
 
 
 func _load_level_from_path(path: String):

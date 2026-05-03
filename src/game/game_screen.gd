@@ -113,6 +113,23 @@ var _fps_label: Label
 var _fps_elapsed := 0.0
 var _fps_frames := 0
 var _fps_value := 0
+var _previous_mouse_mode: int = Input.MOUSE_MODE_VISIBLE
+var _owns_mouse_mode := false
+var _system_cursor_hidden_for_game_map := false
+
+
+func _enter_tree() -> void:
+	_previous_mouse_mode = Input.get_mouse_mode()
+	_owns_mouse_mode = true
+	_hide_system_cursor_for_game_map()
+
+
+func _exit_tree() -> void:
+	if not _owns_mouse_mode:
+		return
+	Input.set_mouse_mode(_previous_mouse_mode)
+	_system_cursor_hidden_for_game_map = false
+	_owns_mouse_mode = false
 
 
 func _ready() -> void:
@@ -367,6 +384,10 @@ func is_exit_confirmation_visible() -> bool:
 	return _exit_confirmation_visible
 
 
+func is_system_cursor_hidden() -> bool:
+	return _system_cursor_hidden_for_game_map
+
+
 func _fit_to_baseline_viewport() -> void:
 	custom_minimum_size = Vector2(PlayfieldSpecScript.VIEWPORT_SIZE)
 
@@ -608,12 +629,18 @@ func _ensure_overlay_nodes() -> void:
 
 
 func _apply_pause_overlay() -> void:
+	_hide_system_cursor_for_game_map()
 	if _hourglass_cursor != null:
 		if _paused:
 			_hourglass_cursor.set_cursor_position(get_viewport().get_mouse_position())
 		_hourglass_cursor.set_hourglass_visible(_paused)
 	if _exit_confirmation_label != null:
 		_exit_confirmation_label.visible = _exit_confirmation_visible
+
+
+func _hide_system_cursor_for_game_map() -> void:
+	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+	_system_cursor_hidden_for_game_map = true
 
 
 func _handle_exit_confirmation_input(event: InputEvent) -> void:
