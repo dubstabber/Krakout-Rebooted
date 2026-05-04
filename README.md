@@ -33,10 +33,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - Pressing Space now activates the first collected bonus in the original stack
   order. The current supported effects are standard ball, fireball,
   non-stricked balls, ball size/speed, paddle size, shooting paddle projectiles,
-  extra life, destroy one ball, random bonus stacking, one-strike bricks,
-  expanding exploding bricks, exploding all chain bricks, back wall, and jump to
-  next level; double/magnet/drunk paddle effects remain explicit pending parity
-  work.
+  double paddle, magnet paddle, drunk paddle, extra life, destroy one ball,
+  random bonus stacking, one-strike bricks, expanding exploding bricks,
+  exploding all chain bricks, back wall, and jump to next level.
 - `KrakoutBonusRenderer` draws falling bonuses, collected stack entries, and the
   stack pointer from the extracted `Bonuses_a`, `Bonuses_aa`, and
   `PointToBonusInStack` sheets.
@@ -45,6 +44,13 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   owns the original-backed 10-projectile pool, 250ms fire gate, faster
   parity-tuned leftward travel, smaller rocket target rectangles, brick-hit
   routing, and held-button repeat fire through the screen input loop.
+- `Double Paddle` now adds the original secondary racket 20 px left of the
+  primary paddle and lets mouse-x deltas slide it within the original horizontal
+  bounds. `Magnet Paddle` draws the original 20-frame animated insert behind the
+  paddle, catches balls on racket contact, eases attached balls toward the paddle
+  center at the original tick pace, and releases them through the launch action
+  with preserved speed, and `Drunk Paddle` accumulates original 30-second
+  inverted-movement windows.
 - `KrakoutGameSession` now owns the first IDA-backed monster pool: five active
   slots, the original 3/6/10 type cycle, 4.5-second spawn gate, 6.5-second
   lifetime, 70ms animation cadence, original 1px/call 3-substep speed conversion,

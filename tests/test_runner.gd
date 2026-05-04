@@ -800,7 +800,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(empty_bonus_result["status"] == "empty", "empty bonus stack reports empty activation")
 
 	var unsupported_bonus_session = _playing_session_from_level(_make_level_from_rows([[1]]))
-	_stack_bonus(unsupported_bonus_session, GameSessionScript.BONUS_DOUBLE_PADDLE)
+	_stack_bonus(unsupported_bonus_session, 99)
 	var unsupported_bonus_result: Dictionary = unsupported_bonus_session.activate_next_bonus()
 	_assert(unsupported_bonus_result["status"] == "unsupported", "unsupported bonus reports explicit status")
 	_assert(unsupported_bonus_session.bonus_stack_entries().size() == 1, "unsupported bonus remains stacked")
@@ -1294,15 +1294,15 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	random_bonus_session.activate_next_bonus()
 	_assert(random_bonus_session.lives_remaining == GameSessionScript.INITIAL_LIVES + 1, "random-selected stacked bonus can be activated normally")
 
-	var random_unsupported_session = _playing_session_from_level(_make_level_from_rows([[1]]))
-	random_unsupported_session.set_bonus_rng_seed(8)
-	_stack_bonus(random_unsupported_session, GameSessionScript.BONUS_RANDOM_BONUS)
-	var random_unsupported_result: Dictionary = random_unsupported_session.activate_next_bonus()
-	_assert(int(random_unsupported_result["selected_type_id"]) == GameSessionScript.BONUS_DOUBLE_PADDLE, "random bonus can select a still-unsupported original item")
-	_assert(int(random_unsupported_session.bonus_stack_entries()[0]["type_id"]) == GameSessionScript.BONUS_DOUBLE_PADDLE, "unsupported random result remains stacked")
-	var random_unsupported_apply_result: Dictionary = random_unsupported_session.activate_next_bonus()
-	_assert(random_unsupported_apply_result["status"] == "unsupported", "unsupported random result keeps the explicit unsupported status")
-	_assert(random_unsupported_session.bonus_stack_entries().size() == 1, "unsupported random result is not consumed")
+	var random_double_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	random_double_session.set_bonus_rng_seed(8)
+	_stack_bonus(random_double_session, GameSessionScript.BONUS_RANDOM_BONUS)
+	var random_double_result: Dictionary = random_double_session.activate_next_bonus()
+	_assert(int(random_double_result["selected_type_id"]) == GameSessionScript.BONUS_DOUBLE_PADDLE, "random bonus can select double-paddle original item")
+	_assert(int(random_double_session.bonus_stack_entries()[0]["type_id"]) == GameSessionScript.BONUS_DOUBLE_PADDLE, "random double result remains stacked for later activation")
+	var random_double_apply_result: Dictionary = random_double_session.activate_next_bonus()
+	_assert(random_double_apply_result["effect"] == "double_paddle", "random-selected double paddle can be activated normally")
+	_assert(random_double_session.is_double_paddle_active(), "random-selected double paddle enables the secondary racket")
 
 	var random_reroll_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	random_reroll_session.set_bonus_rng_seed(29)
@@ -1396,6 +1396,97 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		racket_size_session.activate_next_bonus()
 	_assert(racket_size_session.racket_segment_count == GameSessionScript.RACKET_MAX_SEGMENTS, "expand-paddle bonus reaches original reachable maximum")
 	_assert(racket_size_session.current_racket_height() == 209.0, "maximum racket size uses original collision formula")
+
+	var double_paddle_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	double_paddle_session.move_racket_to(220.0, 300.0)
+	_stack_bonus(double_paddle_session, GameSessionScript.BONUS_DOUBLE_PADDLE)
+	var double_paddle_result: Dictionary = double_paddle_session.activate_next_bonus()
+	_assert(double_paddle_result["status"] == "applied", "double-paddle bonus applies")
+	_assert(double_paddle_result["effect"] == "double_paddle", "double-paddle bonus reports effect")
+	_assert(double_paddle_session.is_double_paddle_active(), "double-paddle bonus enables the secondary racket")
+	var double_racket_rects: Array[Rect2] = double_paddle_session.racket_rects()
+	_assert(double_racket_rects.size() == 2, "double-paddle exposes two racket rectangles")
+	if double_racket_rects.size() == 2:
+		_assert(double_racket_rects[1].position.x == GameSessionScript.RACKET_X + GameSessionScript.DOUBLE_PADDLE_OFFSET_X, "double-paddle secondary racket uses original x offset")
+		double_paddle_session.move_racket_to(220.0, 290.0)
+		double_racket_rects = double_paddle_session.racket_rects()
+		_assert(double_racket_rects[1].position.x == GameSessionScript.RACKET_X + GameSessionScript.DOUBLE_PADDLE_OFFSET_X - 20.0, "double-paddle secondary racket follows doubled mouse-x deltas")
+		double_paddle_session.move_racket_to(220.0, -1000.0)
+		double_racket_rects = double_paddle_session.racket_rects()
+		_assert(double_racket_rects[1].position.x == GameSessionScript.DOUBLE_PADDLE_MIN_X, "double-paddle secondary racket clamps at original left bound")
+		double_paddle_session.move_racket_to(220.0, 1000.0)
+		double_racket_rects = double_paddle_session.racket_rects()
+		_assert(double_racket_rects[1].position.x == GameSessionScript.RACKET_X + GameSessionScript.DOUBLE_PADDLE_OFFSET_X, "double-paddle secondary racket clamps before the primary racket")
+		double_paddle_session.force_ball(
+			Vector2(double_racket_rects[1].position.x - GameSessionScript.BALL_SIZE + 1.0, double_racket_rects[1].position.y + 20.0),
+			Vector2(200, 0)
+		)
+		double_paddle_session.update(0.0)
+		_assert(double_paddle_session.first_ball_velocity().x < 0.0, "double-paddle secondary racket bounces a right-moving ball")
+		_assert(is_equal_approx(double_paddle_session.first_ball_position().x, double_racket_rects[1].position.x - GameSessionScript.BALL_SIZE), "double-paddle bounce resolves at secondary racket face")
+
+	var magnet_paddle_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	magnet_paddle_session.move_racket_to(220.0)
+	_stack_bonus(magnet_paddle_session, GameSessionScript.BONUS_MAGNET_PADDLE)
+	var magnet_paddle_result: Dictionary = magnet_paddle_session.activate_next_bonus()
+	_assert(magnet_paddle_result["status"] == "applied", "magnet-paddle bonus applies")
+	_assert(magnet_paddle_result["effect"] == "magnet_paddle", "magnet-paddle bonus reports effect")
+	_assert(magnet_paddle_session.is_magnet_paddle_active(), "magnet-paddle bonus enables sticky racket state")
+	_assert(magnet_paddle_session.current_racket_visual_mode() == GameSessionScript.RACKET_VISUAL_MODE_MAGNET, "magnet-paddle bonus switches racket to original magnet insert")
+	_assert(magnet_paddle_session.current_racket_visual_frame() == 0, "magnet-paddle insert starts at first original frame")
+	magnet_paddle_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	magnet_paddle_session._monster_spawn_cooldown = 999.0
+	magnet_paddle_session._bee_spawn_delay_remaining = 999.0
+	magnet_paddle_session.update(GameSessionScript.RACKET_VISUAL_FRAME_SECONDS)
+	_assert(magnet_paddle_session.current_racket_visual_frame() == 1, "magnet-paddle insert advances through original 50 ms frames")
+	for magnet_frame_index in range(GameSessionScript.RACKET_MAGNET_VISUAL_FRAME_COUNT - 1):
+		magnet_paddle_session.update(GameSessionScript.RACKET_VISUAL_FRAME_SECONDS)
+	_assert(magnet_paddle_session.current_racket_visual_frame() == 0, "magnet-paddle insert loops while the sticky racket is active")
+	var magnet_racket_rect: Rect2 = magnet_paddle_session.racket_rect()
+	magnet_paddle_session.force_ball(
+		Vector2(GameSessionScript.RACKET_X - GameSessionScript.BALL_SIZE + 1.0, magnet_racket_rect.position.y + 20.0),
+		Vector2(200, 0)
+	)
+	magnet_paddle_session.update(0.0)
+	_assert(magnet_paddle_session.magnet_attached_ball_count() == 1, "magnet-paddle catches a right-moving ball")
+	_assert(magnet_paddle_session.first_ball_velocity() == Vector2.ZERO, "magnet-attached ball stops until release")
+	var magnet_attached_start_y: float = magnet_paddle_session.first_ball_position().y
+	magnet_paddle_session.move_racket_to(260.0)
+	_assert(is_equal_approx(magnet_paddle_session.first_ball_position().y, magnet_attached_start_y), "magnet-attached ball waits for session updates after racket movement")
+	var magnet_center_target_y: float = magnet_paddle_session.racket_rect().position.y \
+		+ (magnet_paddle_session.current_racket_height() - GameSessionScript.BALL_SIZE) * 0.5
+	magnet_paddle_session.update(0.1)
+	var magnet_delayed_y: float = magnet_paddle_session.first_ball_position().y
+	_assert(magnet_delayed_y > magnet_attached_start_y, "magnet-attached ball moves toward the racket center after delay")
+	_assert(magnet_delayed_y < magnet_center_target_y, "magnet-attached ball does not snap directly to the racket center")
+	magnet_paddle_session.update(1.0)
+	_assert(is_equal_approx(magnet_paddle_session.first_ball_position().y, magnet_center_target_y), "magnet-attached ball eventually reaches the racket center")
+	_assert(magnet_paddle_session.launch_ready_ball(), "left-click launch releases magnet-attached balls during play")
+	_assert(magnet_paddle_session.magnet_attached_ball_count() == 0, "magnet release clears attached state")
+	_assert(magnet_paddle_session.first_ball_velocity().x < 0.0, "magnet release sends ball back into the board")
+	_assert(is_equal_approx(magnet_paddle_session.first_ball_velocity().length(), 200.0), "magnet release preserves stored ball speed")
+
+	var drunk_paddle_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	drunk_paddle_session.move_racket_to(220.0)
+	var sober_center_y: float = drunk_paddle_session.racket_rect().get_center().y
+	_stack_bonus(drunk_paddle_session, GameSessionScript.BONUS_DRUNK_PADDLE)
+	var drunk_paddle_result: Dictionary = drunk_paddle_session.activate_next_bonus()
+	_assert(drunk_paddle_result["status"] == "applied", "drunk-paddle bonus applies")
+	_assert(drunk_paddle_result["effect"] == "drunk_paddle", "drunk-paddle bonus reports effect")
+	_assert(drunk_paddle_session.is_drunk_paddle_active(), "drunk-paddle bonus starts timed inverted movement")
+	drunk_paddle_session.move_racket_to(260.0)
+	_assert(is_equal_approx(drunk_paddle_session.racket_rect().get_center().y, sober_center_y - 40.0), "drunk-paddle inverts mouse movement delta")
+	drunk_paddle_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	drunk_paddle_session._monster_spawn_cooldown = 999.0
+	drunk_paddle_session._bee_spawn_delay_remaining = 999.0
+	drunk_paddle_session.update(10.0)
+	_stack_bonus(drunk_paddle_session, GameSessionScript.BONUS_DRUNK_PADDLE)
+	var repeated_drunk_result: Dictionary = drunk_paddle_session.activate_next_bonus()
+	_assert(is_equal_approx(float(repeated_drunk_result["seconds_remaining"]), 50.0), "repeated drunk-paddle activation adds original duration")
+	drunk_paddle_session.update(50.0)
+	_assert(not drunk_paddle_session.is_drunk_paddle_active(), "drunk-paddle timer expires")
+	drunk_paddle_session.move_racket_to(300.0)
+	_assert(is_equal_approx(drunk_paddle_session.racket_rect().get_center().y, 300.0), "expired drunk-paddle restores absolute mouse movement")
 
 	var extra_life_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(extra_life_session, GameSessionScript.BONUS_EXTRA_LIFE)
@@ -1531,6 +1622,14 @@ func _validate_level_grid_renderer_defaults() -> void:
 		GameSessionScript.RACKET_VISUAL_MAX_FRAME
 	)
 	_assert(single_shot_region["source"] == Rect2(Vector2(169, 74), Vector2(38, 36)), "racket renderer maps the original single-shot launcher final frame")
+	var magnet_region: Dictionary = RacketRendererScript.overlay_region_for_rect(
+		Rect2(Vector2(GameSessionScript.RACKET_X, 221), Vector2(GameSessionScript.RACKET_WIDTH, GameSessionScript.RACKET_HEIGHT)),
+		GameSessionScript.RACKET_DEFAULT_SEGMENTS,
+		GameSessionScript.RACKET_VISUAL_MODE_MAGNET,
+		GameSessionScript.RACKET_MAGNET_VISUAL_FRAME_COUNT - 1
+	)
+	_assert(magnet_region["source"] == Rect2(Vector2(167, 171), Vector2(30, 30)), "racket renderer maps the original magnet insert final frame")
+	_assert(magnet_region["dest"] == Rect2(Vector2(GameSessionScript.RACKET_X + 15.0, 242), Vector2(30, 30)), "racket renderer positions the original magnet insert behind the paddle")
 	var ready_racket_renderer: KrakoutRacketRenderer = RacketRendererScript.new()
 	var hidden_racket_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	hidden_racket_session.start_level_ready_sequence(false)
@@ -1539,6 +1638,15 @@ func _validate_level_grid_renderer_defaults() -> void:
 	hidden_racket_session.update(GameSessionScript.LEVEL_READY_ANIMATION_SECONDS)
 	_assert(ready_racket_renderer.is_racket_visible_for_session(), "racket renderer restores the paddle after the ready roller finishes")
 	ready_racket_renderer.free()
+
+	var double_racket_renderer: KrakoutRacketRenderer = RacketRendererScript.new()
+	var double_racket_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(double_racket_session, GameSessionScript.BONUS_DOUBLE_PADDLE)
+	double_racket_session.activate_next_bonus()
+	double_racket_renderer.set_session(double_racket_session)
+	var renderer_racket_rects: Array = double_racket_renderer.call("_racket_rects_for_session")
+	_assert(renderer_racket_rects.size() == 2, "racket renderer reads every visible double-paddle rectangle")
+	double_racket_renderer.free()
 
 	var bullet_renderer: KrakoutBulletRenderer = BulletRendererScript.new()
 	_assert(bullet_renderer.head_target_rect(Vector2(100, 200)) == Rect2(Vector2(100, 200), GameSessionScript.PROJECTILE_SIZE), "bullet renderer draws a smaller rocket head target")

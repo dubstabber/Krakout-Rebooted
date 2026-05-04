@@ -129,8 +129,17 @@ const PROJECTILE_MODE_CONTINUOUS := 1
 const RACKET_VISUAL_MODE_NORMAL := 0
 const RACKET_VISUAL_MODE_SHOOTING_CONTINUOUS := 1
 const RACKET_VISUAL_MODE_SHOOTING_ONE_SHOT := 2
+const RACKET_VISUAL_MODE_MAGNET := 3
 const RACKET_VISUAL_FRAME_SECONDS := 0.05
 const RACKET_VISUAL_MAX_FRAME := 4
+const RACKET_MAGNET_VISUAL_FRAME_COUNT := 20
+const MAGNET_ATTACHED_Y_STEP_PER_UPDATE := 1.0
+const MAGNET_ATTACHED_X_PULL_LEFT_STEP_PER_UPDATE := 2.0
+const MAGNET_ATTACHED_X_PULL_RIGHT_STEP_PER_UPDATE := 1.0
+const DOUBLE_PADDLE_OFFSET_X := -20.0
+const DOUBLE_PADDLE_MIN_X := 77.0
+const DOUBLE_PADDLE_MOUSE_X_MULTIPLIER := 2.0
+const DRUNK_PADDLE_DURATION_SECONDS := 30.0
 const MAX_MONSTERS := 5
 const MONSTER_TYPE_CYCLE := [3, 6, 10]
 const MONSTER_SIZE := Vector2(32, 32)
@@ -227,11 +236,14 @@ const SUPPORTED_BONUS_EFFECTS := {
 	BONUS_SHOOTING_PADDLE_CONTINUOUS: true,
 	BONUS_SHRINK_PADDLE: true,
 	BONUS_EXPAND_PADDLE: true,
+	BONUS_DOUBLE_PADDLE: true,
+	BONUS_MAGNET_PADDLE: true,
 	BONUS_BACK_WALL: true,
 	BONUS_EXTRA_LIFE: true,
 	BONUS_DESTROY_ONE_BALL: true,
 	BONUS_RANDOM_BONUS: true,
 	BONUS_ONE_STRIKE_BRICKS: true,
+	BONUS_DRUNK_PADDLE: true,
 	BONUS_EXPAND_EXPLODING: true,
 	BONUS_JUMP_TO_NEXT_LEVEL: true,
 	BONUS_EXPLODE_ALL_EXPLODINGS: true,
@@ -293,6 +305,7 @@ var bees: Array[Dictionary] = []
 var impact_effects: Array[Dictionary] = []
 var back_wall_time_remaining := 0.0
 var level_ready_time_remaining := 0.0
+var _drunk_paddle_time_remaining := 0.0
 var _bonus_rng = RandomScript.new()
 var _ball_animation_rng = RandomScript.new(31415)
 var _bonus_animation_rng = RandomScript.new(31415)
@@ -309,6 +322,13 @@ var racket_visual_frame := 0
 var _racket_visual_target_mode := RACKET_VISUAL_MODE_NORMAL
 var _racket_visual_elapsed := 0.0
 var _single_shot_projectile_armed := false
+var _double_paddle_active := false
+var _double_paddle_x := RACKET_X + DOUBLE_PADDLE_OFFSET_X
+var _magnet_paddle_active := false
+var _last_racket_input_y := RACKET_READY_CENTER_Y
+var _last_racket_input_x := RACKET_X
+var _has_last_racket_input := false
+var _has_last_racket_x_input := false
 var _monster_spawn_cooldown := MONSTER_SPAWN_INTERVAL_SECONDS
 var _monster_type_cycle_index := 0
 var _level_ready_animation_time_remaining := 0.0
@@ -399,18 +419,33 @@ func _load_board_for_level(level: KrakoutLevelData) -> void:
 	_load_bonus_stock_from_level(level)
 
 
-func move_racket_to(mouse_y: float) -> void:
+func move_racket_to(mouse_y: float, mouse_x = null) -> void:
 	if is_racket_stunned():
+		_remember_racket_input(mouse_y, mouse_x)
 		return
 	if is_level_ready_prompt_visible():
+		_remember_racket_input(mouse_y, mouse_x)
 		return
 	var current_height := current_racket_height()
-	racket_y = clampf(mouse_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
+	var target_center_y := mouse_y
+	var mouse_delta_x := _mouse_delta_x(mouse_x)
+	if is_drunk_paddle_active():
+		if _has_last_racket_input:
+			target_center_y = racket_y + current_height * 0.5 - (mouse_y - _last_racket_input_y)
+		else:
+			target_center_y = racket_y + current_height * 0.5
+		mouse_delta_x = -mouse_delta_x
+	_update_double_paddle_x(mouse_delta_x)
+	_remember_racket_input(mouse_y, mouse_x)
+	racket_y = clampf(target_center_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
 	if state == STATE_READY or state == STATE_BALL_LOST:
 		_attach_ready_balls()
 
 
 func launch_ready_ball() -> bool:
+	if state == STATE_PLAYING:
+		return _release_magnet_attached_balls()
+
 	if state != STATE_READY and state != STATE_BALL_LOST:
 		return false
 
@@ -676,6 +711,30 @@ func is_single_shot_paddle_armed() -> bool:
 	return _single_shot_projectile_armed
 
 
+func is_double_paddle_active() -> bool:
+	return _double_paddle_active
+
+
+func is_magnet_paddle_active() -> bool:
+	return _magnet_paddle_active
+
+
+func is_drunk_paddle_active() -> bool:
+	return _drunk_paddle_time_remaining > 0.0
+
+
+func drunk_paddle_time_remaining() -> float:
+	return _drunk_paddle_time_remaining
+
+
+func magnet_attached_ball_count() -> int:
+	var count := 0
+	for ball: Dictionary in balls:
+		if _is_ball_magnet_attached(ball):
+			count += 1
+	return count
+
+
 func is_racket_stunned() -> bool:
 	return _racket_stun_time_remaining > 0.0
 
@@ -797,6 +856,17 @@ func racket_rect() -> Rect2:
 	return Rect2(Vector2(RACKET_X, racket_y), Vector2(RACKET_WIDTH, current_racket_height()))
 
 
+func racket_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	rects.append(racket_rect())
+	if is_double_paddle_active():
+		rects.append(Rect2(
+			Vector2(_double_paddle_x, racket_y),
+			Vector2(RACKET_WIDTH, current_racket_height())
+		))
+	return rects
+
+
 func ball_rect(ball: Dictionary) -> Rect2:
 	var size := float(ball.get("size", BALL_SIZE))
 	return Rect2(ball.get("position", Vector2.ZERO), Vector2(size, size))
@@ -854,6 +924,7 @@ func force_ball(position: Vector2, velocity: Vector2, size: float = BALL_SIZE, t
 		"speed_scale": ball_speed_scale,
 		"target_speed": _target_speed_for_new_ball(velocity),
 		"speed_hit_count": 0,
+		"magnet_attached": false,
 	}]
 	state = STATE_PLAYING
 
@@ -894,6 +965,7 @@ func _add_ball(position: Vector2, velocity: Vector2, active := true, type_id := 
 		"speed_scale": ball_speed_scale,
 		"target_speed": _target_speed_for_new_ball(velocity),
 		"speed_hit_count": 0,
+		"magnet_attached": false,
 	})
 	return true
 
@@ -916,6 +988,7 @@ func _attach_ready_balls() -> void:
 		ball["speed_scale"] = ball_speed_scale
 		ball["target_speed"] = _target_speed_for_new_ball(_velocity_for_current_speed(DEFAULT_BALL_VELOCITY))
 		ball["speed_hit_count"] = 0
+		_clear_ball_magnet_attachment(ball)
 		balls[index] = ball
 
 
@@ -963,6 +1036,10 @@ func _reset_racket_to_ready_center() -> void:
 
 
 func _advance_ball(ball: Dictionary, delta: float) -> void:
+	if _is_ball_magnet_attached(ball):
+		_update_magnet_attached_ball_position(ball, delta)
+		return
+
 	var previous_position: Vector2 = ball.get("position", Vector2.ZERO)
 	var position := previous_position + Vector2(ball.get("velocity", Vector2.ZERO)) * delta
 	var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
@@ -1059,31 +1136,21 @@ func _auto_launch_ready_ball_if_needed() -> bool:
 
 func _collide_with_racket(ball: Dictionary) -> bool:
 	var rect := ball_rect(ball)
-	if not rect.intersects(racket_rect()):
-		return false
-
 	var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
 	if velocity.x <= 0.0:
 		return false
 
-	rect.position.x = RACKET_X - rect.size.x
-	velocity.x = -absf(velocity.x)
+	for racket_hit_rect: Rect2 in racket_rects():
+		if not rect.intersects(racket_hit_rect):
+			continue
+		if is_magnet_paddle_active():
+			_attach_ball_to_magnet(ball, racket_hit_rect)
+		else:
+			_bounce_ball_from_racket(ball, racket_hit_rect)
+		_queue_audio_event(SFX_EVENT_RACKET_BOUNCE)
+		return true
 
-	var racket_height := current_racket_height()
-	var racket_center := racket_y + racket_height * 0.5
-	var ball_center := rect.position.y + rect.size.y * 0.5
-	var normalized_hit := clampf((ball_center - racket_center) / (racket_height * 0.5), -1.0, 1.0)
-	var speed := _target_speed_for_ball(ball)
-	var max_y_speed := minf(RACKET_BOUNCE_MAX_Y_SPEED, speed * 0.95)
-	velocity.y = normalized_hit * max_y_speed
-	velocity.x = -sqrt(maxf(0.0, speed * speed - velocity.y * velocity.y))
-
-	ball["position"] = rect.position
-	ball["velocity"] = velocity
-	ball["target_speed"] = speed
-	_register_ball_speed_hit(ball)
-	_queue_audio_event(SFX_EVENT_RACKET_BOUNCE)
-	return true
+	return false
 
 
 func _collide_with_back_wall(ball: Dictionary) -> bool:
@@ -1328,6 +1395,12 @@ func _reset_bonus_effect_state() -> void:
 	racket_segment_count = RACKET_DEFAULT_SEGMENTS
 	ball_size = BALL_SIZE
 	ball_speed_scale = BALL_DEFAULT_SPEED_SCALE
+	_clear_paddle_mode_state(false)
+	_drunk_paddle_time_remaining = 0.0
+	_has_last_racket_input = false
+	_has_last_racket_x_input = false
+	_last_racket_input_y = RACKET_READY_CENTER_Y
+	_last_racket_input_x = RACKET_X
 	racket_y = clampf(racket_y, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_racket_height())
 
 
@@ -1338,12 +1411,8 @@ func _reset_bonus_drop_gate() -> void:
 func _clear_timed_bonus_state() -> void:
 	back_wall_time_remaining = 0.0
 	projectiles.clear()
-	_shooting_paddle_mode = PROJECTILE_MODE_DISABLED
-	_single_shot_projectile_armed = false
-	racket_visual_mode = RACKET_VISUAL_MODE_NORMAL
-	racket_visual_frame = 0
-	_racket_visual_target_mode = RACKET_VISUAL_MODE_NORMAL
-	_racket_visual_elapsed = 0.0
+	_clear_paddle_mode_state(false)
+	_drunk_paddle_time_remaining = 0.0
 	_projectile_fire_cooldown = 0.0
 
 
@@ -1354,6 +1423,8 @@ func _update_bonus_timers(delta: float) -> void:
 		back_wall_time_remaining = maxf(0.0, back_wall_time_remaining - delta)
 	if _racket_stun_time_remaining > 0.0:
 		_racket_stun_time_remaining = maxf(0.0, _racket_stun_time_remaining - delta)
+	if _drunk_paddle_time_remaining > 0.0:
+		_drunk_paddle_time_remaining = maxf(0.0, _drunk_paddle_time_remaining - delta)
 	_update_non_stricked_balls(delta)
 
 
@@ -1392,10 +1463,173 @@ func _update_racket_visual(delta: float) -> void:
 			if racket_visual_frame <= 0:
 				racket_visual_frame = 0
 				racket_visual_mode = RACKET_VISUAL_MODE_NORMAL
+		elif _racket_visual_target_mode == RACKET_VISUAL_MODE_MAGNET:
+			racket_visual_mode = RACKET_VISUAL_MODE_MAGNET
+			racket_visual_frame = (racket_visual_frame + 1) % RACKET_MAGNET_VISUAL_FRAME_COUNT
 		else:
 			racket_visual_mode = _racket_visual_target_mode
 			if racket_visual_frame < RACKET_VISUAL_MAX_FRAME:
 				racket_visual_frame += 1
+
+
+func _mouse_delta_x(mouse_x) -> float:
+	if mouse_x == null:
+		return 0.0
+	var next_mouse_x := float(mouse_x)
+	if not _has_last_racket_x_input:
+		return 0.0
+	return next_mouse_x - _last_racket_input_x
+
+
+func _remember_racket_input(mouse_y: float, mouse_x = null) -> void:
+	_last_racket_input_y = mouse_y
+	_has_last_racket_input = true
+	if mouse_x != null:
+		_last_racket_input_x = float(mouse_x)
+		_has_last_racket_x_input = true
+
+
+func _update_double_paddle_x(mouse_delta_x: float) -> void:
+	if not is_double_paddle_active() or is_zero_approx(mouse_delta_x):
+		return
+	_double_paddle_x = clampf(
+		_double_paddle_x + mouse_delta_x * DOUBLE_PADDLE_MOUSE_X_MULTIPLIER,
+		DOUBLE_PADDLE_MIN_X,
+		RACKET_X + DOUBLE_PADDLE_OFFSET_X
+	)
+
+
+func _clear_paddle_mode_state(release_attached_balls := true) -> void:
+	if release_attached_balls:
+		_release_magnet_attached_balls()
+	else:
+		_clear_all_magnet_attachments()
+	_double_paddle_active = false
+	_double_paddle_x = RACKET_X + DOUBLE_PADDLE_OFFSET_X
+	_magnet_paddle_active = false
+	_shooting_paddle_mode = PROJECTILE_MODE_DISABLED
+	_single_shot_projectile_armed = false
+	racket_visual_mode = RACKET_VISUAL_MODE_NORMAL
+	racket_visual_frame = 0
+	_racket_visual_target_mode = RACKET_VISUAL_MODE_NORMAL
+	_racket_visual_elapsed = 0.0
+
+
+func _is_ball_magnet_attached(ball: Dictionary) -> bool:
+	return bool(ball.get("active", false)) and bool(ball.get("magnet_attached", false))
+
+
+func _clear_ball_magnet_attachment(ball: Dictionary) -> void:
+	ball["magnet_attached"] = false
+	ball.erase("magnet_offset_y")
+	ball.erase("magnet_release_speed")
+
+
+func _clear_all_magnet_attachments() -> void:
+	for index in range(balls.size()):
+		var ball := balls[index]
+		_clear_ball_magnet_attachment(ball)
+		balls[index] = ball
+
+
+func _update_magnet_attached_ball_positions(delta := 0.0) -> void:
+	for index in range(balls.size()):
+		var ball := balls[index]
+		if _is_ball_magnet_attached(ball):
+			_update_magnet_attached_ball_position(ball, delta)
+			balls[index] = ball
+
+
+func _update_magnet_attached_ball_position(ball: Dictionary, delta := 0.0) -> void:
+	var rect := ball_rect(ball)
+	var primary_racket := racket_rect()
+	if delta > 0.0:
+		if rect.position.y > primary_racket.end.y:
+			rect.position.y = primary_racket.end.y
+		elif rect.end.y < primary_racket.position.y:
+			rect.position.y = primary_racket.position.y - rect.size.y
+
+		var target_y := primary_racket.position.y + (primary_racket.size.y - rect.size.y) * 0.5
+		rect.position.y = move_toward(
+			rect.position.y,
+			target_y,
+			MAGNET_ATTACHED_Y_STEP_PER_UPDATE * ORIGINAL_UPDATE_HZ * delta
+		)
+
+		var target_x := primary_racket.position.x - rect.size.x
+		if rect.position.x > target_x:
+			rect.position.x = maxf(
+				target_x,
+				rect.position.x - MAGNET_ATTACHED_X_PULL_LEFT_STEP_PER_UPDATE * ORIGINAL_UPDATE_HZ * delta
+			)
+		elif rect.position.x < target_x:
+			rect.position.x = minf(
+				target_x,
+				rect.position.x + MAGNET_ATTACHED_X_PULL_RIGHT_STEP_PER_UPDATE * ORIGINAL_UPDATE_HZ * delta
+			)
+	ball["position"] = rect.position
+	ball["velocity"] = Vector2.ZERO
+
+
+func _attach_ball_to_magnet(ball: Dictionary, racket_hit_rect: Rect2) -> void:
+	var rect := ball_rect(ball)
+	rect.position.x = racket_hit_rect.position.x - rect.size.x
+	var speed := _target_speed_for_ball(ball)
+	if speed <= 0.0:
+		speed = _velocity_for_current_speed(DEFAULT_BALL_VELOCITY).length()
+	ball["position"] = rect.position
+	ball["velocity"] = Vector2.ZERO
+	ball["target_speed"] = speed
+	ball["magnet_release_speed"] = speed
+	ball["magnet_attached"] = true
+
+
+func _release_magnet_attached_balls() -> bool:
+	var released_any := false
+	for index in range(balls.size()):
+		var ball := balls[index]
+		if not _is_ball_magnet_attached(ball):
+			continue
+
+		_update_magnet_attached_ball_position(ball)
+		var speed := float(ball.get("magnet_release_speed", _target_speed_for_ball(ball)))
+		if speed <= 0.0:
+			speed = _velocity_for_current_speed(DEFAULT_BALL_VELOCITY).length()
+		_clear_ball_magnet_attachment(ball)
+		ball["velocity"] = _racket_bounce_velocity(ball_rect(ball), racket_rect(), speed)
+		ball["target_speed"] = speed
+		balls[index] = ball
+		released_any = true
+	return released_any
+
+
+func _bounce_ball_from_racket(ball: Dictionary, racket_hit_rect: Rect2) -> void:
+	var rect := ball_rect(ball)
+	var speed := _target_speed_for_ball(ball)
+	rect.position.x = racket_hit_rect.position.x - rect.size.x
+	ball["position"] = rect.position
+	ball["velocity"] = _racket_bounce_velocity(rect, racket_hit_rect, speed)
+	ball["target_speed"] = speed
+	_register_ball_speed_hit(ball)
+
+
+func _racket_bounce_velocity(ball_hit_rect: Rect2, racket_hit_rect: Rect2, speed: float) -> Vector2:
+	var racket_height := racket_hit_rect.size.y
+	var racket_center := racket_hit_rect.get_center().y
+	var ball_center := ball_hit_rect.get_center().y
+	var normalized_hit := clampf((ball_center - racket_center) / (racket_height * 0.5), -1.0, 1.0)
+	var max_y_speed := minf(RACKET_BOUNCE_MAX_Y_SPEED, speed * 0.95)
+	var velocity_y := normalized_hit * max_y_speed
+	var velocity_x := -sqrt(maxf(0.0, speed * speed - velocity_y * velocity_y))
+	return Vector2(velocity_x, velocity_y)
+
+
+func _bonus_intersects_any_racket(bonus: Dictionary) -> bool:
+	var rect := bonus_rect(bonus)
+	for current_racket_rect: Rect2 in racket_rects():
+		if rect.intersects(current_racket_rect):
+			return true
+	return false
 
 
 func _spawn_falling_bonus(type_id: int, position: Vector2) -> bool:
@@ -1422,7 +1656,7 @@ func _update_falling_bonuses(delta: float) -> void:
 			continue
 
 		_advance_falling_bonus(bonus, delta)
-		if bonus_rect(bonus).intersects(racket_rect()) and _push_bonus_stack(int(bonus.get("type_id", 0))):
+		if _bonus_intersects_any_racket(bonus) and _push_bonus_stack(int(bonus.get("type_id", 0))):
 			bonus["active"] = false
 			_queue_audio_event(SFX_EVENT_BONUS_COLLECT)
 
@@ -2083,6 +2317,10 @@ func _apply_bonus_effect(type_id: int) -> Dictionary:
 			return _adjust_racket_segments(-RACKET_BONUS_STEP_SEGMENTS)
 		BONUS_EXPAND_PADDLE:
 			return _adjust_racket_segments(RACKET_BONUS_STEP_SEGMENTS)
+		BONUS_DOUBLE_PADDLE:
+			return _activate_double_paddle()
+		BONUS_MAGNET_PADDLE:
+			return _activate_magnet_paddle()
 		BONUS_BACK_WALL:
 			return _activate_back_wall()
 		BONUS_EXTRA_LIFE:
@@ -2094,6 +2332,8 @@ func _apply_bonus_effect(type_id: int) -> Dictionary:
 			return _activate_random_bonus()
 		BONUS_ONE_STRIKE_BRICKS:
 			return _activate_one_strike_bricks()
+		BONUS_DRUNK_PADDLE:
+			return _activate_drunk_paddle()
 		BONUS_EXPAND_EXPLODING:
 			return _activate_expand_exploding()
 		BONUS_JUMP_TO_NEXT_LEVEL:
@@ -2110,6 +2350,7 @@ func _adjust_ball_size(delta_size: float) -> Dictionary:
 		var ball := balls[index]
 		ball["size"] = ball_size
 		balls[index] = ball
+	_update_magnet_attached_ball_positions()
 	return {"effect": "ball_size", "ball_size": ball_size}
 
 
@@ -2161,6 +2402,7 @@ func _adjust_racket_segments(delta_segments: int) -> Dictionary:
 		if racket_segment_count < RACKET_EXPAND_LIMIT_SEGMENTS:
 			racket_segment_count += delta_segments
 	racket_y = clampf(racket_y, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_racket_height())
+	_update_magnet_attached_ball_positions()
 	if state == STATE_READY or state == STATE_BALL_LOST:
 		_attach_ready_balls()
 	return {
@@ -2173,6 +2415,34 @@ func _adjust_racket_segments(delta_segments: int) -> Dictionary:
 func _activate_back_wall() -> Dictionary:
 	back_wall_time_remaining = BACK_WALL_DURATION_SECONDS
 	return {"effect": "back_wall", "seconds_remaining": back_wall_time_remaining}
+
+
+func _activate_double_paddle() -> Dictionary:
+	_clear_paddle_mode_state()
+	_double_paddle_active = true
+	return {
+		"effect": "double_paddle",
+		"active": true,
+		"racket_count": racket_rects().size(),
+	}
+
+
+func _activate_magnet_paddle() -> Dictionary:
+	_clear_paddle_mode_state()
+	_magnet_paddle_active = true
+	_set_racket_visual_target(RACKET_VISUAL_MODE_MAGNET)
+	return {
+		"effect": "magnet_paddle",
+		"active": true,
+	}
+
+
+func _activate_drunk_paddle() -> Dictionary:
+	_drunk_paddle_time_remaining += DRUNK_PADDLE_DURATION_SECONDS
+	return {
+		"effect": "drunk_paddle",
+		"seconds_remaining": _drunk_paddle_time_remaining,
+	}
 
 
 func _activate_one_strike_bricks() -> Dictionary:
@@ -2224,6 +2494,7 @@ func _activate_explode_all_explodings() -> Dictionary:
 
 
 func _activate_shooting_paddle_one_shot() -> Dictionary:
+	_clear_paddle_mode_state()
 	_shooting_paddle_mode = PROJECTILE_MODE_DISABLED
 	_single_shot_projectile_armed = true
 	_set_racket_visual_target(RACKET_VISUAL_MODE_SHOOTING_ONE_SHOT)
@@ -2234,6 +2505,7 @@ func _activate_shooting_paddle_one_shot() -> Dictionary:
 
 
 func _activate_shooting_paddle_continuous() -> Dictionary:
+	_clear_paddle_mode_state()
 	_shooting_paddle_mode = PROJECTILE_MODE_CONTINUOUS
 	_single_shot_projectile_armed = false
 	_set_racket_visual_target(RACKET_VISUAL_MODE_SHOOTING_CONTINUOUS)

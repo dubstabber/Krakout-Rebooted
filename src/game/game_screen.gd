@@ -183,7 +183,7 @@ func _input(event: InputEvent) -> void:
 			_hourglass_cursor.set_cursor_position(event.position)
 		if is_debug_cheats_visible() or _paused or _exit_confirmation_visible:
 			return
-		gameplay_session.move_racket_to(event.position.y)
+		gameplay_session.move_racket_to(event.position.y, event.position.x)
 		_refresh_actor_renderers()
 		return
 
@@ -258,10 +258,10 @@ func current_hud():
 	return hud_renderer
 
 
-func move_racket_to(mouse_y: float) -> void:
+func move_racket_to(mouse_y: float, mouse_x = null) -> void:
 	if gameplay_session == null:
 		return
-	gameplay_session.move_racket_to(mouse_y)
+	gameplay_session.move_racket_to(mouse_y, mouse_x)
 	_refresh_actor_renderers()
 
 
