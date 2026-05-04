@@ -52,18 +52,27 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   center at the original tick pace, and releases them through the launch action
   with preserved speed, and `Drunk Paddle` accumulates original 30-second
   inverted-movement windows.
-- `KrakoutGameSession` now owns the first IDA-backed monster pool: five active
-  slots, the original 3/6/10 type cycle, 4.5-second spawn gate, 6.5-second
-  lifetime, 70ms animation cadence, original 1px/call 3-substep speed conversion,
-  pre-launch spawning while the ready ball stays attached, paddle-following type-3
-  eye movement, ball/projectile collision scoring, ball trajectory changes,
-  wall-boundary reflection, and paddle contact handling.
+- `KrakoutGameSession` now owns the IDA-backed registered monster pool: five
+  active slots, the original 11-way registered spawn range, 4.5-second spawn
+  gate, 6.5-second lifetime, 70ms animation cadence, original 1px/call
+  3-substep speed conversion, pre-launch spawning while the ready ball stays
+  attached, ball/projectile collision scoring, original radius-based ball enemy
+  contacts, ball trajectory changes, 32px visual-bound wall clamping, and paddle
+  contact handling. Monster behavior runs through an explicit original-backed
+  trait catalog: type 3 follows the paddle, type 6 uses the original random
+  10..60 score step, type 10 tracks the active ball and clamps at walls without
+  angle reflection, and type 9 is a registered-spawn stun hazard with the
+  original 32px contact box and 30-point racket-contact score.
 - `KrakoutMonsterRenderer` draws those transient monsters from `Monsters.png`
   through the source 32x32 type/frame grid. `KrakoutBeeRenderer` adds the
-  first Bee/type-9 floating hazard path, including the original-style
+  first Bee floating hazard path, including the original-style
   racket-relative spawn, 3px/call 3-substep speed conversion, ball-hit removal
   without paddle stun, contact stun, original `InfoIcons` stuck-racket countdown,
   `EffBee` stop-on-removal routing, hit SFX, and impact VFX.
+- `Snake.png` is loaded and render-capable through the original asset path, but
+  the current executable evidence does not prove a safe gameplay activation
+  contract; do not spawn or simulate Snake behavior until that path is
+  re-identified from IDA/runtime traces.
 - `KrakoutImpactEffectRenderer` draws enemy spawn, timeout, and hit effects from
   the original `Exploision` 32x32 vertical-frame columns, with the original
   11-frame/50ms cadence.

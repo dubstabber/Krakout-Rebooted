@@ -141,10 +141,13 @@ const DOUBLE_PADDLE_MIN_X := 77.0
 const DOUBLE_PADDLE_MOUSE_X_MULTIPLIER := 2.0
 const DRUNK_PADDLE_DURATION_SECONDS := 30.0
 const MAX_MONSTERS := 5
-const MONSTER_TYPE_CYCLE := [3, 6, 10]
+const MONSTER_TYPE_COUNT := 11
 const MONSTER_SIZE := Vector2(32, 32)
 const MONSTER_COLLISION_SIZE := Vector2(26, 26)
 const MONSTER_COLLISION_OFFSET := Vector2(3, 3)
+const MONSTER_TYPE9_COLLISION_SIZE := Vector2(32, 32)
+const MONSTER_TYPE9_COLLISION_OFFSET := Vector2.ZERO
+const MONSTER_BALL_COLLISION_RADIUS := 16.0
 const MONSTER_LIFETIME_SECONDS := 6.5
 const MONSTER_SPAWN_INTERVAL_SECONDS := 4.5
 const MONSTER_FRAME_SECONDS := 0.07
@@ -157,8 +160,58 @@ const MONSTER_SCORE := 15
 const MONSTER_BALL_HIT_SCORE := 25
 const MONSTER_TYPE6_SCORE_STEP := 10
 const MONSTER_TYPE6_SCORE_VARIANTS := 6
+const MONSTER_TYPE9_STUN_SCORE := 30
 const MONSTER_BALL_HIT_MIN_ROTATION_DEGREES := 90
 const MONSTER_BALL_HIT_RANDOM_ROTATION_DEGREES := 90
+const MONSTER_MOTION_ANGLE := "angle"
+const MONSTER_MOTION_PADDLE_FOLLOW := "paddle_follow"
+const MONSTER_MOTION_BALL_TRACK := "ball_track"
+const MONSTER_SCORE_MODE_DEFAULT := "default"
+const MONSTER_SCORE_MODE_RANDOM_TYPE6 := "random_type6"
+const MONSTER_SCORE_MODE_STUN_TYPE9 := "stun_type9"
+const MONSTER_DEFAULT_TRAIT := {
+	"frame_count": 11,
+	"motion_mode": MONSTER_MOTION_ANGLE,
+	"paddle_score_mode": MONSTER_SCORE_MODE_DEFAULT,
+	"ball_score_mode": MONSTER_SCORE_MODE_DEFAULT,
+	"collision_offset": MONSTER_COLLISION_OFFSET,
+	"collision_size": MONSTER_COLLISION_SIZE,
+	"stuns_racket": false,
+	"natural_spawn": false,
+}
+const MONSTER_TRAITS := {
+	0: {"frame_count": 20, "natural_spawn": true},
+	1: {"frame_count": 20, "natural_spawn": true},
+	2: {"frame_count": 20, "natural_spawn": true},
+	3: {
+		"frame_count": 20,
+		"motion_mode": MONSTER_MOTION_PADDLE_FOLLOW,
+		"natural_spawn": true,
+	},
+	4: {"frame_count": 20, "natural_spawn": true},
+	5: {"frame_count": 20, "natural_spawn": true},
+	6: {
+		"frame_count": 20,
+		"paddle_score_mode": MONSTER_SCORE_MODE_RANDOM_TYPE6,
+		"ball_score_mode": MONSTER_SCORE_MODE_RANDOM_TYPE6,
+		"natural_spawn": true,
+	},
+	7: {"frame_count": 11, "natural_spawn": true},
+	8: {"frame_count": 10, "natural_spawn": true},
+	9: {
+		"frame_count": 20,
+		"paddle_score_mode": MONSTER_SCORE_MODE_STUN_TYPE9,
+		"collision_offset": MONSTER_TYPE9_COLLISION_OFFSET,
+		"collision_size": MONSTER_TYPE9_COLLISION_SIZE,
+		"stuns_racket": true,
+		"natural_spawn": true,
+	},
+	10: {
+		"frame_count": 11,
+		"motion_mode": MONSTER_MOTION_BALL_TRACK,
+		"natural_spawn": true,
+	},
+}
 const BEE_SIZE := Vector2(48, 40)
 const BEE_COLLISION_SIZE := Vector2(36, 36)
 const BEE_COLLISION_OFFSET := Vector2(6, 6)
@@ -169,7 +222,8 @@ const BEE_SPAWN_X := 50.0
 const BEE_EXPIRE_X := 640.0
 const BEE_SPAWN_DELAY_MAX_SECONDS := 30.0
 const BEE_BALL_HIT_SCORE := MONSTER_BALL_HIT_SCORE
-const BEE_STUN_SCORE := 30
+const BEE_STUN_SCORE := MONSTER_TYPE9_STUN_SCORE
+const BEE_BALL_COLLISION_RADIUS := 24.0
 const RACKET_STUN_DURATION_SECONDS := 3.0
 const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
@@ -330,7 +384,6 @@ var _last_racket_input_x := RACKET_X
 var _has_last_racket_input := false
 var _has_last_racket_x_input := false
 var _monster_spawn_cooldown := MONSTER_SPAWN_INTERVAL_SECONDS
-var _monster_type_cycle_index := 0
 var _level_ready_animation_time_remaining := 0.0
 var _level_ready_roller_offset := 0.0
 var _level_ready_roller_frame := 0
@@ -811,12 +864,69 @@ static func bonus_type_name(type_id: int) -> String:
 	return "Unknown Bonus"
 
 
+static func monster_trait_for_type(type_id: int) -> Dictionary:
+	var monster_trait := MONSTER_DEFAULT_TRAIT.duplicate()
+	if MONSTER_TRAITS.has(type_id):
+		monster_trait.merge(MONSTER_TRAITS[type_id], true)
+	return monster_trait
+
+
+static func monster_spawn_pool() -> Array[int]:
+	var spawn_pool: Array[int] = []
+	for type_id in range(MONSTER_TYPE_COUNT):
+		if monster_type_is_original_spawned(type_id):
+			spawn_pool.append(type_id)
+	return spawn_pool
+
+
+static func monster_frame_count_for_type(type_id: int) -> int:
+	return int(_monster_trait_value(type_id, "frame_count", MONSTER_DEFAULT_TRAIT["frame_count"]))
+
+
+static func monster_motion_mode_for_type(type_id: int) -> String:
+	return String(_monster_trait_value(type_id, "motion_mode", MONSTER_MOTION_ANGLE))
+
+
+static func monster_collision_offset_for_type(type_id: int) -> Vector2:
+	return _monster_trait_value(type_id, "collision_offset", MONSTER_COLLISION_OFFSET) as Vector2
+
+
+static func monster_collision_size_for_type(type_id: int) -> Vector2:
+	return _monster_trait_value(type_id, "collision_size", MONSTER_COLLISION_SIZE) as Vector2
+
+
+static func monster_stuns_racket(type_id: int) -> bool:
+	return bool(_monster_trait_value(type_id, "stuns_racket", false))
+
+
+static func monster_type_is_original_spawned(type_id: int) -> bool:
+	return bool(_monster_trait_value(type_id, "natural_spawn", false))
+
+
+static func _monster_score_mode_for_type(type_id: int, contact_key: String) -> String:
+	return String(_monster_trait_value(type_id, contact_key, MONSTER_SCORE_MODE_DEFAULT))
+
+
+static func _monster_trait_value(type_id: int, key: String, default_value):
+	if MONSTER_TRAITS.has(type_id):
+		var monster_trait: Dictionary = MONSTER_TRAITS[type_id]
+		if monster_trait.has(key):
+			return monster_trait[key]
+	if MONSTER_DEFAULT_TRAIT.has(key):
+		return MONSTER_DEFAULT_TRAIT[key]
+	return default_value
+
+
 func set_bonus_rng_seed(seed_value: int) -> void:
 	_bonus_rng.set_seed(seed_value)
 
 
 func set_monster_rng_seed(seed_value: int) -> void:
 	_monster_rng.set_seed(seed_value)
+
+
+func active_monster_spawn_pool() -> Array[int]:
+	return monster_spawn_pool()
 
 
 func set_collision_rng_seed(seed_value: int) -> void:
@@ -880,7 +990,11 @@ func projectile_rect(projectile: Dictionary) -> Rect2:
 
 
 func monster_rect(monster: Dictionary) -> Rect2:
-	return Rect2(monster.get("position", Vector2.ZERO) + MONSTER_COLLISION_OFFSET, MONSTER_COLLISION_SIZE)
+	var type_id := int(monster.get("type_id", 0))
+	return Rect2(
+		monster.get("position", Vector2.ZERO) + monster_collision_offset_for_type(type_id),
+		monster_collision_size_for_type(type_id)
+	)
 
 
 func bee_rect(bee: Dictionary) -> Rect2:
@@ -1808,7 +1922,6 @@ func _clear_monster_state() -> void:
 	bees.clear()
 	impact_effects.clear()
 	_monster_spawn_cooldown = MONSTER_SPAWN_INTERVAL_SECONDS
-	_monster_type_cycle_index = 0
 	_bee_spawn_delay_remaining = BEE_SPAWN_DELAY_MAX_SECONDS
 	_racket_stun_time_remaining = 0.0
 
@@ -1837,8 +1950,7 @@ func _spawn_next_monster() -> bool:
 	if monsters.size() >= MAX_MONSTERS:
 		return false
 
-	var type_id := int(MONSTER_TYPE_CYCLE[_monster_type_cycle_index % MONSTER_TYPE_CYCLE.size()])
-	_monster_type_cycle_index += 1
+	var type_id := _next_monster_type()
 	var position := Vector2(
 		260.0 + float(_monster_rng.next_mod(200)),
 		100.0 + float(_monster_rng.next_mod(320))
@@ -1854,6 +1966,10 @@ func _spawn_next_monster() -> bool:
 	_spawn_impact_effect(position, IMPACT_EFFECT_KIND_MONSTER_SPAWN)
 	_queue_audio_event(SFX_EVENT_MONSTER_SPAWN)
 	return true
+
+
+func _next_monster_type() -> int:
+	return int(_monster_rng.next_mod(MONSTER_TYPE_COUNT))
 
 
 func _new_monster(position: Vector2, type_id: int, angle: int) -> Dictionary:
@@ -1893,25 +2009,28 @@ func _advance_monster(monster: Dictionary, delta: float) -> void:
 	var tick_scale := ORIGINAL_ENEMY_UPDATE_HZ * delta
 	var distance := speed * tick_scale
 	var angle := float(monster.get("angle", 0.0))
-	if type_id == 3 and not bool(monster.get("boundary_reflected", false)):
-		if distance > 0.0:
-			var horizontal_limit := MONSTER_TYPE3_RIGHT_LIMIT + speed
-			if position.x <= MONSTER_TYPE3_RIGHT_LIMIT:
-				position.x = minf(position.x + distance, horizontal_limit)
+	match monster_motion_mode_for_type(type_id):
+		MONSTER_MOTION_PADDLE_FOLLOW:
+			if distance > 0.0:
+				var horizontal_limit := MONSTER_TYPE3_RIGHT_LIMIT + speed
+				if position.x <= MONSTER_TYPE3_RIGHT_LIMIT:
+					position.x = minf(position.x + distance, horizontal_limit)
 
-			var jitter := float(_monster_rng.next_mod(MONSTER_TYPE3_VERTICAL_JITTER_RANGE))
-			var probe_y := position.y + MONSTER_SIZE.y * 0.5 + MONSTER_TYPE3_VERTICAL_JITTER_BASE + jitter
-			if racket_rect().get_center().y > probe_y:
-				position.y += distance
-				angle = 270.0
+				var jitter := float(_monster_rng.next_mod(MONSTER_TYPE3_VERTICAL_JITTER_RANGE))
+				var probe_y := position.y + MONSTER_SIZE.y * 0.5 + MONSTER_TYPE3_VERTICAL_JITTER_BASE + jitter
+				if racket_rect().get_center().y > probe_y:
+					position.y += distance
+					angle = 270.0
+				else:
+					position.y -= distance
+					angle = 90.0
 			else:
-				position.y -= distance
-				angle = 90.0
-	elif type_id == 10:
-		angle = _tracking_angle_for_monster(monster, angle, tick_scale)
-		position += _monster_motion_vector(angle, distance)
-	else:
-		position += _monster_motion_vector(angle, distance)
+				position += _monster_motion_vector(angle, distance)
+		MONSTER_MOTION_BALL_TRACK:
+			angle = _tracking_angle_for_monster(monster, angle, tick_scale)
+			position += _monster_motion_vector(angle, distance)
+		_:
+			position += _monster_motion_vector(angle, distance)
 
 	monster["position"] = position
 	monster["angle"] = angle
@@ -1920,44 +2039,41 @@ func _advance_monster(monster: Dictionary, delta: float) -> void:
 
 func _collide_monster_with_boundaries(monster: Dictionary) -> bool:
 	var position: Vector2 = monster.get("position", Vector2.ZERO)
-	var rect := Rect2(position + MONSTER_COLLISION_OFFSET, MONSTER_COLLISION_SIZE)
+	var type_id := int(monster.get("type_id", 0))
+	var rect := Rect2(position, MONSTER_SIZE)
 	var hit_horizontal := false
 	var hit_vertical := false
 
 	if rect.position.x < PlayfieldSpecScript.WALL_INNER_LEFT_X:
-		position.x = PlayfieldSpecScript.WALL_INNER_LEFT_X - MONSTER_COLLISION_OFFSET.x
+		position.x = PlayfieldSpecScript.WALL_INNER_LEFT_X
 		hit_horizontal = true
 	elif rect.end.x > PlayfieldSpecScript.WALL_INNER_RIGHT_X:
-		position.x = PlayfieldSpecScript.WALL_INNER_RIGHT_X - MONSTER_COLLISION_OFFSET.x - MONSTER_COLLISION_SIZE.x
+		position.x = PlayfieldSpecScript.WALL_INNER_RIGHT_X - MONSTER_SIZE.x
 		hit_horizontal = true
 
 	if rect.position.y < PlayfieldSpecScript.WALL_INNER_TOP_Y:
-		position.y = PlayfieldSpecScript.WALL_INNER_TOP_Y - MONSTER_COLLISION_OFFSET.y
+		position.y = PlayfieldSpecScript.WALL_INNER_TOP_Y
 		hit_vertical = true
 	elif rect.end.y > PlayfieldSpecScript.WALL_INNER_BOTTOM_Y:
-		position.y = PlayfieldSpecScript.WALL_INNER_BOTTOM_Y - MONSTER_COLLISION_OFFSET.y - MONSTER_COLLISION_SIZE.y
+		position.y = PlayfieldSpecScript.WALL_INNER_BOTTOM_Y - MONSTER_SIZE.y
 		hit_vertical = true
 
 	if not hit_horizontal and not hit_vertical:
 		return false
 
-	var angle := float(monster.get("angle", 0.0))
-	if hit_horizontal:
-		angle = fposmod(180.0 - angle, 360.0)
-	if hit_vertical:
-		angle = fposmod(360.0 - angle, 360.0)
 	monster["position"] = position
-	monster["angle"] = angle
-	monster["boundary_reflected"] = true
+	if type_id != 10:
+		var angle := float(monster.get("angle", 0.0))
+		if hit_horizontal:
+			angle = fposmod(180.0 - angle, 360.0)
+		if hit_vertical:
+			angle = fposmod(360.0 - angle, 360.0)
+		monster["angle"] = angle
 	return true
 
 
 func _frame_count_for_monster_type(type_id: int) -> int:
-	if type_id <= 6 or type_id == 9:
-		return 20
-	if type_id == 8:
-		return 10
-	return 11
+	return monster_frame_count_for_type(type_id)
 
 
 func _tracking_angle_for_monster(monster: Dictionary, current_angle: float, tick_scale: float) -> float:
@@ -1993,12 +2109,11 @@ func _monster_motion_vector(angle: float, speed: float) -> Vector2:
 
 
 func _collide_ball_with_monsters(ball: Dictionary) -> bool:
-	var rect := ball_rect(ball)
 	for index in range(monsters.size()):
 		var monster: Dictionary = monsters[index]
 		if not bool(monster.get("active", false)):
 			continue
-		if rect.intersects(monster_rect(monster)):
+		if _ball_intersects_enemy_circle(ball, monster.get("position", Vector2.ZERO), MONSTER_BALL_COLLISION_RADIUS):
 			_rotate_ball_from_enemy_contact(ball)
 			_kill_monster_at_index(index, _score_for_monster_ball_contact(monster))
 			return true
@@ -2006,16 +2121,21 @@ func _collide_ball_with_monsters(ball: Dictionary) -> bool:
 
 
 func _collide_ball_with_bees(ball: Dictionary) -> bool:
-	var rect := ball_rect(ball)
 	for index in range(bees.size()):
 		var bee: Dictionary = bees[index]
 		if not bool(bee.get("active", false)):
 			continue
-		if rect.intersects(bee_rect(bee)):
+		if _ball_intersects_enemy_circle(ball, bee.get("position", Vector2.ZERO), BEE_BALL_COLLISION_RADIUS):
 			_rotate_ball_from_enemy_contact(ball)
 			_kill_bee_at_index(index, BEE_BALL_HIT_SCORE)
 			return true
 	return false
+
+
+func _ball_intersects_enemy_circle(ball: Dictionary, enemy_position: Vector2, enemy_radius: float) -> bool:
+	var ball_position: Vector2 = ball.get("position", Vector2.ZERO)
+	var ball_radius := float(ball.get("size", BALL_SIZE)) * 0.5
+	return ball_position.distance_to(enemy_position) < ball_radius + enemy_radius
 
 
 func _collide_projectile_with_monsters(projectile: Dictionary) -> bool:
@@ -2036,7 +2156,7 @@ func _collide_monster_with_racket(index: int, monster: Dictionary) -> bool:
 		return false
 
 	_kill_monster_at_index(index, _score_for_monster_paddle_contact(monster))
-	if int(monster.get("type_id", 0)) == 9:
+	if monster_stuns_racket(int(monster.get("type_id", 0))):
 		_apply_racket_stun()
 	return true
 
@@ -2053,15 +2173,21 @@ func _kill_monster_at_index(index: int, score_value: int = -1) -> void:
 
 
 func _score_for_monster_paddle_contact(monster: Dictionary) -> int:
-	if int(monster.get("type_id", 0)) == 6:
-		return MONSTER_TYPE6_SCORE_STEP * (_monster_rng.next_mod(MONSTER_TYPE6_SCORE_VARIANTS) + 1)
-	return MONSTER_SCORE
+	match _monster_score_mode_for_type(int(monster.get("type_id", 0)), "paddle_score_mode"):
+		MONSTER_SCORE_MODE_RANDOM_TYPE6:
+			return MONSTER_TYPE6_SCORE_STEP * (_monster_rng.next_mod(MONSTER_TYPE6_SCORE_VARIANTS) + 1)
+		MONSTER_SCORE_MODE_STUN_TYPE9:
+			return MONSTER_TYPE9_STUN_SCORE
+		_:
+			return MONSTER_SCORE
 
 
 func _score_for_monster_ball_contact(monster: Dictionary) -> int:
-	if int(monster.get("type_id", 0)) == 6:
-		return MONSTER_TYPE6_SCORE_STEP * (_collision_rng.next_mod(MONSTER_TYPE6_SCORE_VARIANTS) + 1)
-	return MONSTER_BALL_HIT_SCORE
+	match _monster_score_mode_for_type(int(monster.get("type_id", 0)), "ball_score_mode"):
+		MONSTER_SCORE_MODE_RANDOM_TYPE6:
+			return MONSTER_TYPE6_SCORE_STEP * (_collision_rng.next_mod(MONSTER_TYPE6_SCORE_VARIANTS) + 1)
+		_:
+			return MONSTER_BALL_HIT_SCORE
 
 
 func _rotate_ball_from_enemy_contact(ball: Dictionary) -> void:

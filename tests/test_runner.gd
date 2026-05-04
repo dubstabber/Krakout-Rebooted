@@ -947,14 +947,26 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	projectile_expire_session.update(0.0)
 	_assert(projectile_expire_session.active_projectile_count() == 0, "projectile expires at original left bound")
 
+	_assert(GameSessionScript.monster_frame_count_for_type(0) == 20, "monster trait catalog preserves 20-frame early atlas entries")
+	_assert(GameSessionScript.monster_frame_count_for_type(8) == 10, "monster trait catalog preserves original type 8 frame count")
+	_assert(GameSessionScript.monster_frame_count_for_type(10) == 11, "monster trait catalog preserves tracking monster frame count")
+	_assert(GameSessionScript.monster_motion_mode_for_type(3) == GameSessionScript.MONSTER_MOTION_PADDLE_FOLLOW, "type 3 monster trait follows the racket")
+	_assert(GameSessionScript.monster_motion_mode_for_type(10) == GameSessionScript.MONSTER_MOTION_BALL_TRACK, "type 10 monster trait tracks the ball")
+	_assert(GameSessionScript.monster_spawn_pool().size() == GameSessionScript.MONSTER_TYPE_COUNT, "registered-only monster pool exposes the original 11-way type range")
+	for registered_type_id in range(GameSessionScript.MONSTER_TYPE_COUNT):
+		_assert(GameSessionScript.monster_type_is_original_spawned(registered_type_id), "registered-only monster pool includes type %d" % registered_type_id)
+	_assert(GameSessionScript.monster_stuns_racket(9), "type 9 trait keeps original racket-stun contact")
+	_assert(GameSessionScript.monster_collision_size_for_type(9) == GameSessionScript.MONSTER_TYPE9_COLLISION_SIZE, "type 9 trait uses its full 32px contact box")
+
 	var monster_spawn_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_assert(monster_spawn_session.active_monster_spawn_pool().size() == GameSessionScript.MONSTER_TYPE_COUNT, "gameplay session uses the registered-only expanded monster pool")
 	monster_spawn_session.set_monster_rng_seed(3)
 	monster_spawn_session.force_monster_spawn_ready()
 	monster_spawn_session.update(0.0)
 	_assert(monster_spawn_session.active_monster_count() == 1, "monster spawn gate creates first original monster slot")
 	var spawned_monsters: Array = monster_spawn_session.visible_monsters()
 	if spawned_monsters.size() == 1:
-		_assert(int(spawned_monsters[0]["type_id"]) == 3, "first spawned monster uses original type-cycle entry")
+		_assert(int(spawned_monsters[0]["type_id"]) == 7, "monster spawn consumes the original 11-way type RNG")
 		_assert(monster_spawn_session.monster_rect(spawned_monsters[0]).size == GameSessionScript.MONSTER_COLLISION_SIZE, "monster collision rect uses original 26px box")
 	var spawn_effects: Array = monster_spawn_session.visible_impact_effects()
 	_assert(spawn_effects.size() == 1, "monster spawn creates original spawn VFX")
@@ -966,12 +978,12 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	monster_spawn_session.update(0.0)
 	spawned_monsters = monster_spawn_session.visible_monsters()
 	if spawned_monsters.size() >= 2:
-		_assert(int(spawned_monsters[1]["type_id"]) == 6, "second spawned monster uses original type-cycle entry")
+		_assert(int(spawned_monsters[1]["type_id"]) == 0, "second monster spawn keeps using the 11-way type RNG")
 	monster_spawn_session.force_monster_spawn_ready()
 	monster_spawn_session.update(0.0)
 	spawned_monsters = monster_spawn_session.visible_monsters()
 	if spawned_monsters.size() >= 3:
-		_assert(int(spawned_monsters[2]["type_id"]) == 10, "third spawned monster uses original type-cycle entry")
+		_assert(int(spawned_monsters[2]["type_id"]) == 6, "third monster spawn keeps using the 11-way type RNG")
 	for spawn_index in range(10):
 		monster_spawn_session.force_monster_spawn_ready()
 		monster_spawn_session.update(0.0)
@@ -1016,7 +1028,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 
 	var monster_boundary_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	monster_boundary_session.force_monster(
-		Vector2(PlayfieldSpecScript.WALL_INNER_LEFT_X - GameSessionScript.MONSTER_COLLISION_OFFSET.x - 4.0, 200),
+		Vector2(PlayfieldSpecScript.WALL_INNER_LEFT_X - 4.0, 200),
 		6,
 		180
 	)
@@ -1024,8 +1036,28 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	var bounded_monsters: Array = monster_boundary_session.visible_monsters()
 	_assert(bounded_monsters.size() == 1, "monster remains active after hitting the playfield boundary")
 	if bounded_monsters.size() == 1:
-		_assert(monster_boundary_session.monster_rect(bounded_monsters[0]).position.x == PlayfieldSpecScript.WALL_INNER_LEFT_X, "monster boundary collision clamps to original inner wall")
+		_assert(bounded_monsters[0]["position"].x == PlayfieldSpecScript.WALL_INNER_LEFT_X, "monster boundary clamps the original 32px visual to the inner wall")
+		_assert(monster_boundary_session.monster_rect(bounded_monsters[0]).position.x == PlayfieldSpecScript.WALL_INNER_LEFT_X + GameSessionScript.MONSTER_COLLISION_OFFSET.x, "normal monster contact box remains inset after wall clamp")
 		_assert(int(bounded_monsters[0]["angle"]) == 0, "monster boundary collision reflects horizontal motion")
+	var tracking_boundary_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	tracking_boundary_session.force_monster(
+		Vector2(PlayfieldSpecScript.WALL_INNER_LEFT_X - 4.0, 200),
+		10,
+		180
+	)
+	tracking_boundary_session.update(0.0)
+	var tracking_boundary_monsters: Array = tracking_boundary_session.visible_monsters()
+	if tracking_boundary_monsters.size() == 1:
+		_assert(tracking_boundary_monsters[0]["position"].x == PlayfieldSpecScript.WALL_INNER_LEFT_X, "tracking monster clamps to original inner wall")
+		_assert(int(tracking_boundary_monsters[0]["angle"]) == 180, "tracking monster wall clamp does not reflect its tracking angle")
+	var eye_boundary_follow_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	eye_boundary_follow_session.move_racket_to(430.0)
+	eye_boundary_follow_session.force_monster(Vector2(220, PlayfieldSpecScript.WALL_INNER_TOP_Y - 4.0), 3, 90)
+	eye_boundary_follow_session.update(0.0)
+	eye_boundary_follow_session.update(1.0 / GameSessionScript.ORIGINAL_ENEMY_UPDATE_HZ)
+	var boundary_eye_monsters: Array = eye_boundary_follow_session.visible_monsters()
+	if boundary_eye_monsters.size() == 1:
+		_assert(float(boundary_eye_monsters[0]["position"].y) > PlayfieldSpecScript.WALL_INNER_TOP_Y, "type 3 keeps following the paddle after a wall clamp")
 
 	var monster_ball_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	monster_ball_hit_session.set_collision_rng_seed(1)
@@ -1039,6 +1071,17 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(monster_ball_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_HIT], "monster collision queues monster-hit SFX event")
 	monster_ball_hit_session.update(GameSessionScript.IMPACT_EFFECT_DURATION_SECONDS)
 	_assert(monster_ball_hit_session.visible_impact_effects().is_empty(), "monster hit VFX expires through the session effect pool")
+
+	var monster_ball_radius_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	monster_ball_radius_session.force_ball(Vector2(200, 200), Vector2.ZERO)
+	monster_ball_radius_session.force_monster(Vector2(224, 200), 3, 0)
+	monster_ball_radius_session.update(0.0)
+	_assert(monster_ball_radius_session.active_monster_count() == 0, "ball monster collision uses original radius test instead of rectangle overlap")
+	var monster_ball_radius_miss_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	monster_ball_radius_miss_session.force_ball(Vector2(200, 200), Vector2.ZERO)
+	monster_ball_radius_miss_session.force_monster(Vector2(225, 200), 3, 0)
+	monster_ball_radius_miss_session.update(0.0)
+	_assert(monster_ball_radius_miss_session.active_monster_count() == 1, "ball monster collision keeps the original strict radius threshold")
 
 	var monster_speed_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	monster_speed_session.launch_ready_ball()
@@ -1075,6 +1118,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	)
 	monster_stun_session.update(0.0)
 	_assert(monster_stun_session.is_racket_stunned(), "type 9 enemy contact stuns the racket")
+	_assert(monster_stun_session.score == GameSessionScript.MONSTER_TYPE9_STUN_SCORE, "type 9 stun contact awards original 30-point score")
 	monster_stun_session.move_racket_to(10000.0)
 	_assert(monster_stun_session.racket_rect().position.y == stunned_start_y, "stunned racket ignores player movement")
 	monster_stun_session.update(GameSessionScript.RACKET_STUN_DURATION_SECONDS)
@@ -1119,6 +1163,16 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		bee_ball_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BEE_STOP, GameSessionScript.SFX_EVENT_MONSTER_HIT],
 		"bee ball collision stops EffBee before monster-hit SFX"
 	)
+	var bee_ball_radius_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	bee_ball_radius_session.force_ball(Vector2(200, 200), Vector2.ZERO)
+	bee_ball_radius_session.force_bee(Vector2(232, 200))
+	bee_ball_radius_session.update(0.0)
+	_assert(bee_ball_radius_session.active_bee_count() == 0, "ball bee collision uses original radius test instead of rectangle overlap")
+	var bee_ball_radius_miss_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	bee_ball_radius_miss_session.force_ball(Vector2(200, 200), Vector2.ZERO)
+	bee_ball_radius_miss_session.force_bee(Vector2(233, 200))
+	bee_ball_radius_miss_session.update(0.0)
+	_assert(bee_ball_radius_miss_session.active_bee_count() == 1, "ball bee collision keeps the original strict radius threshold")
 
 	var bee_racket_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	bee_racket_hit_session.force_ball(Vector2(300, 200), Vector2.ZERO)
@@ -1669,6 +1723,7 @@ func _validate_level_grid_renderer_defaults() -> void:
 
 	var monster_renderer = MonsterRendererScript.new()
 	_assert(monster_renderer.source_rect_for_monster(3, 0) == Rect2(Vector2(96, 0), Vector2(32, 32)), "monster renderer maps original type 3 frame")
+	_assert(monster_renderer.source_rect_for_monster(9, 19) == Rect2(Vector2(288, 608), Vector2(32, 32)), "monster renderer maps original type 9 final stun-hazard frame")
 	_assert(monster_renderer.source_rect_for_monster(10, 7) == Rect2(Vector2(320, 224), Vector2(32, 32)), "monster renderer maps original type 10 animation row")
 	monster_renderer.free()
 
