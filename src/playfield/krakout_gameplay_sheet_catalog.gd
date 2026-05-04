@@ -104,6 +104,11 @@ const SHEETS := {
 		"expected_size": Vector2i(640, 39),
 		"source": "IDA sub_40D650",
 	},
+	"Vx": {
+		"texture_name": "Vx",
+		"expected_size": Vector2i(430, 40),
+		"source": "IDA sub_4160D0 / sub_417470",
+	},
 	"Walls": {
 		"texture_name": "Walls",
 		"expected_size": Vector2i(135, 72),

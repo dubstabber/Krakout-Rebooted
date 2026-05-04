@@ -4,6 +4,7 @@ class_name OptionsScreen
 signal back_requested
 
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
+const OptionsVxEffectsScript := preload("res://src/menu/options_vx_effects.gd")
 
 const ROW_X := 100.0
 const CONTROL_X := 360.0
@@ -21,6 +22,7 @@ var _ball_tracks_toggle: CheckButton
 var _fps_toggle: CheckButton
 var _background_movable_toggle: CheckButton
 var _background_type_slider: HSlider
+var _vx_effects
 
 
 func _ready() -> void:
@@ -134,6 +136,11 @@ func _build_scene() -> void:
 	_background_movable_toggle = _toggle("BackgroundMovableToggle", "Moving Background", FIRST_ROW_Y + ROW_STEP * 7.0)
 	_background_type_slider = _slider("BackgroundTypeSlider", FIRST_ROW_Y + ROW_STEP * 8.0, 0, 2)
 	_background_type_slider.step = 1.0
+	_vx_effects = OptionsVxEffectsScript.new()
+	_vx_effects.name = "OptionsVxEffects"
+	_vx_effects.set_row_base_y(OptionsVxEffectsScript.ROW_MUSIC, _music_slider.position.y - 22.0)
+	_vx_effects.set_row_base_y(OptionsVxEffectsScript.ROW_SFX, _sfx_slider.position.y - 22.0)
+	add_child(_vx_effects)
 
 	add_child(_label("MusicVolumeLabel", "Music Volume", Vector2(ROW_X, FIRST_ROW_Y + ROW_STEP * 2.0), Vector2(220, 28), HORIZONTAL_ALIGNMENT_LEFT, 16))
 	add_child(_label("SfxVolumeLabel", "SFX Volume", Vector2(ROW_X, FIRST_ROW_Y + ROW_STEP * 3.0), Vector2(220, 28), HORIZONTAL_ALIGNMENT_LEFT, 16))
@@ -213,6 +220,7 @@ func _load_settings() -> void:
 	_fps_toggle.button_pressed = _profile_bool(profile, "fps_visible", false)
 	_background_movable_toggle.button_pressed = _profile_bool(profile, "background_movable", true)
 	_background_type_slider.value = clampi(_profile_int(profile, "background_type", 2), 0, 2)
+	_sync_vx_effects(true)
 	_sync_audio_from_profile()
 
 
@@ -229,6 +237,7 @@ func _profile_int(profile: Node, method_name: String, default_value: int) -> int
 
 
 func _on_music_toggled(is_enabled: bool) -> void:
+	_sync_vx_effects(false)
 	var profile := _profile_service()
 	if profile != null and profile.has_method("set_music_enabled"):
 		profile.call("set_music_enabled", is_enabled)
@@ -238,6 +247,7 @@ func _on_music_toggled(is_enabled: bool) -> void:
 
 
 func _on_sfx_toggled(is_enabled: bool) -> void:
+	_sync_vx_effects(false)
 	var profile := _profile_service()
 	if profile != null and profile.has_method("set_sfx_enabled"):
 		profile.call("set_sfx_enabled", is_enabled)
@@ -300,6 +310,17 @@ func _sync_audio_from_profile() -> void:
 	var audio := _audio_service()
 	if audio != null and audio.has_method("apply_profile_settings"):
 		audio.call("apply_profile_settings")
+
+
+func vx_effects():
+	return _vx_effects
+
+
+func _sync_vx_effects(snap: bool = false) -> void:
+	if _vx_effects == null:
+		return
+	_vx_effects.set_music_enabled(_music_toggle.button_pressed, snap)
+	_vx_effects.set_sfx_enabled(_sfx_toggle.button_pressed, snap)
 
 
 func _profile_service() -> Node:

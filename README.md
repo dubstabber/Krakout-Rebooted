@@ -139,6 +139,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   scene flow: main menu/rules/options use `Abnormal`, high score uses `theme2`,
   credits uses `theme5`, episode select uses `theme1`, gameplay uses `theme4`,
   and name entry uses `theme3`.
+- The options screen now keeps its Godot-native controls while layering the
+  original `Vx` sheet as Music/SFX enabled-state VFX, using the IDA-backed
+  10-frame 40x40 strip and static 30x30 marker beside the volume rows.
 - Gameplay now queues semantic SFX events from the session and drains them
   through `KrakoutAudio` in the Godot scene layer. IDA-backed mappings now cover
   racket bounce, brick clear, chain explosion, bonus spawn/expire/collect,

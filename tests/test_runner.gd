@@ -27,6 +27,7 @@ const GameHudScript := preload("res://src/game/game_hud.gd")
 const GameScreenScript := preload("res://src/game/game_screen.gd")
 const BitmapTextScript := preload("res://src/render/krakout_bitmap_text.gd")
 const MenuAmbientEffectsScript := preload("res://src/menu/krakout_menu_ambient_effects.gd")
+const OptionsVxEffectsScript := preload("res://src/menu/options_vx_effects.gd")
 const MainMenuScreenScript := preload("res://src/menu/main_menu_screen.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
@@ -117,6 +118,7 @@ func _run() -> void:
 	await _validate_game_hud_presentation()
 	_validate_gameplay_sheet_catalog()
 	_validate_menu_ambient_effects()
+	_validate_options_vx_effects()
 	_validate_manifest_paths()
 	await _validate_menu_and_game_scenes()
 	_shutdown_test_audio()
@@ -2249,6 +2251,7 @@ func _validate_gameplay_sheet_catalog() -> void:
 		"Roller",
 		"Snake",
 		"Statistic",
+		"Vx",
 		"Walls",
 	]
 
@@ -2356,6 +2359,63 @@ func _validate_menu_ambient_effects() -> void:
 	ambient.advance(0.1)
 	_assert(is_equal_approx(ambient.title_phase_degrees(), 22.0), "menu ambient title discards overshoot like the original timer gate")
 	ambient.free()
+
+
+func _validate_options_vx_effects() -> void:
+	_assert(
+		OptionsVxEffectsScript.source_rect_for_frame(0) == Rect2(Vector2(0, 0), Vector2(40, 40)),
+		"options Vx maps original first animation frame"
+	)
+	_assert(
+		OptionsVxEffectsScript.source_rect_for_frame(9) == Rect2(Vector2(360, 0), Vector2(40, 40)),
+		"options Vx maps original final animation frame"
+	)
+	_assert(
+		OptionsVxEffectsScript.source_rect_for_frame(99) == Rect2(Vector2(360, 0), Vector2(40, 40)),
+		"options Vx clamps animation frames to the original range"
+	)
+	_assert(
+		OptionsVxEffectsScript.static_source_rect() == Rect2(Vector2(400, 0), Vector2(30, 30)),
+		"options Vx maps original static marker cell"
+	)
+
+	var vx_effects = OptionsVxEffectsScript.new()
+	vx_effects.set_row_base_y(OptionsVxEffectsScript.ROW_MUSIC, 162.0)
+	vx_effects.set_music_enabled(false, true)
+	_assert(
+		int(vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.DISABLED_TARGET_FRAME,
+		"options Vx snaps disabled music indicator to first frame"
+	)
+	_assert(
+		vx_effects.indicator_rect(OptionsVxEffectsScript.ROW_MUSIC) == Rect2(Vector2(555, 162), Vector2(40, 40)),
+		"options Vx places animated music indicator beside the slider"
+	)
+	_assert(
+		vx_effects.static_indicator_rect(OptionsVxEffectsScript.ROW_MUSIC) == Rect2(Vector2(560, 177), Vector2(30, 30)),
+		"options Vx places static music marker at the original relative offset"
+	)
+	vx_effects.set_music_enabled(true)
+	_assert(
+		int(vx_effects.target_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME,
+		"options Vx targets final frame when music is enabled"
+	)
+	vx_effects.advance(OptionsVxEffectsScript.FRAME_SECONDS)
+	_assert(
+		int(vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == 1,
+		"options Vx advances one frame per original 30 ms gate"
+	)
+	vx_effects.advance(OptionsVxEffectsScript.FRAME_SECONDS * 20.0)
+	_assert(
+		int(vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME,
+		"options Vx clamps enabled animation at final frame"
+	)
+	vx_effects.set_music_enabled(false)
+	vx_effects.advance(OptionsVxEffectsScript.FRAME_SECONDS)
+	_assert(
+		int(vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME - 1,
+		"options Vx animates backward when music is disabled"
+	)
+	vx_effects.free()
 
 
 func _validate_menu_and_game_scenes() -> void:
@@ -2551,6 +2611,8 @@ func _validate_menu_and_game_scenes() -> void:
 	await process_frame
 	_assert(options_screen.has_signal("back_requested"), "options screen exposes back signal")
 	_assert(options_screen.find_child("SoundSliderArt", true, false) != null, "options screen loads original sound slider art")
+	var options_vx_effects = options_screen.find_child("OptionsVxEffects", true, false)
+	_assert(options_vx_effects != null, "options screen creates original Vx effects overlay")
 	_assert(options_screen.find_child("BackButton", true, false) != null, "options screen creates back button")
 	_assert(options_screen.find_child("StartMusicButton", true, false) == null, "options screen does not expose provisional music preview")
 	var options_snapshot: Dictionary = options_screen.call("settings_snapshot")
@@ -2563,6 +2625,15 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(bool(options_snapshot["fps_visible"]), "options screen loads FPS setting")
 	_assert(not bool(options_snapshot["background_movable"]), "options screen loads background-movable setting")
 	_assert(int(options_snapshot["background_type"]) == 1, "options screen loads background type")
+	if options_vx_effects != null:
+		_assert(
+			int(options_vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.DISABLED_TARGET_FRAME,
+			"options screen snaps disabled music Vx state from profile"
+		)
+		_assert(
+			int(options_vx_effects.current_frame(OptionsVxEffectsScript.ROW_SFX)) == OptionsVxEffectsScript.DISABLED_TARGET_FRAME,
+			"options screen snaps disabled SFX Vx state from profile"
+		)
 	options_screen.call("set_music_enabled", true)
 	options_screen.call("set_sfx_enabled", true)
 	options_screen.call("set_music_volume", 55)
@@ -2572,6 +2643,20 @@ func _validate_menu_and_game_scenes() -> void:
 	options_screen.call("set_fps_visible", false)
 	options_screen.call("set_background_movable", true)
 	options_screen.call("set_background_type", 2)
+	if options_vx_effects != null:
+		_assert(
+			int(options_vx_effects.target_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME,
+			"options screen retargets music Vx when music is enabled"
+		)
+		_assert(
+			int(options_vx_effects.target_frame(OptionsVxEffectsScript.ROW_SFX)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME,
+			"options screen retargets SFX Vx when SFX is enabled"
+		)
+		options_vx_effects.advance(OptionsVxEffectsScript.FRAME_SECONDS)
+		_assert(
+			int(options_vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == 1,
+			"options screen advances music Vx toward enabled state"
+		)
 	await process_frame
 	if _profile != null:
 		_assert(bool(_profile.call("music_enabled")), "options screen persists enabled music")
