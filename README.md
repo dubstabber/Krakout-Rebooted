@@ -73,9 +73,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   the current executable evidence does not prove a safe gameplay activation
   contract; do not spawn or simulate Snake behavior until that path is
   re-identified from IDA/runtime traces.
-- `KrakoutImpactEffectRenderer` draws enemy spawn, timeout, and hit effects from
-  the original `Exploision` 32x32 vertical-frame columns, with the original
-  11-frame/50ms cadence.
+- `KrakoutImpactEffectRenderer` draws enemy spawn, timeout, hit, and chain
+  board-impact effects from the original `Exploision` 32x32 vertical-frame
+  columns, with the original 11-frame/50ms cadence and brick-cell impact offset.
 - `KrakoutBallRenderer` draws standard balls from the extracted `Balls` atlas,
   tints non-stricked balls, and composes fireballs from a warm-tinted `Balls`
   base plus the extracted native 24px `Fb` overlay, with the session advancing

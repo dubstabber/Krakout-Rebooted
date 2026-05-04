@@ -315,13 +315,24 @@ func _validate_board_state(default_level: KrakoutLevelData) -> void:
 		[4, 43, 68],
 		[5, 6, 7],
 	]))
-	_assert(explosive_state.explode_at(1, 1) == 8, "chain explosion clears center and non-chain neighbors")
+	var explosion_result: Dictionary = explosive_state.explode_at_with_result(1, 1)
+	var explosion_cells: Array = explosion_result["cleared_cells"]
+	_assert(int(explosion_result["cleared_count"]) == 8, "chain explosion clears center and non-chain neighbors")
+	_assert(explosion_cells.size() == 8, "chain explosion result exposes every immediate cleared cell")
+	_assert(explosion_cells.has(Vector2i(1, 1)), "chain explosion result includes the source cell")
+	_assert(explosion_cells.has(Vector2i(0, 0)), "chain explosion result includes non-chain neighbors")
+	_assert(not explosion_cells.has(Vector2i(2, 1)), "chain explosion result excludes pending chain neighbors")
 	_assert(explosive_state.tile_at(2, 1) == 68, "chain explosion leaves neighboring chain tile pending")
 	_assert(explosive_state.pending_chain_explosion_count() == 1, "chain explosion schedules delayed neighbor")
 	_assert(explosive_state.remaining_required_bricks == 1, "pending chain tile still counts until it fires")
-	_assert(explosive_state.process_chain_explosions(0.029) == 0, "chain explosion waits for original 30ms delay")
+	var early_chain_result: Dictionary = explosive_state.process_chain_explosions_with_result(0.029)
+	_assert(int(early_chain_result["cleared_count"]) == 0, "chain explosion waits for original 30ms delay")
+	_assert(Array(early_chain_result["cleared_cells"]).is_empty(), "early chain explosion result has no cleared cells")
 	_assert(explosive_state.tile_at(2, 1) == 68, "chain tile remains before delay completes")
-	_assert(explosive_state.process_chain_explosions(0.002) == 1, "chain explosion fires after original delay")
+	var delayed_chain_result: Dictionary = explosive_state.process_chain_explosions_with_result(0.002)
+	var delayed_chain_cells: Array = delayed_chain_result["cleared_cells"]
+	_assert(int(delayed_chain_result["cleared_count"]) == 1, "chain explosion fires after original delay")
+	_assert(delayed_chain_cells == [Vector2i(2, 1)], "delayed chain explosion result exposes the fired cell")
 	_assert(explosive_state.tile_at(2, 1) == 0, "delayed chain tile clears when fired")
 	_assert(explosive_state.remaining_required_bricks == 0, "delayed chain explosion updates completion count")
 
@@ -611,6 +622,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(brick_session.board_state.tile_at(0, 0) == 0, "ball hit clears brick through board state")
 	_assert(brick_session.consume_board_changed(), "brick hit marks board for redraw")
 	_assert(brick_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "normal brick hit awards original score increment")
+	_assert(brick_session.visible_impact_effects().is_empty(), "normal brick clear does not spawn chain impact VFX")
 	var brick_audio_events: Array[String] = brick_session.pop_audio_events()
 	_assert(brick_audio_events.has(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "brick clear queues IDA-backed SFX event")
 	_assert(brick_audio_events.has(GameSessionScript.SFX_EVENT_LEVEL_COMPLETE), "final brick clear queues level-complete SFX event")
@@ -647,14 +659,37 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(chain_session.board_state.tile_at(1, 0) == 68, "chain tile hit leaves neighbor pending")
 	_assert(chain_session.board_state.pending_chain_explosion_count() == 1, "chain tile hit schedules delayed neighbor")
 	_assert(chain_session.score == GameSessionScript.BRICK_SCORE, "chain hit scores immediate cleared tile")
+	var immediate_chain_effects: Array = chain_session.visible_impact_effects()
+	_assert(immediate_chain_effects.size() == 1, "chain tile hit spawns immediate board impact VFX")
+	if immediate_chain_effects.size() == 1:
+		_assert(int(immediate_chain_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_CHAIN_EXPLOSION, "chain tile VFX uses the shared original explosion kind")
+		_assert(immediate_chain_effects[0]["position"] == PlayfieldSpecScript.brick_rect(0, 0).position + GameSessionScript.CHAIN_EXPLOSION_IMPACT_OFFSET, "chain tile VFX uses the original brick impact offset")
 	_assert(chain_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION], "chain tile hit queues chain-explosion SFX event")
 	chain_session.update(0.031)
 	_assert(chain_session.board_state.tile_at(1, 0) == 0, "delayed chain explosion clears neighbor")
 	_assert(chain_session.score == GameSessionScript.BRICK_SCORE * 2, "delayed chain explosion awards score")
 	_assert(chain_session.state == GameSessionScript.STATE_LEVEL_COMPLETE, "chain explosion can complete level")
+	var delayed_chain_effects: Array = chain_session.visible_impact_effects()
+	_assert(delayed_chain_effects.size() == 2, "delayed chain clear adds a second board impact VFX")
+	if delayed_chain_effects.size() == 2:
+		_assert(delayed_chain_effects[1]["position"] == PlayfieldSpecScript.brick_rect(1, 0).position + GameSessionScript.CHAIN_EXPLOSION_IMPACT_OFFSET, "delayed chain VFX uses the fired brick position")
 	var delayed_chain_audio_events: Array[String] = chain_session.pop_audio_events()
 	_assert(delayed_chain_audio_events.has(GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION), "delayed chain clear queues chain-explosion SFX event")
 	_assert(delayed_chain_audio_events.has(GameSessionScript.SFX_EVENT_LEVEL_COMPLETE), "delayed chain clear queues level-complete SFX event")
+
+	var projectile_chain_session = _playing_session_from_level(_make_level_from_rows([[43]]))
+	var projectile_chain_projectiles: Array[Dictionary] = [_projectile(
+		GameSessionScript.PROJECTILE_TYPE_CONTINUOUS,
+		PlayfieldSpecScript.GRID_ORIGIN + Vector2(7, 1)
+	)]
+	projectile_chain_session.projectiles = projectile_chain_projectiles
+	projectile_chain_session.update(0.0)
+	_assert(projectile_chain_session.board_state.tile_at(0, 0) == 0, "projectile hit clears chain tile through shared board hit routing")
+	_assert(projectile_chain_session.active_projectile_count() == 0, "projectile is consumed by chain board hit")
+	var projectile_chain_effects: Array = projectile_chain_session.visible_impact_effects()
+	_assert(projectile_chain_effects.size() == 1, "projectile-triggered chain clear spawns board impact VFX")
+	if projectile_chain_effects.size() == 1:
+		_assert(int(projectile_chain_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_CHAIN_EXPLOSION, "projectile-triggered chain VFX uses the shared original explosion kind")
 
 	var bonus_life_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	bonus_life_session.award_score(GameSessionScript.EXTRA_LIFE_SCORE_STEP - GameSessionScript.BRICK_SCORE)
@@ -1816,6 +1851,7 @@ func _validate_level_grid_renderer_defaults() -> void:
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_SPAWN, 0) == Rect2(Vector2(0, 0), Vector2(32, 32)), "impact renderer maps original monster-spawn effect cell")
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_TIMEOUT, 10) == Rect2(Vector2(32, 320), Vector2(32, 32)), "impact renderer maps original monster-timeout final frame")
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_HIT, 3) == Rect2(Vector2(64, 96), Vector2(32, 32)), "impact renderer advances original monster-hit vertical frames")
+	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_CHAIN_EXPLOSION, 3) == Rect2(Vector2(64, 96), Vector2(32, 32)), "impact renderer reuses the original explosion cell for chain board VFX")
 	impact_renderer.free()
 
 

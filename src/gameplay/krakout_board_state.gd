@@ -63,12 +63,20 @@ func is_complete() -> bool:
 
 
 func explode_at(column: int, row: int) -> int:
-	if not _is_in_bounds(column, row):
-		return 0
+	var result := explode_at_with_result(column, row)
+	return int(result.get("cleared_count", 0))
 
-	var cleared_tiles := 0
+
+func explode_at_with_result(column: int, row: int) -> Dictionary:
+	var cleared_cells: Array[Vector2i] = []
+	if not _is_in_bounds(column, row):
+		return {
+			"cleared_count": 0,
+			"cleared_cells": cleared_cells,
+		}
+
 	if clear_tile(column, row):
-		cleared_tiles += 1
+		cleared_cells.append(Vector2i(column, row))
 
 	for scan_row in range(row - 1, row + 2):
 		for scan_column in range(column - 1, column + 2):
@@ -82,9 +90,12 @@ func explode_at(column: int, row: int) -> int:
 			if BrickSemanticsScript.is_chain_explosion_tile(tile_id):
 				_schedule_chain_explosion(scan_column, scan_row)
 			elif clear_tile(scan_column, scan_row):
-				cleared_tiles += 1
+				cleared_cells.append(Vector2i(scan_column, scan_row))
 
-	return cleared_tiles
+	return {
+		"cleared_count": cleared_cells.size(),
+		"cleared_cells": cleared_cells,
+	}
 
 
 func weaken_all_for_one_strike() -> int:
@@ -144,12 +155,20 @@ func convert_to_chain_explosion_tile(column: int, row: int, tile_id: int) -> boo
 
 
 func process_chain_explosions(delta: float) -> int:
+	var result := process_chain_explosions_with_result(delta)
+	return int(result.get("cleared_count", 0))
+
+
+func process_chain_explosions_with_result(delta: float) -> Dictionary:
+	var cleared_cells: Array[Vector2i] = []
 	if _pending_chain_explosions.is_empty():
-		return 0
+		return {
+			"cleared_count": 0,
+			"cleared_cells": cleared_cells,
+		}
 
 	var pending := _pending_chain_explosions
 	_pending_chain_explosions = []
-	var cleared_count := 0
 	for entry: Dictionary in pending:
 		var remaining := float(entry.get("remaining", 0.0)) - delta
 		if remaining > 0.0:
@@ -160,9 +179,15 @@ func process_chain_explosions(delta: float) -> int:
 		var column := int(entry.get("column", -1))
 		var row := int(entry.get("row", -1))
 		if BrickSemanticsScript.is_chain_explosion_tile(tile_at(column, row)):
-			cleared_count += explode_at(column, row)
+			var result: Dictionary = explode_at_with_result(column, row)
+			var result_cells: Array = result.get("cleared_cells", [])
+			for cell: Vector2i in result_cells:
+				cleared_cells.append(cell)
 
-	return cleared_count
+	return {
+		"cleared_count": cleared_cells.size(),
+		"cleared_cells": cleared_cells,
+	}
 
 
 func pending_chain_explosion_count() -> int:

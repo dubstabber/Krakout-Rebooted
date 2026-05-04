@@ -229,7 +229,10 @@ const RACKET_STUN_DURATION_SECONDS := 3.0
 const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
 const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
-const IMPACT_EFFECT_KIND_MONSTER_HIT := 2
+const IMPACT_EFFECT_KIND_EXPLOSION := 2
+const IMPACT_EFFECT_KIND_MONSTER_HIT := IMPACT_EFFECT_KIND_EXPLOSION
+const IMPACT_EFFECT_KIND_CHAIN_EXPLOSION := IMPACT_EFFECT_KIND_EXPLOSION
+const CHAIN_EXPLOSION_IMPACT_OFFSET := Vector2(-8, 1)
 const IMPACT_EFFECT_FRAME_SECONDS := 0.05
 const IMPACT_EFFECT_FRAME_COUNT := 11
 const IMPACT_EFFECT_DURATION_SECONDS := IMPACT_EFFECT_FRAME_SECONDS * IMPACT_EFFECT_FRAME_COUNT
@@ -532,10 +535,12 @@ func update(delta: float) -> void:
 	_update_bonus_stack(delta)
 
 	if board_state != null:
-		var chain_cleared_count: int = board_state.process_chain_explosions(delta)
+		var chain_result: Dictionary = board_state.process_chain_explosions_with_result(delta)
+		var chain_cleared_count := int(chain_result.get("cleared_count", 0))
 		if chain_cleared_count > 0:
 			board_changed = true
 			award_score(chain_cleared_count * CHAIN_BRICK_SCORE)
+			_spawn_chain_explosion_impact_effects(chain_result.get("cleared_cells", []))
 			_queue_audio_event(SFX_EVENT_CHAIN_EXPLOSION)
 
 	if board_state != null and board_state.is_complete():
@@ -1334,9 +1339,13 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 	var did_change_board := false
 	var score_delta := 0
 	var audio_event := ""
+	var chain_impact_cells: Array[Vector2i] = []
 	var hit_kind := BrickSemanticsScript.hit_kind(tile_id)
 	if hit_kind == BrickSemanticsScript.HIT_KIND_CHAIN_EXPLOSION:
-		cleared_count = board_state.explode_at(column, row)
+		var explosion_result: Dictionary = board_state.explode_at_with_result(column, row)
+		cleared_count = int(explosion_result.get("cleared_count", 0))
+		for cell: Vector2i in explosion_result.get("cleared_cells", []):
+			chain_impact_cells.append(cell)
 		did_change_board = cleared_count > 0
 		if cleared_count > 0:
 			score_delta = cleared_count * CHAIN_BRICK_SCORE
@@ -1372,6 +1381,7 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 		"cleared_count": cleared_count,
 		"score": score_delta,
 		"audio_event": audio_event,
+		"chain_impact_cells": chain_impact_cells,
 	}
 
 
@@ -1382,6 +1392,7 @@ func _apply_board_hit_result(hit_result: Dictionary) -> void:
 		board_changed = true
 	if score_delta > 0:
 		award_score(score_delta)
+	_spawn_chain_explosion_impact_effects(hit_result.get("chain_impact_cells", []))
 	var audio_event := String(hit_result.get("audio_event", ""))
 	if not audio_event.is_empty():
 		_queue_audio_event(audio_event)
@@ -2373,6 +2384,15 @@ func _spawn_impact_effect(position: Vector2, kind: int) -> bool:
 		"age": 0.0,
 	})
 	return true
+
+
+func _spawn_chain_explosion_impact_effects(cleared_cells: Array) -> int:
+	var spawned_count := 0
+	for cell: Vector2i in cleared_cells:
+		var brick_origin := PlayfieldSpecScript.brick_rect(cell.x, cell.y).position
+		if _spawn_impact_effect(brick_origin + CHAIN_EXPLOSION_IMPACT_OFFSET, IMPACT_EFFECT_KIND_CHAIN_EXPLOSION):
+			spawned_count += 1
+	return spawned_count
 
 
 func _compact_bees() -> void:
