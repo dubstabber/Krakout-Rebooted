@@ -448,6 +448,9 @@ func launch_ready_ball() -> bool:
 
 	if state != STATE_READY and state != STATE_BALL_LOST:
 		return false
+	if is_level_ready_prompt_visible():
+		_skip_level_ready_prompt()
+		return false
 
 	if balls.is_empty():
 		_add_ready_ball()
@@ -1125,6 +1128,12 @@ func _clear_level_ready_sequence() -> void:
 	_level_ready_roller_frame = 0
 	_level_ready_roller_step_elapsed = 0.0
 	_level_ready_auto_launch_pending = false
+
+
+func _skip_level_ready_prompt() -> void:
+	_level_ready_animation_time_remaining = 0.0
+	_level_ready_roller_offset = LEVEL_READY_ROLLER_TRAVEL_PIXELS
+	_level_ready_roller_step_elapsed = 0.0
 
 
 func _auto_launch_ready_ball_if_needed() -> bool:

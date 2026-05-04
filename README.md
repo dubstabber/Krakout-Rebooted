@@ -24,7 +24,8 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   chain explosions for tile IDs 43/68.
 - `KrakoutGameSession` adds the first playable ball/racket loop around that
   board state: mouse-following right-side racket, ready/launch/play/lost/complete
-  states, wall/racket/brick collision, and redraw signaling.
+  states, original get-ready launch-skip behavior, wall/racket/brick collision,
+  and redraw signaling.
 - `KrakoutGameSession` now consumes the first 22 level-tail bytes as original
   bonus stock, uses the original RNG constants, applies the 3-second drop gate
   and stock-weighted drop chance, spawns falling bonuses with the original
