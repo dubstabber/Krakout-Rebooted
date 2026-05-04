@@ -26,6 +26,8 @@ const LevelReadyRollerRendererScript := preload("res://src/render/level_ready_ro
 const GameHudScript := preload("res://src/game/game_hud.gd")
 const GameScreenScript := preload("res://src/game/game_screen.gd")
 const BitmapTextScript := preload("res://src/render/krakout_bitmap_text.gd")
+const MenuAmbientEffectsScript := preload("res://src/menu/krakout_menu_ambient_effects.gd")
+const MainMenuScreenScript := preload("res://src/menu/main_menu_screen.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 const RulesScreenScene := preload("res://scenes/menu/rules_screen.tscn")
@@ -114,6 +116,7 @@ func _run() -> void:
 	_validate_level_grid_renderer_defaults()
 	await _validate_game_hud_presentation()
 	_validate_gameplay_sheet_catalog()
+	_validate_menu_ambient_effects()
 	_validate_manifest_paths()
 	await _validate_menu_and_game_scenes()
 	_shutdown_test_audio()
@@ -2282,6 +2285,79 @@ func _validate_gameplay_sheet_catalog() -> void:
 	)
 
 
+func _validate_menu_ambient_effects() -> void:
+	_assert(
+		MenuAmbientEffectsScript.star_source_rect(0) == Rect2(Vector2(0, 0), Vector2(30, 30)),
+		"menu ambient maps first original star frame"
+	)
+	_assert(
+		MenuAmbientEffectsScript.star_source_rect(10) == Rect2(Vector2(300, 0), Vector2(30, 30)),
+		"menu ambient maps mid original star frame"
+	)
+	_assert(
+		MenuAmbientEffectsScript.star_source_rect(19) == Rect2(Vector2(570, 0), Vector2(30, 30)),
+		"menu ambient maps final original star frame"
+	)
+	_assert(
+		MenuAmbientEffectsScript.star_source_rect(20) == Rect2(Vector2(0, 0), Vector2(30, 30)),
+		"menu ambient star frame wraps after original frame count"
+	)
+
+	var generated_stars: Array[Dictionary] = MenuAmbientEffectsScript.generate_original_stars(31415)
+	_assert(generated_stars.size() == MenuAmbientEffectsScript.STAR_COUNT, "menu ambient creates original star count")
+	if not generated_stars.is_empty():
+		var first_star: Dictionary = generated_stars[0]
+		_assert(first_star["position"] == Vector2(194, 125), "menu ambient deterministic first star position matches original RNG")
+		_assert(is_equal_approx(Vector2(first_star["speed"]).x, 40.837455), "menu ambient deterministic first star x speed matches original RNG")
+		_assert(is_equal_approx(Vector2(first_star["speed"]).y, 49.070321), "menu ambient deterministic first star y speed matches original RNG")
+		_assert(int(first_star["frame"]) == 6, "menu ambient deterministic first star initial frame matches original RNG")
+		_assert(int(first_star["delay_ms"]) == 85, "menu ambient deterministic first star frame delay matches original RNG")
+
+	var ambient = MenuAmbientEffectsScript.new()
+	ambient.reset_original_state(31415)
+	_assert(ambient.stars_snapshot().size() == MenuAmbientEffectsScript.STAR_COUNT, "menu ambient renderer resets star pool")
+	_assert(ambient.direction_index() == 0, "menu ambient starts with original down-right drift")
+	ambient.set_stars_for_test([{
+		"position": Vector2(639, 479),
+		"speed": Vector2(20, 40),
+		"frame": 19,
+		"delay_ms": 70,
+		"frame_elapsed_ms": 0.0,
+	}])
+	ambient.advance(MenuAmbientEffectsScript.STAR_STEP_SECONDS)
+	var moved_stars: Array[Dictionary] = ambient.stars_snapshot()
+	_assert(moved_stars.size() == 1, "menu ambient preserves injected star")
+	if moved_stars.size() == 1:
+		_assert(Vector2(moved_stars[0]["position"]) == Vector2(-30, -30), "menu ambient wraps stars on original bounds")
+		_assert(int(moved_stars[0]["frame"]) == 19, "menu ambient star frame waits for its own delay")
+	ambient.advance(0.07 - MenuAmbientEffectsScript.STAR_STEP_SECONDS)
+	moved_stars = ambient.stars_snapshot()
+	if moved_stars.size() == 1:
+		_assert(int(moved_stars[0]["frame"]) == 0, "menu ambient star frame wraps after original frame delay")
+
+	ambient.set_stars_for_test([])
+	ambient.reset_original_state(31415)
+	ambient.set_stars_for_test([])
+	ambient.advance(MenuAmbientEffectsScript.STAR_DIRECTION_SECONDS)
+	_assert(ambient.direction_index() == 1, "menu ambient changes drift direction every ten seconds")
+	ambient.advance(MenuAmbientEffectsScript.STAR_DIRECTION_SECONDS * 3.0)
+	_assert(ambient.direction_index() == 0, "menu ambient drift direction cycles through four modes")
+
+	ambient.reset_original_state(31415)
+	ambient.set_stars_for_test([])
+	_assert(ambient.title_target_rect() == Rect2(Vector2(122, 70), Vector2(396, 75)), "menu ambient title uses original base rect")
+	_assert(MenuAmbientEffectsScript.title_source_rect_for_row(10) == Rect2(Vector2(0, 10), Vector2(396, 1)), "menu ambient title draws one source row")
+	_assert(MenuAmbientEffectsScript.title_offset_for_row(0, 90.0) == 5, "menu ambient title wave reaches original positive amplitude")
+	_assert(MenuAmbientEffectsScript.title_offset_for_row(10, 0.0) == 3, "menu ambient title wave uses per-row phase")
+	ambient.advance(MenuAmbientEffectsScript.TITLE_PHASE_STEP_SECONDS)
+	_assert(is_equal_approx(ambient.title_phase_degrees(), 0.0), "menu ambient title waits for original strict 20 ms gate")
+	ambient.advance(0.001)
+	_assert(is_equal_approx(ambient.title_phase_degrees(), 11.0), "menu ambient title advances once after original sampled gate")
+	ambient.advance(0.1)
+	_assert(is_equal_approx(ambient.title_phase_degrees(), 22.0), "menu ambient title discards overshoot like the original timer gate")
+	ambient.free()
+
+
 func _validate_menu_and_game_scenes() -> void:
 	var saved_mouse_mode := Input.get_mouse_mode()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
@@ -2306,7 +2382,15 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(menu.has_signal("credits_requested"), "main menu exposes credits signal")
 	_assert(menu.has_signal("quit_requested"), "main menu exposes quit signal")
 	_assert(menu.find_child("Background", true, false) != null, "main menu creates background art")
-	_assert(menu.find_child("Title", true, false) != null, "main menu creates title art")
+	var static_title := menu.find_child("Title", true, false) as TextureRect
+	_assert(static_title != null, "main menu keeps legacy title node")
+	if static_title != null:
+		_assert(not static_title.visible, "main menu hides static title in favor of original ambient renderer")
+	var ambient_effects = menu.find_child("MenuAmbientEffects", true, false)
+	_assert(ambient_effects != null, "main menu creates original ambient VFX renderer")
+	if ambient_effects != null:
+		_assert(ambient_effects.stars_snapshot().size() == MenuAmbientEffectsScript.STAR_COUNT, "main menu ambient VFX owns original star pool")
+		_assert(ambient_effects.title_target_rect() == Rect2(Vector2(122, 70), Vector2(396, 75)), "main menu ambient VFX owns title draw rect")
 	_assert(menu.find_child("SelectedCaption", true, false) != null, "main menu creates selected caption")
 
 	var expected_menu_items := {
@@ -2332,6 +2416,17 @@ func _validate_menu_and_game_scenes() -> void:
 	var start_button := menu.find_child("StartGameButton", true, false) as TextureButton
 	_assert(start_button != null, "main menu creates start game button")
 	if start_button != null:
+		menu.call("reset_menu_button_animation")
+		_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu selected icon animation resets to first frame")
+		menu.call("_process", MainMenuScreenScript.ICON_SELECTED_FRAME_GATE_SECONDS)
+		_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu selected icon waits for original strict 20 ms gate")
+		menu.call("_process", 0.001)
+		_assert(int(menu.call("menu_item_frame", "start")) == 1, "main menu selected icon advances once after original sampled gate")
+		menu.call("_select_menu_item", "rules")
+		menu.call("_process", MainMenuScreenScript.ICON_RETURN_FRAME_GATE_SECONDS + 0.001)
+		_assert(int(menu.call("menu_item_frame", "start")) == 2, "main menu old selected icon returns with original 5 ms catch-up gate")
+		_assert(int(menu.call("menu_item_frame", "rules")) == 0, "main menu newly selected icon does not advance on the 5 ms return gate")
+
 		var signal_state := {"did_request_start": false}
 		menu.start_game_requested.connect(func() -> void: signal_state["did_request_start"] = true)
 		start_button.emit_signal("pressed")

@@ -9,9 +9,11 @@ signal credits_requested
 signal quit_requested
 
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
+const MenuAmbientEffectsScript := preload("res://src/menu/krakout_menu_ambient_effects.gd")
 const ICON_SIZE := Vector2i(100, 100)
 const ICON_FRAME_COUNT := 20
-const ICON_FRAME_SECONDS := 0.02
+const ICON_SELECTED_FRAME_GATE_SECONDS := 0.02
+const ICON_RETURN_FRAME_GATE_SECONDS := 0.005
 const MENU_ITEM_SPECS: Array[Dictionary] = [
 	{
 		"id": "rules",
@@ -64,10 +66,13 @@ const MENU_ITEM_SPECS: Array[Dictionary] = [
 
 var _icons_texture: Texture2D
 var _selected_item_id := "start"
-var _animation_time := 0.0
+var _icon_frames: Dictionary = {}
+var _selected_icon_frame_elapsed := 0.0
+var _return_icon_frame_elapsed := 0.0
 var _atlas_cache: Dictionary = {}
 var _buttons_by_id: Dictionary = {}
 var _captions_by_id: Dictionary = {}
+var _ambient_effects
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -77,7 +82,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	_animation_time += delta
+	_advance_menu_button_animation(delta)
 	_update_menu_button_frames()
 
 
@@ -93,9 +98,10 @@ func _fit_to_baseline_viewport() -> void:
 
 func _configure_scene() -> void:
 	_background.texture = _load_asset_texture("Background")
-	_title.texture = _load_asset_texture("Title")
+	_title.visible = false
 	_icons_texture = _load_asset_texture("MainMenuIcons")
 	_build_menu_items()
+	_ensure_ambient_effects()
 	_update_selected_caption()
 	_update_menu_button_frames()
 
@@ -111,6 +117,7 @@ func _build_menu_items() -> void:
 		child.queue_free()
 	_buttons_by_id.clear()
 	_captions_by_id.clear()
+	_icon_frames.clear()
 	_atlas_cache.clear()
 
 	for spec: Dictionary in MENU_ITEM_SPECS:
@@ -132,6 +139,7 @@ func _build_menu_items() -> void:
 
 		_buttons_by_id[item_id] = button
 		_captions_by_id[item_id] = String(spec["caption"])
+		_icon_frames[item_id] = 0
 
 
 func _select_menu_item(item_id: String) -> void:
@@ -160,19 +168,43 @@ func _update_menu_button_frames() -> void:
 	if _icons_texture == null:
 		return
 
-	var selected_frame := int(_animation_time / ICON_FRAME_SECONDS) % ICON_FRAME_COUNT
 	for spec: Dictionary in MENU_ITEM_SPECS:
 		var item_id := String(spec["id"])
 		var button := _buttons_by_id.get(item_id) as TextureButton
 		if button == null:
 			continue
 
-		var frame := selected_frame if item_id == _selected_item_id else 0
+		var frame: int = int(_icon_frames.get(item_id, 0))
 		var texture := _icon_frame_texture(int(spec["source_x"]), frame)
 		button.texture_normal = texture
 		button.texture_hover = texture
 		button.texture_pressed = texture
 		button.texture_focused = texture
+
+
+func _advance_menu_button_animation(delta: float) -> void:
+	if delta <= 0.0:
+		return
+
+	_return_icon_frame_elapsed += delta
+	if _return_icon_frame_elapsed > ICON_RETURN_FRAME_GATE_SECONDS:
+		for item_id: String in _icon_frames.keys():
+			if item_id == _selected_item_id:
+				continue
+
+			var return_frame: int = int(_icon_frames[item_id])
+			if return_frame > 0 and return_frame < ICON_FRAME_COUNT:
+				_icon_frames[item_id] = return_frame + 1
+		_return_icon_frame_elapsed = 0.0
+
+	_selected_icon_frame_elapsed += delta
+	if _selected_icon_frame_elapsed > ICON_SELECTED_FRAME_GATE_SECONDS:
+		_icon_frames[_selected_item_id] = int(_icon_frames.get(_selected_item_id, 0)) + 1
+		_selected_icon_frame_elapsed = 0.0
+
+	for item_id: String in _icon_frames.keys():
+		if int(_icon_frames[item_id]) >= ICON_FRAME_COUNT:
+			_icon_frames[item_id] = 0
 
 
 func _update_selected_caption() -> void:
@@ -193,6 +225,34 @@ func _icon_frame_texture(source_x: int, frame: int) -> AtlasTexture:
 
 func selected_caption() -> String:
 	return String(_captions_by_id.get(_selected_item_id, ""))
+
+
+func menu_item_frame(item_id: String) -> int:
+	return int(_icon_frames.get(item_id, 0))
+
+
+func reset_menu_button_animation() -> void:
+	_selected_icon_frame_elapsed = 0.0
+	_return_icon_frame_elapsed = 0.0
+	for spec: Dictionary in MENU_ITEM_SPECS:
+		_icon_frames[String(spec["id"])] = 0
+	_update_menu_button_frames()
+
+
+func ambient_effects():
+	return _ambient_effects
+
+
+func _ensure_ambient_effects() -> void:
+	if _ambient_effects != null:
+		return
+
+	_ambient_effects = MenuAmbientEffectsScript.new()
+	_ambient_effects.name = "MenuAmbientEffects"
+	_ambient_effects.position = Vector2.ZERO
+	_ambient_effects.size = Vector2(PlayfieldSpecScript.VIEWPORT_SIZE)
+	add_child(_ambient_effects)
+	move_child(_selected_caption, get_child_count() - 1)
 
 
 func _load_asset_texture(texture_name: String) -> Texture2D:
