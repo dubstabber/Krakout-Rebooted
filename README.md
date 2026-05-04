@@ -141,11 +141,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   and name entry uses `theme3`.
 - Gameplay now queues semantic SFX events from the session and drains them
   through `KrakoutAudio` in the Godot scene layer. IDA-backed mappings now cover
-  racket bounce, brick clear, chain explosion, bonus spawn/collect, projectile
-  fire, monster spawn/timeout/hit, life lost, level-ready, level complete, and
-  game over; initial ball launch, back-wall bounce, generic bonus apply, and
-  generic projectile hit remain named but silent until original evidence proves
-  a direct sample.
+  racket bounce, brick clear, chain explosion, bonus spawn/expire/collect,
+  projectile fire, monster spawn/timeout/hit, life lost, level-ready, level
+  complete, and game over; initial ball launch, back-wall bounce, generic bonus
+  apply, and generic projectile hit remain named but silent until original
+  evidence proves a direct sample.
 
 ## Validation
 

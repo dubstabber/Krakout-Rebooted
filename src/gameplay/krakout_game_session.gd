@@ -163,6 +163,7 @@ const MONSTER_TYPE6_SCORE_VARIANTS := 6
 const MONSTER_TYPE9_STUN_SCORE := 30
 const MONSTER_BALL_HIT_MIN_ROTATION_DEGREES := 90
 const MONSTER_BALL_HIT_RANDOM_ROTATION_DEGREES := 90
+const MONSTER_TYPE1_BALL_ROTATION_DEGREES := 18
 const MONSTER_MOTION_ANGLE := "angle"
 const MONSTER_MOTION_PADDLE_FOLLOW := "paddle_follow"
 const MONSTER_MOTION_BALL_TRACK := "ball_track"
@@ -320,6 +321,7 @@ const SFX_EVENT_BACK_WALL_BOUNCE := "back_wall_bounce"
 const SFX_EVENT_BRICK_CLEAR := "brick_clear"
 const SFX_EVENT_CHAIN_EXPLOSION := "chain_explosion"
 const SFX_EVENT_BONUS_SPAWN := "bonus_spawn"
+const SFX_EVENT_BONUS_EXPIRE := "bonus_expire"
 const SFX_EVENT_BONUS_COLLECT := "bonus_collect"
 const SFX_EVENT_BONUS_APPLY := "bonus_apply"
 const SFX_EVENT_PROJECTILE_FIRE := "projectile_fire"
@@ -1133,6 +1135,10 @@ func _ball_pierces_board(ball: Dictionary) -> bool:
 	return _ball_type(ball) == BALL_TYPE_FIREBALL
 
 
+func _ball_collides_with_enemies(ball: Dictionary) -> bool:
+	return _ball_type(ball) <= BALL_TYPE_FIREBALL
+
+
 func _restore_ball_type_after_non_stricked(ball: Dictionary) -> void:
 	var previous_type := int(ball.get("previous_type_id", BALL_TYPE_STANDARD))
 	if previous_type == BALL_TYPE_NON_STRICKED:
@@ -1193,10 +1199,11 @@ func _advance_ball(ball: Dictionary, delta: float) -> void:
 		ball["active"] = false
 		return
 
-	if _collide_ball_with_monsters(ball):
-		return
-	if _collide_ball_with_bees(ball):
-		return
+	if _ball_collides_with_enemies(ball):
+		if _collide_ball_with_monsters(ball):
+			return
+		if _collide_ball_with_bees(ball):
+			return
 	_collide_with_board(ball, previous_position)
 
 
@@ -1806,6 +1813,7 @@ func _advance_falling_bonus(bonus: Dictionary, delta: float) -> void:
 		next_y = clampf(next_y, BONUS_MIN_Y, BONUS_MAX_Y)
 		if next_x > BONUS_EXPIRE_X:
 			bonus["active"] = false
+			_queue_audio_event(SFX_EVENT_BONUS_EXPIRE)
 			substep_accumulator = 0.0
 			break
 
@@ -2077,11 +2085,11 @@ func _frame_count_for_monster_type(type_id: int) -> int:
 
 
 func _tracking_angle_for_monster(monster: Dictionary, current_angle: float, tick_scale: float) -> float:
-	var target_position := _first_active_ball_center()
+	var monster_center := Vector2(monster.get("position", Vector2.ZERO)) + MONSTER_SIZE * 0.5
+	var target_position := _nearest_trackable_ball_center(monster_center)
 	if target_position == Vector2.INF:
 		return current_angle
 
-	var monster_center := Vector2(monster.get("position", Vector2.ZERO)) + MONSTER_SIZE * 0.5
 	var target_delta := target_position - monster_center
 	if target_delta.is_zero_approx():
 		return current_angle
@@ -2096,11 +2104,20 @@ func _tracking_angle_for_monster(monster: Dictionary, current_angle: float, tick
 	return fposmod(current_angle, 360.0)
 
 
-func _first_active_ball_center() -> Vector2:
+func _nearest_trackable_ball_center(monster_center: Vector2) -> Vector2:
+	var nearest_position := Vector2.INF
+	var nearest_distance := INF
 	for ball: Dictionary in balls:
-		if bool(ball.get("active", false)):
-			return ball_rect(ball).get_center()
-	return Vector2.INF
+		if not bool(ball.get("active", false)):
+			continue
+		if _ball_type(ball) == BALL_TYPE_NON_STRICKED:
+			continue
+		var ball_center := ball_rect(ball).get_center()
+		var distance := monster_center.distance_to(ball_center)
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_position = ball_center
+	return nearest_position
 
 
 func _monster_motion_vector(angle: float, speed: float) -> Vector2:
@@ -2114,8 +2131,13 @@ func _collide_ball_with_monsters(ball: Dictionary) -> bool:
 		if not bool(monster.get("active", false)):
 			continue
 		if _ball_intersects_enemy_circle(ball, monster.get("position", Vector2.ZERO), MONSTER_BALL_COLLISION_RADIUS):
-			_rotate_ball_from_enemy_contact(ball)
-			_kill_monster_at_index(index, _score_for_monster_ball_contact(monster))
+			var type_id := int(monster.get("type_id", 0))
+			var score_value := _score_for_monster_ball_contact(monster)
+			if _monster_survives_ball_contact(monster):
+				award_score(score_value)
+			else:
+				_kill_monster_at_index(index, score_value)
+			_apply_ball_enemy_response(ball, type_id)
 			return true
 	return false
 
@@ -2126,8 +2148,8 @@ func _collide_ball_with_bees(ball: Dictionary) -> bool:
 		if not bool(bee.get("active", false)):
 			continue
 		if _ball_intersects_enemy_circle(ball, bee.get("position", Vector2.ZERO), BEE_BALL_COLLISION_RADIUS):
-			_rotate_ball_from_enemy_contact(ball)
 			_kill_bee_at_index(index, BEE_BALL_HIT_SCORE)
+			_apply_ball_enemy_response(ball, -1)
 			return true
 	return false
 
@@ -2190,17 +2212,32 @@ func _score_for_monster_ball_contact(monster: Dictionary) -> int:
 			return MONSTER_BALL_HIT_SCORE
 
 
-func _rotate_ball_from_enemy_contact(ball: Dictionary) -> void:
+func _monster_survives_ball_contact(monster: Dictionary) -> bool:
+	return int(monster.get("type_id", 0)) == 1
+
+
+func _apply_ball_enemy_response(ball: Dictionary, enemy_type_id: int) -> void:
+	if enemy_type_id == 1:
+		_rotate_ball_from_enemy_contact(ball, MONSTER_TYPE1_BALL_ROTATION_DEGREES, 0)
+	elif _ball_type(ball) == BALL_TYPE_STANDARD:
+		_rotate_ball_from_enemy_contact(ball)
+
+
+func _rotate_ball_from_enemy_contact(
+	ball: Dictionary,
+	minimum_degrees: int = MONSTER_BALL_HIT_MIN_ROTATION_DEGREES,
+	random_degrees: int = MONSTER_BALL_HIT_RANDOM_ROTATION_DEGREES
+) -> void:
 	var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
 	var speed := _target_speed_for_ball(ball)
 
 	var current_angle := 0
 	if not velocity.is_zero_approx():
 		current_angle = posmod(int(roundi(rad_to_deg(atan2(-velocity.y, velocity.x)))), 360)
-	var next_angle := posmod(
-		current_angle + MONSTER_BALL_HIT_MIN_ROTATION_DEGREES + _collision_rng.next_mod(MONSTER_BALL_HIT_RANDOM_ROTATION_DEGREES),
-		360
-	)
+	var rotation_degrees := minimum_degrees
+	if random_degrees > 0:
+		rotation_degrees += _collision_rng.next_mod(random_degrees)
+	var next_angle := posmod(current_angle + rotation_degrees, 360)
 	ball["velocity"] = _monster_motion_vector(next_angle, speed)
 	ball["target_speed"] = speed
 

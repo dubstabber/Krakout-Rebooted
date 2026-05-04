@@ -728,6 +728,22 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		_assert(is_equal_approx(stepped_moved_bonuses[0]["position"].x, moved_bonuses[0]["position"].x), "falling bonus speed is frame-rate independent")
 		_assert(int(stepped_moved_bonuses[0]["angle"]) == int(moved_bonuses[0]["angle"]), "falling bonus wave angle is frame-rate independent")
 
+	var expired_bonus_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	var expiring_bonuses: Array[Dictionary] = [{
+		"active": true,
+		"type_id": 2,
+		"position": Vector2(GameSessionScript.BONUS_EXPIRE_X - 1.0, 100),
+		"base_y": 100.0,
+		"angle": 0,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+	}]
+	expired_bonus_session.falling_bonuses = expiring_bonuses
+	expired_bonus_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	expired_bonus_session.update(1.0 / GameSessionScript.ORIGINAL_BONUS_SUBSTEP_HZ)
+	_assert(expired_bonus_session.visible_falling_bonuses().is_empty(), "falling bonus expires beyond the original x bound")
+	_assert(expired_bonus_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BONUS_EXPIRE], "falling bonus expiry queues original semantic SFX event")
+
 	var collect_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	collect_session.move_racket_to(220.0)
 	var collect_bonuses: Array[Dictionary] = [{
@@ -1059,6 +1075,30 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	if boundary_eye_monsters.size() == 1:
 		_assert(float(boundary_eye_monsters[0]["position"].y) > PlayfieldSpecScript.WALL_INNER_TOP_Y, "type 3 keeps following the paddle after a wall clamp")
 
+	var tracking_nearest_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	var tracking_nearest_balls: Array[Dictionary] = [
+		_active_ball(Vector2(191, 70)),
+		_active_ball(Vector2(291, 207)),
+	]
+	tracking_nearest_session.balls = tracking_nearest_balls
+	tracking_nearest_session.force_monster(Vector2(200, 200), 10, 0)
+	tracking_nearest_session.update(1.0 / GameSessionScript.ORIGINAL_ENEMY_UPDATE_HZ)
+	var tracking_nearest_monsters: Array = tracking_nearest_session.visible_monsters()
+	if tracking_nearest_monsters.size() == 1:
+		_assert(is_equal_approx(float(tracking_nearest_monsters[0]["angle"]), 0.0), "type 10 tracks the nearest active ball instead of the first active slot")
+
+	var tracking_non_stricked_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	var tracking_non_stricked_balls: Array[Dictionary] = [
+		_active_ball(Vector2(207, 70), Vector2.ZERO, GameSessionScript.BALL_SIZE, GameSessionScript.BALL_TYPE_NON_STRICKED),
+		_active_ball(Vector2(291, 207)),
+	]
+	tracking_non_stricked_session.balls = tracking_non_stricked_balls
+	tracking_non_stricked_session.force_monster(Vector2(200, 200), 10, 0)
+	tracking_non_stricked_session.update(1.0 / GameSessionScript.ORIGINAL_ENEMY_UPDATE_HZ)
+	var tracking_non_stricked_monsters: Array = tracking_non_stricked_session.visible_monsters()
+	if tracking_non_stricked_monsters.size() == 1:
+		_assert(is_equal_approx(float(tracking_non_stricked_monsters[0]["angle"]), 0.0), "type 10 ignores original non-stricked ball type when tracking")
+
 	var monster_ball_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	monster_ball_hit_session.set_collision_rng_seed(1)
 	monster_ball_hit_session.force_ball(Vector2(200, 200), Vector2.ZERO)
@@ -1093,6 +1133,33 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	monster_speed_session.force_monster(Vector2(220, 200), 3, 0)
 	monster_speed_session.update(0.0)
 	_assert(is_equal_approx(monster_speed_session.first_ball_velocity().length(), expected_enemy_hit_speed), "enemy collision restores the active ball speed instead of preserving a slowed vector")
+
+	var type1_ball_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	type1_ball_hit_session.set_collision_rng_seed(1)
+	type1_ball_hit_session.force_ball(Vector2(200, 200), Vector2.ZERO)
+	type1_ball_hit_session.force_monster(Vector2(200, 200), 1, 0)
+	type1_ball_hit_session.update(0.0)
+	_assert(type1_ball_hit_session.active_monster_count() == 1, "type 1 monster survives original ball contact")
+	_assert(type1_ball_hit_session.score == GameSessionScript.MONSTER_BALL_HIT_SCORE, "type 1 monster ball contact still awards original score")
+	_assert(not type1_ball_hit_session.first_ball_velocity().is_zero_approx(), "type 1 monster ball contact still rotates the ball")
+	var type1_ball_angle := fposmod(rad_to_deg(atan2(-type1_ball_hit_session.first_ball_velocity().y, type1_ball_hit_session.first_ball_velocity().x)), 360.0)
+	_assert(is_equal_approx(type1_ball_angle, float(GameSessionScript.MONSTER_TYPE1_BALL_ROTATION_DEGREES)), "type 1 monster applies the original fixed ball turn")
+
+	var fireball_enemy_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	var fireball_enemy_velocity := Vector2(100, 0)
+	fireball_enemy_session.force_ball(Vector2(200, 200), fireball_enemy_velocity, GameSessionScript.BALL_SIZE, GameSessionScript.BALL_TYPE_FIREBALL)
+	fireball_enemy_session.force_monster(Vector2(200, 200), 3, 0)
+	fireball_enemy_session.update(0.0)
+	_assert(fireball_enemy_session.active_monster_count() == 0, "fireballs still remove normal monsters")
+	_assert(fireball_enemy_session.first_ball_velocity() == fireball_enemy_velocity, "fireball monster contact does not rotate the ball in the original")
+
+	var non_stricked_enemy_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	non_stricked_enemy_session.force_ball(Vector2(200, 200), Vector2.ZERO, GameSessionScript.BALL_SIZE, GameSessionScript.BALL_TYPE_NON_STRICKED)
+	non_stricked_enemy_session.force_monster(Vector2(200, 200), 3, 0)
+	non_stricked_enemy_session.update(0.0)
+	_assert(non_stricked_enemy_session.active_monster_count() == 1, "non-stricked balls pass through monsters like the original type 2 ball")
+	_assert(non_stricked_enemy_session.score == 0, "non-stricked monster pass-through awards no score")
+	_assert(non_stricked_enemy_session.first_ball_velocity().is_zero_approx(), "non-stricked monster pass-through leaves ball trajectory unchanged")
 
 	var monster_racket_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	monster_racket_hit_session.move_racket_to(220.0)
@@ -1173,6 +1240,19 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	bee_ball_radius_miss_session.force_bee(Vector2(233, 200))
 	bee_ball_radius_miss_session.update(0.0)
 	_assert(bee_ball_radius_miss_session.active_bee_count() == 1, "ball bee collision keeps the original strict radius threshold")
+	var fireball_bee_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	var fireball_bee_velocity := Vector2(100, 0)
+	fireball_bee_session.force_ball(Vector2(200, 200), fireball_bee_velocity, GameSessionScript.BALL_SIZE, GameSessionScript.BALL_TYPE_FIREBALL)
+	fireball_bee_session.force_bee(Vector2(200, 200))
+	fireball_bee_session.update(0.0)
+	_assert(fireball_bee_session.active_bee_count() == 0, "fireballs still remove the bee hazard")
+	_assert(fireball_bee_session.first_ball_velocity() == fireball_bee_velocity, "fireball bee contact does not rotate the ball in the original")
+	var non_stricked_bee_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	non_stricked_bee_session.force_ball(Vector2(200, 200), Vector2.ZERO, GameSessionScript.BALL_SIZE, GameSessionScript.BALL_TYPE_NON_STRICKED)
+	non_stricked_bee_session.force_bee(Vector2(200, 200))
+	non_stricked_bee_session.update(0.0)
+	_assert(non_stricked_bee_session.active_bee_count() == 1, "non-stricked balls pass through the bee hazard")
+	_assert(non_stricked_bee_session.score == 0, "non-stricked bee pass-through awards no score")
 
 	var bee_racket_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	bee_racket_hit_session.force_ball(Vector2(300, 200), Vector2.ZERO)
@@ -1889,6 +1969,7 @@ func _validate_audio_cue_catalog() -> void:
 		GameSessionScript.SFX_EVENT_BRICK_CLEAR: "eff23",
 		GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION: "eff10",
 		GameSessionScript.SFX_EVENT_BONUS_SPAWN: "eff11",
+		GameSessionScript.SFX_EVENT_BONUS_EXPIRE: "eff12",
 		GameSessionScript.SFX_EVENT_BONUS_COLLECT: "eff15",
 		GameSessionScript.SFX_EVENT_PROJECTILE_FIRE: "eff08",
 		GameSessionScript.SFX_EVENT_MONSTER_SPAWN: "eff13",
@@ -1915,6 +1996,7 @@ func _validate_audio_cue_catalog() -> void:
 	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_LEVEL_READY) != AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_LEVEL_COMPLETE), "audio cue catalog keeps start and ending cues distinct")
 	_assert(AudioCueCatalogScript.sfx_name_for_event("missing_sfx_event") == "", "audio cue catalog leaves unknown SFX events silent")
 	var sfx_events: Array[String] = AudioCueCatalogScript.known_sfx_events()
+	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_EXPIRE), "audio cue catalog exposes bonus-expire event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "audio cue catalog exposes bonus-apply event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BEE_SPAWN), "audio cue catalog exposes bee-spawn event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BEE_STOP), "audio cue catalog exposes bee-stop event in known event list")
@@ -1963,6 +2045,7 @@ func _validate_audio_service() -> void:
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BALL_LAUNCH)) == "", "audio service leaves initial ball launch silent")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_RACKET_BOUNCE)) == "eff07", "audio service maps racket-bounce SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_SPAWN)) == "eff11", "audio service maps bonus-spawn SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_EXPIRE)) == "eff12", "audio service maps bonus-expire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_COLLECT)) == "eff15", "audio service maps bonus-collect SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_PROJECTILE_FIRE)) == "eff08", "audio service maps projectile-fire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_SPAWN)) == "eff13", "audio service maps monster-spawn SFX event")
@@ -2990,6 +3073,29 @@ func _stack_bonus(session, type_id: int) -> void:
 		"frame": 0,
 		"frame_elapsed": 0.0,
 	})
+
+
+func _active_ball(
+	position: Vector2,
+	velocity: Vector2 = Vector2.ZERO,
+	size: float = GameSessionScript.BALL_SIZE,
+	type_id: int = GameSessionScript.BALL_TYPE_STANDARD
+) -> Dictionary:
+	return {
+		"active": true,
+		"position": position,
+		"velocity": velocity,
+		"size": size,
+		"type_id": type_id,
+		"previous_type_id": GameSessionScript.BALL_TYPE_STANDARD,
+		"non_stricked_time_remaining": GameSessionScript.NON_STRICKED_DURATION_SECONDS if type_id == GameSessionScript.BALL_TYPE_NON_STRICKED else 0.0,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+		"speed_scale": GameSessionScript.BALL_DEFAULT_SPEED_SCALE,
+		"target_speed": velocity.length(),
+		"speed_hit_count": 0,
+		"magnet_attached": false,
+	}
 
 
 func _projectile(projectile_type: int, position: Vector2) -> Dictionary:
