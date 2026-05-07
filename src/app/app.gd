@@ -16,6 +16,7 @@ var _cursor_overlay: Control
 var _previous_mouse_mode: int = Input.MOUSE_MODE_VISIBLE
 var _owns_mouse_mode := false
 var _system_cursor_hidden_for_menu := false
+var _fullscreen_enabled := false
 
 
 func _ready() -> void:
@@ -24,6 +25,7 @@ func _ready() -> void:
 	_previous_mouse_mode = Input.get_mouse_mode()
 	_owns_mouse_mode = true
 	_ensure_cursor_overlay()
+	_apply_presentation_settings_from_profile()
 	_show_main_menu()
 
 
@@ -149,6 +151,22 @@ func is_system_cursor_hidden_for_menu() -> bool:
 	return _system_cursor_hidden_for_menu
 
 
+func is_fullscreen_enabled() -> bool:
+	return _fullscreen_enabled
+
+
+func apply_fullscreen_enabled(is_enabled: bool) -> void:
+	_fullscreen_enabled = is_enabled
+	if DisplayServer.get_name() == "headless":
+		return
+
+	var window := get_window()
+	if window == null:
+		return
+
+	window.mode = Window.MODE_FULLSCREEN if is_enabled else Window.MODE_WINDOWED
+
+
 func _play_music_context(context_name: String) -> void:
 	var audio := get_node_or_null("/root/KrakoutAudio")
 	if audio != null and audio.has_method("play_music_context"):
@@ -180,6 +198,15 @@ func _set_original_cursor_active(is_active: bool) -> void:
 
 func _profile_service() -> Node:
 	return get_node_or_null("/root/KrakoutProfile")
+
+
+func _apply_presentation_settings_from_profile() -> void:
+	var profile := _profile_service()
+	if profile == null or not profile.has_method("fullscreen_enabled"):
+		apply_fullscreen_enabled(false)
+		return
+
+	apply_fullscreen_enabled(bool(profile.call("fullscreen_enabled")))
 
 
 func _episode_title_for_slug(episode_slug: String) -> String:

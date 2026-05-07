@@ -9,6 +9,7 @@ var _sfx_by_name: Dictionary = {}
 var _music_by_name: Dictionary = {}
 var _levels_by_episode: Dictionary = {}
 var _episode_summaries: Array[Dictionary] = []
+var _texture_cache: Dictionary = {}
 
 
 func _ready() -> void:
@@ -111,11 +112,21 @@ func wrapped_level_number(episode_slug: String, display_level_number: int) -> in
 
 
 func load_texture(name: String) -> Texture2D:
+	if _texture_cache.has(name):
+		return _texture_cache[name] as Texture2D
+
 	var path := texture_path(name)
 	if path.is_empty():
 		push_error("Unknown Krakout texture: %s" % name)
 		return null
-	return load(path) as Texture2D
+
+	var texture := load(path) as Texture2D
+	if texture == null:
+		return null
+
+	texture = _apply_runtime_texture_processing(name, texture)
+	_texture_cache[name] = texture
+	return texture
 
 
 func _index_manifest() -> void:
@@ -124,6 +135,7 @@ func _index_manifest() -> void:
 	_music_by_name.clear()
 	_levels_by_episode.clear()
 	_episode_summaries.clear()
+	_texture_cache.clear()
 
 	for texture_entry: Dictionary in manifest.get("textures", []):
 		_index_named_path(_textures_by_name, String(texture_entry.get("output_path", "")))
@@ -184,6 +196,35 @@ func _path_from_name(index: Dictionary, name: String, default_extension: String)
 		return String(index[name + default_extension])
 
 	return ""
+
+
+func _apply_runtime_texture_processing(name: String, texture: Texture2D) -> Texture2D:
+	if name == "Arrowup" or name == "Arrowdown":
+		return _black_to_transparent_texture(texture)
+	return texture
+
+
+func _black_to_transparent_texture(texture: Texture2D) -> Texture2D:
+	var image := texture.get_image()
+	if image == null:
+		return texture
+
+	image.convert(Image.FORMAT_RGBA8)
+	var changed := false
+	var width := image.get_width()
+	var height := image.get_height()
+	for y in range(height):
+		for x in range(width):
+			var color := image.get_pixel(x, y)
+			if color.a > 0.0 and color.r == 0.0 and color.g == 0.0 and color.b == 0.0:
+				color.a = 0.0
+				image.set_pixel(x, y, color)
+				changed = true
+
+	if not changed:
+		return texture
+
+	return ImageTexture.create_from_image(image)
 
 
 func _compare_episode_summaries(left: Dictionary, right: Dictionary) -> bool:

@@ -28,6 +28,7 @@ const GameScreenScript := preload("res://src/game/game_screen.gd")
 const BitmapTextScript := preload("res://src/render/krakout_bitmap_text.gd")
 const MenuAmbientEffectsScript := preload("res://src/menu/krakout_menu_ambient_effects.gd")
 const OptionsVxEffectsScript := preload("res://src/menu/options_vx_effects.gd")
+const OptionsScreenScript := preload("res://src/menu/options_screen.gd")
 const MainMenuScreenScript := preload("res://src/menu/main_menu_screen.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
@@ -79,6 +80,16 @@ func _run() -> void:
 		welogo_texture != null and Vector2i(welogo_texture.get_width(), welogo_texture.get_height()) == Vector2i(200, 240),
 		"Welogo texture preserves extracted 5x6 40px animation sheet dimensions"
 	)
+	var arrow_up_texture := _assets.load_texture("Arrowup") as Texture2D
+	_assert(arrow_up_texture != null, "Arrowup texture is loadable")
+	if arrow_up_texture != null:
+		var arrow_up_image := arrow_up_texture.get_image()
+		_assert(arrow_up_image != null, "Arrowup texture exposes image data")
+		if arrow_up_image != null:
+			_assert(
+				is_zero_approx(arrow_up_image.get_pixel(0, 0).a),
+				"Arrowup texture converts black key color to transparent background"
+			)
 
 	var episode_slugs: Array = _assets.episode_slugs()
 	_assert(episode_slugs.has("Default"), "Default episode is indexed")
@@ -1958,6 +1969,7 @@ func _validate_profile_service() -> void:
 	_assert(not profile.fps_visible(), "profile defaults FPS hidden")
 	_assert(profile.background_movable(), "profile defaults background movable from original config")
 	_assert(profile.background_type() == 2, "profile defaults to original BgType")
+	_assert(not profile.fullscreen_enabled(), "profile defaults fullscreen disabled")
 	_assert(profile.music_enabled(), "profile defaults music enabled")
 	_assert(profile.sfx_enabled(), "profile defaults SFX enabled")
 	_assert(profile.music_volume() == 80, "profile defaults music volume")
@@ -1977,6 +1989,7 @@ func _validate_profile_service() -> void:
 	_assert(profile.set_fps_visible(true), "profile persists visible FPS setting")
 	_assert(profile.set_background_movable(false), "profile persists static background setting")
 	_assert(profile.set_background_type(7), "profile persists the final original background type")
+	_assert(profile.set_fullscreen_enabled(true), "profile persists fullscreen enabled setting")
 	_assert(profile.set_music_enabled(false), "profile persists disabled music setting")
 	_assert(profile.set_sfx_enabled(false), "profile persists disabled SFX setting")
 	_assert(profile.set_music_volume(35), "profile persists music volume setting")
@@ -1990,6 +2003,7 @@ func _validate_profile_service() -> void:
 	_assert(reloaded_profile.fps_visible(), "profile reloads FPS setting")
 	_assert(not reloaded_profile.background_movable(), "profile reloads background movable setting")
 	_assert(reloaded_profile.background_type() == 7, "profile reloads background type setting")
+	_assert(reloaded_profile.fullscreen_enabled(), "profile reloads fullscreen setting")
 	_assert(not reloaded_profile.music_enabled(), "profile reloads music enabled setting")
 	_assert(not reloaded_profile.sfx_enabled(), "profile reloads SFX enabled setting")
 	_assert(reloaded_profile.music_volume() == 35, "profile reloads music volume setting")
@@ -2000,6 +2014,7 @@ func _validate_profile_service() -> void:
 	final_profile.set_save_path(save_path, true)
 	_assert(final_profile.best_score() == 1200, "profile persists updated high score")
 	_assert(final_profile.background_type() == 7, "profile keeps presentation settings when high score changes")
+	_assert(final_profile.fullscreen_enabled(), "profile keeps fullscreen setting when high score changes")
 	_assert(profile.set_background_type(42), "profile normalizes out-of-range background types")
 	_assert(profile.background_type() == 0, "profile resets out-of-range background types to the original first entry")
 	var normalized_profile = ProfileScript.new()
@@ -2431,6 +2446,42 @@ func _validate_menu_ambient_effects() -> void:
 
 func _validate_options_vx_effects() -> void:
 	_assert(
+		OptionsScreenScript.sound_slider_track_source_rect() == Rect2(Vector2(0, 0), Vector2(198, 16)),
+		"options screen maps original slider track cell"
+	)
+	_assert(
+		OptionsScreenScript.sound_slider_handle_source_rect() == Rect2(Vector2(198, 0), Vector2(16, 38)),
+		"options screen maps original slider handle cell"
+	)
+	_assert(
+		OptionsScreenScript.backward_source_rect_for_frame(0) == Rect2(Vector2(0, 0), Vector2(100, 100)),
+		"options screen maps original backward first frame"
+	)
+	_assert(
+		OptionsScreenScript.backward_source_rect_for_frame(19) == Rect2(Vector2(0, 1900), Vector2(100, 100)),
+		"options screen maps original backward final frame"
+	)
+	_assert(
+		OptionsScreenScript.page_arrow_source_rect_for_frame(9) == Rect2(Vector2(405, 0), Vector2(45, 45)),
+		"options screen maps original page-arrow final frame"
+	)
+	_assert(
+		OptionsScreenScript.original_audio_slider_handle_x_for_volume(0) == 362,
+		"options screen keeps original volume-slider minimum handle x"
+	)
+	_assert(
+		OptionsScreenScript.original_audio_slider_handle_x_for_volume(100) == 521,
+		"options screen keeps original volume-slider maximum handle x"
+	)
+	_assert(
+		OptionsScreenScript.original_audio_volume_for_mouse_x(370.0) == 0,
+		"options screen keeps original mouse-to-volume mapping at minimum"
+	)
+	_assert(
+		OptionsScreenScript.original_audio_volume_for_mouse_x(537.0) == 100,
+		"options screen clamps original mouse-to-volume mapping at maximum"
+	)
+	_assert(
 		OptionsVxEffectsScript.source_rect_for_frame(0) == Rect2(Vector2(0, 0), Vector2(40, 40)),
 		"options Vx maps original first animation frame"
 	)
@@ -2448,40 +2499,58 @@ func _validate_options_vx_effects() -> void:
 	)
 
 	var vx_effects = OptionsVxEffectsScript.new()
-	vx_effects.set_row_base_y(OptionsVxEffectsScript.ROW_MUSIC, 162.0)
+	vx_effects.set_row_base_y(OptionsVxEffectsScript.ROW_MUSIC, 222.0)
 	vx_effects.set_music_enabled(false, true)
 	_assert(
 		int(vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.DISABLED_TARGET_FRAME,
-		"options Vx snaps disabled music indicator to first frame"
+		"options Vx snaps disabled music indicator to original final frame"
 	)
 	_assert(
-		vx_effects.indicator_rect(OptionsVxEffectsScript.ROW_MUSIC) == Rect2(Vector2(555, 162), Vector2(40, 40)),
+		vx_effects.indicator_rect(OptionsVxEffectsScript.ROW_MUSIC) == Rect2(Vector2(555, 231), Vector2(40, 40)),
 		"options Vx places animated music indicator beside the slider"
 	)
 	_assert(
-		vx_effects.static_indicator_rect(OptionsVxEffectsScript.ROW_MUSIC) == Rect2(Vector2(560, 177), Vector2(30, 30)),
+		vx_effects.static_indicator_rect(OptionsVxEffectsScript.ROW_MUSIC) == Rect2(Vector2(560, 237), Vector2(30, 30)),
 		"options Vx places static music marker at the original relative offset"
 	)
 	vx_effects.set_music_enabled(true)
 	_assert(
 		int(vx_effects.target_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME,
-		"options Vx targets final frame when music is enabled"
+		"options Vx targets original first frame when music is enabled"
 	)
 	vx_effects.advance(OptionsVxEffectsScript.FRAME_SECONDS)
 	_assert(
-		int(vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == 1,
-		"options Vx advances one frame per original 30 ms gate"
+		int(vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.DISABLED_TARGET_FRAME,
+		"options Vx waits for the original strict 30 ms gate"
 	)
-	vx_effects.advance(OptionsVxEffectsScript.FRAME_SECONDS * 20.0)
+	vx_effects.advance(0.001)
+	_assert(
+		int(vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.DISABLED_TARGET_FRAME - 1,
+		"options Vx advances one frame toward enabled state after the original sampled gate"
+	)
+	for _step in range(OptionsVxEffectsScript.FRAME_COUNT):
+		vx_effects.advance(OptionsVxEffectsScript.FRAME_SECONDS + 0.001)
 	_assert(
 		int(vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME,
-		"options Vx clamps enabled animation at final frame"
+		"options Vx reaches the original first frame when fully enabled"
 	)
 	vx_effects.set_music_enabled(false)
 	vx_effects.advance(OptionsVxEffectsScript.FRAME_SECONDS)
 	_assert(
-		int(vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME - 1,
-		"options Vx animates backward when music is disabled"
+		int(vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME,
+		"options Vx waits for the original strict gate when returning to disabled state"
+	)
+	vx_effects.advance(0.001)
+	_assert(
+		int(vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == 1,
+		"options Vx advances one frame toward disabled state after the sampled gate"
+	)
+	vx_effects.configure_row_count(4)
+	vx_effects.set_row_base_y(3, 230.0)
+	vx_effects.set_row_enabled(3, true, true)
+	_assert(
+		vx_effects.static_indicator_rect(3) == Rect2(Vector2(560, 245), Vector2(30, 30)),
+		"options Vx supports additional custom rows for the second page"
 	)
 	vx_effects.free()
 
@@ -2666,6 +2735,7 @@ func _validate_menu_and_game_scenes() -> void:
 	if _profile != null:
 		_profile.call("set_music_enabled", false)
 		_profile.call("set_sfx_enabled", false)
+		_profile.call("set_fullscreen_enabled", false)
 		_profile.call("set_music_volume", 25)
 		_profile.call("set_sfx_volume", 45)
 		_profile.call("set_bonus_stack_visible", false)
@@ -2678,14 +2748,41 @@ func _validate_menu_and_game_scenes() -> void:
 	root.add_child(options_screen)
 	await process_frame
 	_assert(options_screen.has_signal("back_requested"), "options screen exposes back signal")
-	_assert(options_screen.find_child("SoundSliderArt", true, false) != null, "options screen loads original sound slider art")
+	_assert(options_screen.find_children("*", "CheckButton", true, false).is_empty(), "options screen no longer uses native check buttons")
+	_assert(options_screen.find_children("*", "HSlider", true, false).is_empty(), "options screen no longer uses native sliders")
 	var options_vx_effects = options_screen.find_child("OptionsVxEffects", true, false)
 	_assert(options_vx_effects != null, "options screen creates original Vx effects overlay")
-	_assert(options_screen.find_child("BackButton", true, false) != null, "options screen creates back button")
-	_assert(options_screen.find_child("StartMusicButton", true, false) == null, "options screen does not expose provisional music preview")
+	var options_page_two_vx = options_screen.find_child("OptionsPageTwoVxEffects", true, false)
+	_assert(options_page_two_vx != null, "options screen creates second-page original Vx effects overlay")
+	var options_page_three_vx = options_screen.find_child("OptionsPageThreeVxEffects", true, false)
+	_assert(options_page_three_vx != null, "options screen creates third-page original Vx effects overlay")
+	_assert(options_screen.find_child("BackButton", true, false) == null, "options screen replaces the generic back button with original art")
+	_assert(options_screen.find_child("PreviewSfxButton", true, false) == null, "options screen does not expose provisional SFX preview")
+	_assert(int(options_screen.call("page_count")) == 3, "options screen exposes three custom pages")
+	_assert(int(options_screen.call("current_page")) == 0, "options screen starts on the audio controls page")
+	_assert(
+		options_screen.call("visible_control_ids") == [
+			OptionsScreenScript.CONTROL_MUSIC_SLIDER,
+			OptionsScreenScript.CONTROL_SFX_SLIDER,
+			OptionsScreenScript.CONTROL_MUSIC_TOGGLE,
+			OptionsScreenScript.CONTROL_SFX_TOGGLE,
+			OptionsScreenScript.CONTROL_PAGE_DOWN,
+			OptionsScreenScript.CONTROL_BACKWARD,
+		],
+		"options screen exposes original audio-page control order"
+	)
+	_assert(
+		options_screen.call("control_hit_rect", OptionsScreenScript.CONTROL_MUSIC_SLIDER) == Rect2(Vector2(370, 233), Vector2(167, 38)),
+		"options screen keeps original music-slider hitbox"
+	)
+	_assert(
+		options_screen.call("control_hit_rect", OptionsScreenScript.CONTROL_MUSIC_TOGGLE) == Rect2(Vector2(560, 237), Vector2(30, 30)),
+		"options screen keeps original music-toggle hitbox"
+	)
 	var options_snapshot: Dictionary = options_screen.call("settings_snapshot")
 	_assert(not bool(options_snapshot["music_enabled"]), "options screen loads music enabled setting")
 	_assert(not bool(options_snapshot["sfx_enabled"]), "options screen loads SFX enabled setting")
+	_assert(not bool(options_snapshot["fullscreen_enabled"]), "options screen loads fullscreen setting")
 	_assert(int(options_snapshot["music_volume"]) == 25, "options screen loads music volume")
 	_assert(int(options_snapshot["sfx_volume"]) == 45, "options screen loads SFX volume")
 	_assert(not bool(options_snapshot["bonus_stack_visible"]), "options screen loads bonus-stack setting")
@@ -2693,6 +2790,14 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(bool(options_snapshot["fps_visible"]), "options screen loads FPS setting")
 	_assert(not bool(options_snapshot["background_movable"]), "options screen loads background-movable setting")
 	_assert(int(options_snapshot["background_type"]) == 7, "options screen loads full-range background type")
+	_assert(
+		options_screen.call("slider_handle_rect", OptionsScreenScript.CONTROL_MUSIC_SLIDER) == Rect2(Vector2(401, 233), Vector2(16, 38)),
+		"options screen places the music slider handle from original volume math"
+	)
+	_assert(
+		options_screen.call("slider_handle_rect", OptionsScreenScript.CONTROL_SFX_SLIDER) == Rect2(Vector2(433, 293), Vector2(16, 38)),
+		"options screen places the SFX slider handle from original volume math"
+	)
 	if options_vx_effects != null:
 		_assert(
 			int(options_vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.DISABLED_TARGET_FRAME,
@@ -2704,6 +2809,7 @@ func _validate_menu_and_game_scenes() -> void:
 		)
 	options_screen.call("set_music_enabled", true)
 	options_screen.call("set_sfx_enabled", true)
+	options_screen.call("set_fullscreen_enabled", true)
 	options_screen.call("set_music_volume", 55)
 	options_screen.call("set_sfx_volume", 65)
 	options_screen.call("set_bonus_stack_visible", true)
@@ -2722,13 +2828,69 @@ func _validate_menu_and_game_scenes() -> void:
 		)
 		options_vx_effects.advance(OptionsVxEffectsScript.FRAME_SECONDS)
 		_assert(
-			int(options_vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == 1,
+			int(options_vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.DISABLED_TARGET_FRAME,
+			"options screen waits for the strict original Vx gate"
+		)
+		options_vx_effects.advance(0.001)
+		_assert(
+			int(options_vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.DISABLED_TARGET_FRAME - 1,
 			"options screen advances music Vx toward enabled state"
 		)
+	options_screen.call("select_control", OptionsScreenScript.CONTROL_BACKWARD)
+	options_screen.call("_process", OptionsScreenScript.BACKWARD_SELECTED_FRAME_GATE_SECONDS)
+	_assert(int(options_screen.call("backward_frame")) == 0, "options screen backward button waits for the strict 20 ms selected gate")
+	options_screen.call("_process", 0.001)
+	_assert(int(options_screen.call("backward_frame")) == 1, "options screen backward button advances after the original selected gate")
+	options_screen.call("select_control", OptionsScreenScript.CONTROL_MUSIC_SLIDER)
+	options_screen.call("_process", OptionsScreenScript.BACKWARD_RETURN_FRAME_GATE_SECONDS)
+	_assert(int(options_screen.call("backward_frame")) == 1, "options screen backward button waits for the strict 5 ms return gate")
+	options_screen.call("_process", 0.001)
+	_assert(int(options_screen.call("backward_frame")) == 2, "options screen backward button returns through the original catch-up animation")
+	options_screen.call("go_to_page", 1)
+	_assert(int(options_screen.call("current_page")) == 1, "options screen switches to the presentation page")
+	_assert(
+		options_screen.call("visible_control_ids") == [
+			OptionsScreenScript.CONTROL_FULLSCREEN_TOGGLE,
+			OptionsScreenScript.CONTROL_FPS_TOGGLE,
+			OptionsScreenScript.CONTROL_BACKGROUND_MOVABLE_TOGGLE,
+			OptionsScreenScript.CONTROL_BACKGROUND_TYPE_SLIDER,
+			OptionsScreenScript.CONTROL_PAGE_UP,
+			OptionsScreenScript.CONTROL_PAGE_DOWN,
+			OptionsScreenScript.CONTROL_BACKWARD,
+		],
+		"options screen exposes presentation-page control order"
+	)
+	_assert(
+		options_screen.call("selected_control_id") == OptionsScreenScript.CONTROL_FULLSCREEN_TOGGLE,
+		"options screen defaults presentation page selection to the fullscreen toggle"
+	)
+	if options_page_two_vx != null:
+		_assert(int(options_page_two_vx.target_frame(0)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME, "options screen retargets fullscreen Vx state after toggling")
+		_assert(int(options_page_two_vx.current_frame(1)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME, "options screen snaps enabled FPS Vx state from profile")
+		_assert(int(options_page_two_vx.target_frame(2)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME, "options screen retargets moving-background Vx state after toggling")
+	options_screen.call("go_to_page", 2)
+	_assert(int(options_screen.call("current_page")) == 2, "options screen switches to the utility page")
+	_assert(
+		options_screen.call("visible_control_ids") == [
+			OptionsScreenScript.CONTROL_BONUS_STACK_TOGGLE,
+			OptionsScreenScript.CONTROL_BALL_TRACKS_TOGGLE,
+			OptionsScreenScript.CONTROL_PAGE_UP,
+			OptionsScreenScript.CONTROL_BACKWARD,
+		],
+		"options screen exposes utility-page control order"
+	)
+	_assert(
+		options_screen.call("selected_control_id") == OptionsScreenScript.CONTROL_BONUS_STACK_TOGGLE,
+		"options screen defaults utility page selection to the first gameplay toggle"
+	)
+	if options_page_three_vx != null:
+		_assert(int(options_page_three_vx.target_frame(0)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME, "options screen retargets bonus-stack Vx state after toggling")
+		_assert(int(options_page_three_vx.target_frame(1)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME, "options screen retargets ball-tracks Vx state after toggling")
 	await process_frame
 	if _profile != null:
 		_assert(bool(_profile.call("music_enabled")), "options screen persists enabled music")
 		_assert(bool(_profile.call("sfx_enabled")), "options screen persists enabled SFX")
+		_assert(bool(_profile.call("fullscreen_enabled")), "options screen persists enabled fullscreen")
 		_assert(int(_profile.call("music_volume")) == 55, "options screen persists music volume")
 		_assert(int(_profile.call("sfx_volume")) == 65, "options screen persists SFX volume")
 		_assert(bool(_profile.call("bonus_stack_visible")), "options screen persists bonus-stack setting")
@@ -2745,6 +2907,8 @@ func _validate_menu_and_game_scenes() -> void:
 		_assert(bool(_audio.call("sfx_enabled")), "options screen syncs audio SFX enabled")
 		_assert(int(_audio.call("music_volume")) == 55, "options screen syncs audio music volume")
 		_assert(int(_audio.call("sfx_volume")) == 65, "options screen syncs audio SFX volume")
+	options_screen.call("go_to_page", 0)
+	_assert(int(options_screen.call("current_page")) == 0, "options screen can return from later settings pages to the audio page")
 	options_screen.queue_free()
 
 	var episode_select := EpisodeSelectScreenScene.instantiate()
@@ -3103,6 +3267,7 @@ func _validate_menu_and_game_scenes() -> void:
 	await process_frame
 	_assert_app_original_cursor(app, "app starts menu screens with the original cursor overlay")
 	_assert_app_original_cursor_animation(app, "app animates the original cursor logo overlay")
+	_assert(not bool(app.call("is_fullscreen_enabled")), "app starts in windowed mode from the persisted profile")
 
 	var app_menu := app.find_child("MainMenuScreen", true, false)
 	_assert(app_menu != null, "app starts on main menu screen")
@@ -3153,6 +3318,12 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_OPTIONS, "options screen uses options music context")
 			_assert(String(_audio.call("current_music_name")) == "Abnormal", "options screen keeps original main-menu music")
 		if app_options != null:
+			app_options.call("set_fullscreen_enabled", true)
+			await process_frame
+			_assert(bool(app.call("is_fullscreen_enabled")), "options screen applies fullscreen changes through the app shell")
+			app_options.call("set_fullscreen_enabled", false)
+			await process_frame
+			_assert(not bool(app.call("is_fullscreen_enabled")), "options screen can return the app shell to windowed mode")
 			app_options.emit_signal("back_requested")
 			await process_frame
 		app_menu = app.find_child("MainMenuScreen", true, false)

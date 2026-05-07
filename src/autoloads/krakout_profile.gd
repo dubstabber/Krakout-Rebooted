@@ -12,6 +12,7 @@ const BALL_TRACKS_VISIBLE_KEY := "ball_tracks_visible"
 const FPS_VISIBLE_KEY := "fps_visible"
 const BACKGROUND_MOVABLE_KEY := "background_movable"
 const BACKGROUND_TYPE_KEY := "background_type"
+const FULLSCREEN_ENABLED_KEY := "fullscreen_enabled"
 const MUSIC_ENABLED_KEY := "music_enabled"
 const SFX_ENABLED_KEY := "sfx_enabled"
 const MUSIC_VOLUME_KEY := "music_volume"
@@ -21,6 +22,7 @@ const DEFAULT_BALL_TRACKS_VISIBLE := true
 const DEFAULT_FPS_VISIBLE := false
 const DEFAULT_BACKGROUND_MOVABLE := true
 const DEFAULT_BACKGROUND_TYPE := 2
+const DEFAULT_FULLSCREEN_ENABLED := false
 const DEFAULT_MUSIC_ENABLED := true
 const DEFAULT_SFX_ENABLED := true
 const DEFAULT_MUSIC_VOLUME := 80
@@ -38,6 +40,7 @@ var _ball_tracks_visible := DEFAULT_BALL_TRACKS_VISIBLE
 var _fps_visible := DEFAULT_FPS_VISIBLE
 var _background_movable := DEFAULT_BACKGROUND_MOVABLE
 var _background_type := DEFAULT_BACKGROUND_TYPE
+var _fullscreen_enabled := DEFAULT_FULLSCREEN_ENABLED
 var _music_enabled := DEFAULT_MUSIC_ENABLED
 var _sfx_enabled := DEFAULT_SFX_ENABLED
 var _music_volume := DEFAULT_MUSIC_VOLUME
@@ -170,6 +173,19 @@ func set_background_type(type_id: int) -> bool:
 	return save_profile()
 
 
+func fullscreen_enabled() -> bool:
+	_ensure_loaded()
+	return _fullscreen_enabled
+
+
+func set_fullscreen_enabled(is_enabled: bool) -> bool:
+	_ensure_loaded()
+	if _fullscreen_enabled == is_enabled:
+		return false
+	_fullscreen_enabled = is_enabled
+	return save_profile()
+
+
 func music_enabled() -> bool:
 	_ensure_loaded()
 	return _music_enabled
@@ -245,6 +261,7 @@ func load_profile() -> bool:
 	_background_type = PlayfieldRendererScript.normalize_background_type(
 		int(config.get_value(SETTINGS_SECTION, BACKGROUND_TYPE_KEY, DEFAULT_BACKGROUND_TYPE))
 	)
+	_fullscreen_enabled = bool(config.get_value(SETTINGS_SECTION, FULLSCREEN_ENABLED_KEY, DEFAULT_FULLSCREEN_ENABLED))
 	_music_enabled = bool(config.get_value(SETTINGS_SECTION, MUSIC_ENABLED_KEY, DEFAULT_MUSIC_ENABLED))
 	_sfx_enabled = bool(config.get_value(SETTINGS_SECTION, SFX_ENABLED_KEY, DEFAULT_SFX_ENABLED))
 	_music_volume = clampi(int(config.get_value(SETTINGS_SECTION, MUSIC_VOLUME_KEY, DEFAULT_MUSIC_VOLUME)), 0, 100)
@@ -262,6 +279,7 @@ func save_profile() -> bool:
 	config.set_value(SETTINGS_SECTION, FPS_VISIBLE_KEY, _fps_visible)
 	config.set_value(SETTINGS_SECTION, BACKGROUND_MOVABLE_KEY, _background_movable)
 	config.set_value(SETTINGS_SECTION, BACKGROUND_TYPE_KEY, _background_type)
+	config.set_value(SETTINGS_SECTION, FULLSCREEN_ENABLED_KEY, _fullscreen_enabled)
 	config.set_value(SETTINGS_SECTION, MUSIC_ENABLED_KEY, _music_enabled)
 	config.set_value(SETTINGS_SECTION, SFX_ENABLED_KEY, _sfx_enabled)
 	config.set_value(SETTINGS_SECTION, MUSIC_VOLUME_KEY, _music_volume)
@@ -294,6 +312,7 @@ func _reset_profile_state() -> void:
 	_fps_visible = DEFAULT_FPS_VISIBLE
 	_background_movable = DEFAULT_BACKGROUND_MOVABLE
 	_background_type = DEFAULT_BACKGROUND_TYPE
+	_fullscreen_enabled = DEFAULT_FULLSCREEN_ENABLED
 	_music_enabled = DEFAULT_MUSIC_ENABLED
 	_sfx_enabled = DEFAULT_SFX_ENABLED
 	_music_volume = DEFAULT_MUSIC_VOLUME
