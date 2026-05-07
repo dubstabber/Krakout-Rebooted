@@ -4,11 +4,13 @@ class_name StaticMenuScreen
 signal back_requested
 
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
+const MenuBitmapLabelScript := preload("res://src/menu/krakout_menu_bitmap_label.gd")
 
 var _background: TextureRect
-var _title_label: Label
-var _body_label: Label
+var _title_label
+var _body_label
 var _back_button: Button
+var _back_button_label
 
 
 func _ready() -> void:
@@ -52,35 +54,62 @@ func _build_scene() -> void:
 	_background.stretch_mode = TextureRect.STRETCH_KEEP
 	add_child(_background)
 
-	_title_label = Label.new()
-	_title_label.name = "TitleLabel"
-	_title_label.position = Vector2(0, 56)
-	_title_label.size = Vector2(640, 42)
-	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_title_label.add_theme_color_override("font_color", Color.WHITE)
-	_title_label.add_theme_font_size_override("font_size", 24)
+	_title_label = _create_bitmap_label(
+		"TitleLabel",
+		Vector2(0, 56),
+		Vector2(640, 42),
+		HORIZONTAL_ALIGNMENT_CENTER,
+		VERTICAL_ALIGNMENT_CENTER
+	)
 	add_child(_title_label)
 
-	_body_label = Label.new()
-	_body_label.name = "BodyLabel"
-	_body_label.position = Vector2(80, 126)
-	_body_label.size = Vector2(480, 250)
-	_body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_body_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_body_label.add_theme_color_override("font_color", Color.WHITE)
-	_body_label.add_theme_font_size_override("font_size", 16)
+	_body_label = _create_bitmap_label(
+		"BodyLabel",
+		Vector2(80, 126),
+		Vector2(480, 250),
+		HORIZONTAL_ALIGNMENT_CENTER,
+		VERTICAL_ALIGNMENT_CENTER
+	)
 	add_child(_body_label)
 
 	_back_button = Button.new()
 	_back_button.name = "BackButton"
-	_back_button.text = "Back"
+	_back_button.text = ""
 	_back_button.position = Vector2(260, 405)
 	_back_button.size = Vector2(120, 34)
 	_back_button.focus_mode = Control.FOCUS_ALL
 	_back_button.pressed.connect(func() -> void: back_requested.emit())
 	add_child(_back_button)
+
+	_back_button_label = _create_bitmap_label(
+		"BackButtonLabel",
+		Vector2.ZERO,
+		_back_button.size,
+		HORIZONTAL_ALIGNMENT_CENTER,
+		VERTICAL_ALIGNMENT_CENTER
+	)
+	_back_button_label.text = "Back"
+	_back_button.add_child(_back_button_label)
+
+
+func _create_bitmap_label(
+	label_name: String,
+	label_position: Vector2,
+	label_size: Vector2,
+	alignment: HorizontalAlignment,
+	vertical: VerticalAlignment = VERTICAL_ALIGNMENT_TOP,
+	line_spacing: int = 0,
+	wrap_enabled: bool = false
+):
+	var label = MenuBitmapLabelScript.new()
+	label.name = label_name
+	label.position = label_position
+	label.size = label_size
+	label.horizontal_alignment = alignment
+	label.vertical_alignment = vertical
+	label.line_spacing = line_spacing
+	label.wrap_enabled = wrap_enabled
+	return label
 
 
 func _load_asset_texture(texture_name: String) -> Texture2D:

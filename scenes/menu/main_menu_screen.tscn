@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://src/menu/main_menu_screen.gd" id="1"]
+[ext_resource type="Script" path="res://src/menu/krakout_menu_bitmap_label.gd" id="2"]
 
 [node name="MainMenuScreen" type="Control"]
 layout_mode = 3
@@ -27,13 +28,13 @@ offset_bottom = 129.0
 mouse_filter = 2
 stretch_mode = 4
 
-[node name="SelectedCaption" type="Label" parent="."]
+[node name="SelectedCaption" type="Control" parent="."]
 layout_mode = 0
 offset_top = 165.0
 offset_right = 640.0
 offset_bottom = 189.0
 mouse_filter = 2
-theme_override_colors/font_color = Color(1, 1, 1, 1)
+script = ExtResource("2")
 horizontal_alignment = 1
 vertical_alignment = 1
 

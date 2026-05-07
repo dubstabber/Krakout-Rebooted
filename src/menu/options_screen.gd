@@ -6,6 +6,7 @@ signal back_requested
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 const PlayfieldRendererScript := preload("res://src/playfield/playfield_renderer.gd")
 const OptionsVxEffectsScript := preload("res://src/menu/options_vx_effects.gd")
+const MenuBitmapLabelScript := preload("res://src/menu/krakout_menu_bitmap_label.gd")
 
 const PAGE_AUDIO := 0
 const PAGE_PRESENTATION := 1
@@ -131,20 +132,20 @@ const PAGE_UP_POSITION := Vector2(590, 100)
 const PAGE_DOWN_POSITION := Vector2(590, 350)
 
 var _background_texture: Texture2D
-var _title_label: Label
-var _music_label: Label
-var _sfx_label: Label
-var _music_help_label: Label
-var _sfx_help_label: Label
-var _background_type_label: Label
-var _background_type_value_label: Label
-var _presentation_help_label: Label
-var _utility_help_label: Label
+var _title_label
+var _music_label
+var _sfx_label
+var _music_help_label
+var _sfx_help_label
+var _background_type_label
+var _background_type_value_label
+var _presentation_help_label
+var _utility_help_label
 var _presentation_row_labels: Dictionary = {}
 var _utility_row_labels: Dictionary = {}
-var _audio_labels: Array[Label] = []
-var _presentation_labels: Array[Label] = []
-var _utility_labels: Array[Label] = []
+var _audio_labels: Array = []
+var _presentation_labels: Array = []
+var _utility_labels: Array = []
 
 var _sound_slider_texture: Texture2D
 var _backward_texture: Texture2D
@@ -618,13 +619,13 @@ func _build_scene() -> void:
 		16
 	)
 	_audio_labels = [_music_label, _sfx_label, _music_help_label, _sfx_help_label]
-	for label: Label in _audio_labels:
+	for label in _audio_labels:
 		add_child(label)
 
 	for row_index in range(PRESENTATION_ROW_SPECS.size()):
 		var spec: Dictionary = PRESENTATION_ROW_SPECS[row_index]
 		var row_id := String(spec["id"])
-		var row_label := _label(
+		var row_label = _label(
 			"%sLabel" % row_id.capitalize(),
 			String(spec["label"]),
 			Vector2(PAGE_LABEL_POSITION_X, float(spec["label_y"])),
@@ -671,7 +672,7 @@ func _build_scene() -> void:
 	for row_index in range(UTILITY_ROW_SPECS.size()):
 		var spec: Dictionary = UTILITY_ROW_SPECS[row_index]
 		var row_id := String(spec["id"])
-		var row_label := _label(
+		var row_label = _label(
 			"%sLabel" % row_id.capitalize(),
 			String(spec["label"]),
 			Vector2(PAGE_LABEL_POSITION_X, float(spec["label_y"])),
@@ -826,7 +827,7 @@ func _sync_page_visibility() -> void:
 
 
 func _set_labels_visible(labels: Array, is_visible: bool) -> void:
-	for label: Label in labels:
+	for label in labels:
 		label.visible = is_visible
 
 
@@ -863,13 +864,8 @@ func _update_label_highlights() -> void:
 	)
 
 
-func _set_label_highlight(label: Label, is_selected: bool) -> void:
-	if label == null:
-		return
-	label.add_theme_color_override(
-		"font_color",
-		Color(1.0, 0.9, 0.35, 1.0) if is_selected else Color.WHITE
-	)
+func _set_label_highlight(label, is_selected: bool) -> void:
+	pass
 
 
 func _on_music_toggled(is_enabled: bool) -> void:
@@ -1177,18 +1173,15 @@ func _label(
 	position: Vector2,
 	size: Vector2,
 	alignment: HorizontalAlignment,
-	font_size: int
-) -> Label:
-	var label := Label.new()
+	_font_size: int
+):
+	var label = MenuBitmapLabelScript.new()
 	label.name = node_name
 	label.text = text
 	label.position = position
 	label.size = size
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.horizontal_alignment = alignment
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_color_override("font_color", Color.WHITE)
-	label.add_theme_font_size_override("font_size", font_size)
 	return label
 
 

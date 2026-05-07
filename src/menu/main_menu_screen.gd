@@ -61,7 +61,7 @@ const MENU_ITEM_SPECS: Array[Dictionary] = [
 
 @onready var _background: TextureRect = $Background
 @onready var _title: TextureRect = $Title
-@onready var _selected_caption: Label = $SelectedCaption
+@onready var _selected_caption = $SelectedCaption
 @onready var _menu_items: Control = $MenuItems
 
 var _icons_texture: Texture2D

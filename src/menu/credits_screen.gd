@@ -8,8 +8,14 @@ func screen_title() -> String:
 
 func body_lines() -> Array[String]:
 	return [
-		"Original game: 'WE' Group Krakout, version 1.93.",
-		"Original release date from File_Id.diz: Jun 29, 2003.",
-		"Reimplementation: Godot 4.6 project using extracted original assets.",
-		"Runtime behavior remains grounded in the original executable and decoded data.",
+		"Original game:",
+		"'WE' Group Krakout v1.93.",
+		"Release date:",
+		"Jun 29, 2003.",
+		"Reimplementation:",
+		"Godot 4.6 using extracted",
+		"original assets.",
+		"Behavior stays grounded in",
+		"the original executable",
+		"and decoded data.",
 	]

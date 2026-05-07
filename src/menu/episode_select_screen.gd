@@ -5,6 +5,7 @@ signal episode_selected(episode_slug: String, level_number: int)
 signal back_requested
 
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
+const MenuBitmapLabelScript := preload("res://src/menu/krakout_menu_bitmap_label.gd")
 
 const PAGE_SIZE := 10
 const ROW_START_Y := 100
@@ -14,21 +15,25 @@ const PAGE_STATUS_Y := 425
 const PAGE_HELP_Y := 450
 const INDEX_X := 5
 const TITLE_X := 55
-const LEVEL_X := 585
+const LEVEL_RIGHT_X := 585
+const LEVEL_WIDTH := 50
+const LEVEL_X := LEVEL_RIGHT_X - LEVEL_WIDTH
 const ROW_WIDTH := 580
 const ARROW_FRAME_COUNT := 10
-const ARROW_FRAME_SECONDS := 0.03
+const ARROW_SELECTED_FRAME_GATE_SECONDS := 0.03
+const ARROW_RETURN_FRAME_GATE_SECONDS := 0.01
 const ARROW_BUTTON_SIZE := Vector2(45, 45)
 const UP_ARROW_POSITION := Vector2(590, 100)
 const DOWN_ARROW_POSITION := Vector2(590, 350)
 const BG_TILE_SIZE := Vector2(48, 48)
+const BACKGROUND_SCROLL_STEP_SECONDS := 0.03
 
 @onready var _header: Control = $Header
 @onready var _rows: Control = $Rows
 @onready var _up_button: TextureButton = $UpButton
 @onready var _down_button: TextureButton = $DownButton
-@onready var _page_status: Label = $PageStatus
-@onready var _page_help: Label = $PageHelp
+@onready var _page_status = $PageStatus
+@onready var _page_help = $PageHelp
 
 var _episodes: Array[Dictionary] = []
 var _page_index := 0
@@ -43,6 +48,14 @@ var _background_tick := 0.0
 var _row_buttons: Array[Button] = []
 var _row_labels: Array[Dictionary] = []
 var _arrow_texture_cache: Dictionary = {}
+var _up_arrow_frame := 0
+var _down_arrow_frame := 0
+var _up_arrow_hovered := false
+var _down_arrow_hovered := false
+var _up_arrow_selected_elapsed := 0.0
+var _up_arrow_return_elapsed := 0.0
+var _down_arrow_selected_elapsed := 0.0
+var _down_arrow_return_elapsed := 0.0
 
 
 func _ready() -> void:
@@ -61,11 +74,12 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_animation_time += delta
 	_background_tick += delta
-	while _background_tick >= ARROW_FRAME_SECONDS:
-		_background_tick -= ARROW_FRAME_SECONDS
+	while _background_tick >= BACKGROUND_SCROLL_STEP_SECONDS:
+		_background_tick -= BACKGROUND_SCROLL_STEP_SECONDS
 		_background_offset_primary = (_background_offset_primary + 1) % int(BG_TILE_SIZE.y)
 		_background_offset_secondary = (_background_offset_secondary + 3) % int(BG_TILE_SIZE.x)
 		queue_redraw()
+	_advance_arrow_animation(delta)
 	_update_arrow_frames()
 
 
@@ -162,6 +176,10 @@ func _configure_static_nodes() -> void:
 	_up_button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_up_button.ignore_texture_size = false
 	_up_button.stretch_mode = TextureButton.STRETCH_KEEP
+	_up_button.mouse_entered.connect(_set_up_arrow_hovered.bind(true))
+	_up_button.mouse_exited.connect(_set_up_arrow_hovered.bind(false))
+	_up_button.focus_entered.connect(_set_up_arrow_hovered.bind(true))
+	_up_button.focus_exited.connect(_set_up_arrow_hovered.bind(false))
 	_up_button.pressed.connect(_on_up_button_pressed)
 
 	_down_button.position = DOWN_ARROW_POSITION
@@ -172,6 +190,10 @@ func _configure_static_nodes() -> void:
 	_down_button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_down_button.ignore_texture_size = false
 	_down_button.stretch_mode = TextureButton.STRETCH_KEEP
+	_down_button.mouse_entered.connect(_set_down_arrow_hovered.bind(true))
+	_down_button.mouse_exited.connect(_set_down_arrow_hovered.bind(false))
+	_down_button.focus_entered.connect(_set_down_arrow_hovered.bind(true))
+	_down_button.focus_exited.connect(_set_down_arrow_hovered.bind(false))
 	_down_button.pressed.connect(_on_down_button_pressed)
 
 	_configure_label(_page_status)
@@ -186,10 +208,10 @@ func _configure_static_nodes() -> void:
 	_page_help.text = "Use PgUp / PgDn."
 
 
-func _label(label_name: String, text: String, label_position: Vector2, label_size: Vector2, alignment: HorizontalAlignment) -> Label:
-	var label := _header.get_node_or_null(label_name) as Label
+func _label(label_name: String, text: String, label_position: Vector2, label_size: Vector2, alignment: HorizontalAlignment):
+	var label = _header.get_node_or_null(label_name)
 	if label == null:
-		label = Label.new()
+		label = MenuBitmapLabelScript.new()
 		label.name = label_name
 		_header.add_child(label)
 	label.text = text
@@ -199,9 +221,7 @@ func _label(label_name: String, text: String, label_position: Vector2, label_siz
 	return label
 
 
-func _configure_label(label: Label) -> void:
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.add_theme_color_override("font_color", Color.WHITE)
+func _configure_label(label) -> void:
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 
@@ -244,9 +264,9 @@ func _rebuild_rows() -> void:
 		row.add_child(hit_area)
 		_row_buttons.append(hit_area)
 
-		var index_label := _row_label("Index", str(episode_index + 1), Vector2(INDEX_X, 0), Vector2(40, ROW_HEIGHT), HORIZONTAL_ALIGNMENT_LEFT)
-		var title_label := _row_label("Title", String(_episodes[episode_index].get("title", "")), Vector2(TITLE_X, 0), Vector2(420, ROW_HEIGHT), HORIZONTAL_ALIGNMENT_LEFT)
-		var level_label := _row_label("LevelCount", str(int(_episodes[episode_index].get("level_count", 0))), Vector2(LEVEL_X, 0), Vector2(50, ROW_HEIGHT), HORIZONTAL_ALIGNMENT_RIGHT)
+		var index_label = _row_label("Index", str(episode_index + 1), Vector2(INDEX_X, 0), Vector2(40, ROW_HEIGHT), HORIZONTAL_ALIGNMENT_LEFT)
+		var title_label = _row_label("Title", String(_episodes[episode_index].get("title", "")), Vector2(TITLE_X, 0), Vector2(420, ROW_HEIGHT), HORIZONTAL_ALIGNMENT_LEFT)
+		var level_label = _row_label("LevelCount", str(int(_episodes[episode_index].get("level_count", 0))), Vector2(LEVEL_X, 0), Vector2(LEVEL_WIDTH, ROW_HEIGHT), HORIZONTAL_ALIGNMENT_RIGHT)
 		row.add_child(index_label)
 		row.add_child(title_label)
 		row.add_child(level_label)
@@ -256,8 +276,8 @@ func _rebuild_rows() -> void:
 		})
 
 
-func _row_label(label_name: String, text: String, label_position: Vector2, label_size: Vector2, alignment: HorizontalAlignment) -> Label:
-	var label := Label.new()
+func _row_label(label_name: String, text: String, label_position: Vector2, label_size: Vector2, alignment: HorizontalAlignment):
+	var label = MenuBitmapLabelScript.new()
 	label.name = label_name
 	label.text = text
 	label.position = label_position
@@ -287,12 +307,17 @@ func _update_page_controls() -> void:
 	_up_button.disabled = _page_index <= 0
 	_down_button.visible = _page_index < total_pages - 1
 	_down_button.disabled = _page_index >= total_pages - 1
+	if not _up_button.visible:
+		_set_up_arrow_hovered(false)
+		_up_arrow_frame = 0
+	if not _down_button.visible:
+		_set_down_arrow_hovered(false)
+		_down_arrow_frame = 0
 
 
 func _update_arrow_frames() -> void:
-	var frame := int(_animation_time / ARROW_FRAME_SECONDS) % ARROW_FRAME_COUNT
-	_apply_arrow_texture(_up_button, _arrow_up_texture, frame)
-	_apply_arrow_texture(_down_button, _arrow_down_texture, frame)
+	_apply_arrow_texture(_up_button, _arrow_up_texture, _up_arrow_frame)
+	_apply_arrow_texture(_down_button, _arrow_down_texture, _down_arrow_frame)
 
 
 func _apply_arrow_texture(button: TextureButton, texture: Texture2D, frame: int) -> void:
@@ -316,6 +341,102 @@ func _arrow_frame_texture(texture: Texture2D, frame: int) -> AtlasTexture:
 	atlas_texture.region = Rect2(Vector2(frame * ARROW_BUTTON_SIZE.x, 0), ARROW_BUTTON_SIZE)
 	_arrow_texture_cache[cache_key] = atlas_texture
 	return atlas_texture
+
+
+func up_arrow_frame() -> int:
+	return _up_arrow_frame
+
+
+func down_arrow_frame() -> int:
+	return _down_arrow_frame
+
+
+static func up_arrow_hit_rect() -> Rect2:
+	return Rect2(UP_ARROW_POSITION, ARROW_BUTTON_SIZE)
+
+
+static func down_arrow_hit_rect() -> Rect2:
+	return Rect2(DOWN_ARROW_POSITION, ARROW_BUTTON_SIZE)
+
+
+func _set_up_arrow_hovered(is_hovered: bool) -> void:
+	_up_arrow_hovered = is_hovered and _up_button.visible and not _up_button.disabled
+
+
+func _set_down_arrow_hovered(is_hovered: bool) -> void:
+	_down_arrow_hovered = is_hovered and _down_button.visible and not _down_button.disabled
+
+
+func _advance_arrow_animation(delta: float) -> void:
+	_advance_single_arrow(
+		delta,
+		_up_arrow_hovered,
+		func() -> int:
+			return _up_arrow_frame,
+		func(frame: int) -> void:
+			_up_arrow_frame = frame,
+		func() -> float:
+			return _up_arrow_selected_elapsed,
+		func(value: float) -> void:
+			_up_arrow_selected_elapsed = value,
+		func() -> float:
+			return _up_arrow_return_elapsed,
+		func(value: float) -> void:
+			_up_arrow_return_elapsed = value
+	)
+	_advance_single_arrow(
+		delta,
+		_down_arrow_hovered,
+		func() -> int:
+			return _down_arrow_frame,
+		func(frame: int) -> void:
+			_down_arrow_frame = frame,
+		func() -> float:
+			return _down_arrow_selected_elapsed,
+		func(value: float) -> void:
+			_down_arrow_selected_elapsed = value,
+		func() -> float:
+			return _down_arrow_return_elapsed,
+		func(value: float) -> void:
+			_down_arrow_return_elapsed = value
+	)
+
+
+func _advance_single_arrow(
+	delta: float,
+	is_hovered: bool,
+	get_frame: Callable,
+	set_frame: Callable,
+	get_selected_elapsed: Callable,
+	set_selected_elapsed: Callable,
+	get_return_elapsed: Callable,
+	set_return_elapsed: Callable
+) -> void:
+	if delta <= 0.0:
+		return
+
+	var frame: int = int(get_frame.call())
+	if is_hovered:
+		set_return_elapsed.call(0.0)
+		var selected_elapsed := float(get_selected_elapsed.call()) + delta
+		if selected_elapsed > ARROW_SELECTED_FRAME_GATE_SECONDS:
+			selected_elapsed = 0.0
+			frame = (frame + 1) % ARROW_FRAME_COUNT
+			set_frame.call(frame)
+		set_selected_elapsed.call(selected_elapsed)
+		return
+
+	set_selected_elapsed.call(0.0)
+	if frame == 0:
+		set_return_elapsed.call(0.0)
+		return
+
+	var return_elapsed := float(get_return_elapsed.call()) + delta
+	if return_elapsed > ARROW_RETURN_FRAME_GATE_SECONDS:
+		return_elapsed = 0.0
+		frame = (frame + 1) % ARROW_FRAME_COUNT
+		set_frame.call(frame)
+	set_return_elapsed.call(return_elapsed)
 
 
 func _select_episode(episode_index: int) -> void:
@@ -371,11 +492,7 @@ func _focus_selected_row() -> void:
 
 
 func _update_row_styles() -> void:
-	for row_entry: Dictionary in _row_labels:
-		var is_selected := int(row_entry["episode_index"]) == _selected_index
-		var color := Color(1.0, 0.9, 0.35, 1.0) if is_selected else Color.WHITE
-		for label: Label in row_entry["labels"]:
-			label.add_theme_color_override("font_color", color)
+	pass
 
 
 func _activate_selected_episode() -> void:

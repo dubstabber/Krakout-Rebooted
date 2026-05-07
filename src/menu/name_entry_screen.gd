@@ -6,6 +6,7 @@ signal cancel_requested
 
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 const ProfileScript := preload("res://src/autoloads/krakout_profile.gd")
+const MenuBitmapLabelScript := preload("res://src/menu/krakout_menu_bitmap_label.gd")
 
 const BACKGROUND_TILE_SIZE := Vector2(96, 48)
 const NAME_MAX_LENGTH := ProfileScript.MAX_PLAYER_NAME_LENGTH
@@ -17,10 +18,10 @@ var episode_title := ""
 
 var _player_name := ""
 var _background_texture: Texture2D
-var _prompt_label: Label
-var _summary_label: Label
-var _name_label: Label
-var _hint_label: Label
+var _prompt_label
+var _summary_label
+var _name_label
+var _hint_label
 var _submit_button: Button
 var _cancel_button: Button
 
@@ -138,42 +139,51 @@ func _build_scene() -> void:
 	add_child(_prompt_label)
 
 	_name_label = _make_label("NameLabel", Vector2(170, 205), Vector2(300, 40), HORIZONTAL_ALIGNMENT_CENTER, 24)
-	_name_label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.45))
 	add_child(_name_label)
 
 	_hint_label = _make_label("HintLabel", Vector2(0, 270), Vector2(640, 64), HORIZONTAL_ALIGNMENT_CENTER, 16)
-	_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_hint_label.line_spacing = 0
 	add_child(_hint_label)
 
 	_submit_button = Button.new()
 	_submit_button.name = "SubmitButton"
-	_submit_button.text = "OK"
+	_submit_button.text = ""
 	_submit_button.position = Vector2(225, 390)
 	_submit_button.size = Vector2(82, 34)
 	_submit_button.focus_mode = Control.FOCUS_ALL
 	_submit_button.pressed.connect(submit_name)
 	add_child(_submit_button)
+	_submit_button.add_child(_button_label("SubmitButtonLabel", _submit_button.size, "OK"))
 
 	_cancel_button = Button.new()
 	_cancel_button.name = "CancelButton"
-	_cancel_button.text = "Back"
+	_cancel_button.text = ""
 	_cancel_button.position = Vector2(333, 390)
 	_cancel_button.size = Vector2(82, 34)
 	_cancel_button.focus_mode = Control.FOCUS_ALL
 	_cancel_button.pressed.connect(func() -> void: cancel_requested.emit())
 	add_child(_cancel_button)
+	_cancel_button.add_child(_button_label("CancelButtonLabel", _cancel_button.size, "Back"))
 
 
-func _make_label(label_name: String, label_position: Vector2, label_size: Vector2, alignment: HorizontalAlignment, font_size: int) -> Label:
-	var label := Label.new()
+func _make_label(label_name: String, label_position: Vector2, label_size: Vector2, alignment: HorizontalAlignment, _font_size: int):
+	var label = MenuBitmapLabelScript.new()
 	label.name = label_name
 	label.position = label_position
 	label.size = label_size
 	label.horizontal_alignment = alignment
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.add_theme_color_override("font_color", Color.WHITE)
-	label.add_theme_font_size_override("font_size", font_size)
+	return label
+
+
+func _button_label(label_name: String, label_size: Vector2, text_value: String):
+	var label = MenuBitmapLabelScript.new()
+	label.name = label_name
+	label.position = Vector2.ZERO
+	label.size = label_size
+	label.text = text_value
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	return label
 
 

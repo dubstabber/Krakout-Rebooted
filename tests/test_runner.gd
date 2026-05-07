@@ -26,10 +26,12 @@ const LevelReadyRollerRendererScript := preload("res://src/render/level_ready_ro
 const GameHudScript := preload("res://src/game/game_hud.gd")
 const GameScreenScript := preload("res://src/game/game_screen.gd")
 const BitmapTextScript := preload("res://src/render/krakout_bitmap_text.gd")
+const MenuBitmapLabelScript := preload("res://src/menu/krakout_menu_bitmap_label.gd")
 const MenuAmbientEffectsScript := preload("res://src/menu/krakout_menu_ambient_effects.gd")
 const OptionsVxEffectsScript := preload("res://src/menu/options_vx_effects.gd")
 const OptionsScreenScript := preload("res://src/menu/options_screen.gd")
 const MainMenuScreenScript := preload("res://src/menu/main_menu_screen.gd")
+const EpisodeSelectScreenScript := preload("res://src/menu/episode_select_screen.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 const RulesScreenScene := preload("res://scenes/menu/rules_screen.tscn")
@@ -125,6 +127,7 @@ func _run() -> void:
 	_validate_original_rng()
 	_validate_brick_atlas_mapping()
 	_validate_bitmap_text_metrics()
+	await _validate_menu_bitmap_label()
 	_validate_level_grid_renderer_defaults()
 	await _validate_game_hud_presentation()
 	_validate_gameplay_sheet_catalog()
@@ -2243,6 +2246,31 @@ func _validate_bitmap_text_metrics() -> void:
 	_assert(digit_text.bounds_for_text("885", Vector2(615, 18), HORIZONTAL_ALIGNMENT_RIGHT) == Rect2(Vector2(570, 18), Vector2(45, 20)), "bitmap digits support right-aligned bounds")
 
 
+func _validate_menu_bitmap_label() -> void:
+	var label = MenuBitmapLabelScript.new()
+	label.size = Vector2(220, 32)
+	label.text = "High Score"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	root.add_child(label)
+	await process_frame
+
+	_assert(label.call("font_texture") != null, "menu bitmap label loads the original Font sheet")
+	_assert(label.call("rendered_lines") == ["High Score"], "menu bitmap label preserves single-line text")
+	_assert(label.call("content_size") == Vector2(164, 24), "menu bitmap label measures single-line content with original font metrics")
+
+	label.size = Vector2(110, 80)
+	label.wrap_enabled = true
+	label.text = "Start New Game"
+	await process_frame
+	_assert(label.call("rendered_lines") == ["Start", "New", "Game"], "menu bitmap label wraps multiline content against control width")
+	var wrapped_size: Vector2 = label.call("content_size")
+	_assert(wrapped_size.y == 72 and wrapped_size.x > 0.0 and wrapped_size.x <= 110.0, "menu bitmap label reports wrapped multiline bounds")
+
+	label.queue_free()
+	await process_frame
+
+
 func _validate_game_hud_presentation() -> void:
 	var hud: KrakoutGameHud = GameHudScript.new()
 
@@ -2588,7 +2616,10 @@ func _validate_menu_and_game_scenes() -> void:
 	if ambient_effects != null:
 		_assert(ambient_effects.stars_snapshot().size() == MenuAmbientEffectsScript.STAR_COUNT, "main menu ambient VFX owns original star pool")
 		_assert(ambient_effects.title_target_rect() == Rect2(Vector2(122, 70), Vector2(396, 75)), "main menu ambient VFX owns title draw rect")
-	_assert(menu.find_child("SelectedCaption", true, false) != null, "main menu creates selected caption")
+	var selected_caption = menu.find_child("SelectedCaption", true, false)
+	_assert(selected_caption != null, "main menu creates selected caption")
+	if selected_caption != null:
+		_assert(selected_caption.get_script() == MenuBitmapLabelScript, "main menu renders its selected caption with the original bitmap font")
 
 	var expected_menu_items := {
 		"RulesButton": Vector2(30, 190),
@@ -2623,6 +2654,9 @@ func _validate_menu_and_game_scenes() -> void:
 		menu.call("_process", MainMenuScreenScript.ICON_RETURN_FRAME_GATE_SECONDS + 0.001)
 		_assert(int(menu.call("menu_item_frame", "start")) == 2, "main menu old selected icon returns with original 5 ms catch-up gate")
 		_assert(int(menu.call("menu_item_frame", "rules")) == 0, "main menu newly selected icon does not advance on the 5 ms return gate")
+		if selected_caption != null:
+			menu.call("_select_menu_item", "rules")
+			_assert(String(selected_caption.get("text")) == "Game Rules", "main menu updates bitmap caption text when selection changes")
 
 		var signal_state := {"did_request_start": false}
 		menu.start_game_requested.connect(func() -> void: signal_state["did_request_start"] = true)
@@ -2671,6 +2705,12 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(rules_screen.has_signal("back_requested"), "rules screen exposes back signal")
 	_assert(rules_screen.find_child("BackButton", true, false) != null, "rules screen creates back button")
 	_assert(String(rules_screen.call("screen_title")) == "Game Rules", "rules screen exposes title")
+	var rules_title = rules_screen.find_child("TitleLabel", true, false)
+	var rules_body = rules_screen.find_child("BodyLabel", true, false)
+	var rules_back_caption = rules_screen.find_child("BackButtonLabel", true, false)
+	_assert(rules_title != null and rules_title.get_script() == MenuBitmapLabelScript, "rules screen renders title with original bitmap font")
+	_assert(rules_body != null and rules_body.get_script() == MenuBitmapLabelScript, "rules screen renders body copy with original bitmap font")
+	_assert(rules_back_caption != null and rules_back_caption.get_script() == MenuBitmapLabelScript, "rules screen renders back caption with original bitmap font")
 	rules_screen.queue_free()
 
 	var credits_screen := CreditsScreenScene.instantiate()
@@ -2679,6 +2719,10 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(credits_screen.has_signal("back_requested"), "credits screen exposes back signal")
 	_assert(credits_screen.find_child("BackButton", true, false) != null, "credits screen creates back button")
 	_assert(String(credits_screen.call("screen_title")) == "Credits", "credits screen exposes title")
+	var credits_title = credits_screen.find_child("TitleLabel", true, false)
+	var credits_body = credits_screen.find_child("BodyLabel", true, false)
+	_assert(credits_title != null and credits_title.get_script() == MenuBitmapLabelScript, "credits screen renders title with original bitmap font")
+	_assert(credits_body != null and credits_body.get_script() == MenuBitmapLabelScript, "credits screen renders body copy with original bitmap font")
 	credits_screen.queue_free()
 
 	var high_score_screen := HighScoreScreenScene.instantiate()
@@ -2690,6 +2734,12 @@ func _validate_menu_and_game_scenes() -> void:
 	var high_score_entries: Array = high_score_screen.call("high_score_entries")
 	_assert(high_score_entries.size() == 1, "high score screen reads profile table entries")
 	_assert(high_score_entries[0]["score"] == 321, "high score screen mirrors legacy best in table view")
+	var high_score_table := high_score_screen.find_child("HighScoreTable", true, false)
+	_assert(high_score_table != null, "high score screen builds a structured bitmap-text table")
+	var high_score_header = high_score_screen.find_child("HeaderName", true, false)
+	var high_score_value = high_score_screen.find_child("EntryScore1", true, false)
+	_assert(high_score_header != null and high_score_header.get_script() == MenuBitmapLabelScript, "high score screen renders table headers with original bitmap font")
+	_assert(high_score_value != null and String(high_score_value.get("text")) == "321", "high score screen renders score values in fixed bitmap-text columns")
 	high_score_screen.queue_free()
 
 	var name_entry_screen := NameEntryScreenScene.instantiate()
@@ -2699,6 +2749,10 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(name_entry_screen.has_signal("cancel_requested"), "name entry screen exposes cancel signal")
 	_assert(name_entry_screen.find_child("NameLabel", true, false) != null, "name entry screen creates editable name label")
 	_assert(name_entry_screen.find_child("SubmitButton", true, false) != null, "name entry screen creates submit button")
+	var entry_name_label = name_entry_screen.find_child("NameLabel", true, false)
+	var submit_caption = name_entry_screen.find_child("SubmitButtonLabel", true, false)
+	_assert(entry_name_label != null and entry_name_label.get_script() == MenuBitmapLabelScript, "name entry screen renders editable name with original bitmap font")
+	_assert(submit_caption != null and submit_caption.get_script() == MenuBitmapLabelScript, "name entry screen renders submit caption with original bitmap font")
 	name_entry_screen.call("configure", 456, 7, "Retro", "Retro")
 	name_entry_screen.call("_unhandled_input", _key_event(KEY_A, 65))
 	name_entry_screen.call("_unhandled_input", _key_event(KEY_B, 66))
@@ -2750,6 +2804,10 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(options_screen.has_signal("back_requested"), "options screen exposes back signal")
 	_assert(options_screen.find_children("*", "CheckButton", true, false).is_empty(), "options screen no longer uses native check buttons")
 	_assert(options_screen.find_children("*", "HSlider", true, false).is_empty(), "options screen no longer uses native sliders")
+	var options_title_label = options_screen.find_child("TitleLabel", true, false)
+	var options_music_label = options_screen.find_child("MusicVolumeLabel", true, false)
+	_assert(options_title_label != null and options_title_label.get_script() == MenuBitmapLabelScript, "options screen renders its title with the original bitmap font")
+	_assert(options_music_label != null and options_music_label.get_script() == MenuBitmapLabelScript, "options screen renders audio labels with the original bitmap font")
 	var options_vx_effects = options_screen.find_child("OptionsVxEffects", true, false)
 	_assert(options_vx_effects != null, "options screen creates original Vx effects overlay")
 	var options_page_two_vx = options_screen.find_child("OptionsPageTwoVxEffects", true, false)
@@ -2923,9 +2981,36 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(episode_select.find_child("PageStatus", true, false) != null, "episode select creates page status")
 	_assert(episode_select.find_child("UpButton", true, false) != null, "episode select creates up arrow")
 	_assert(episode_select.find_child("DownButton", true, false) != null, "episode select creates down arrow")
+	_assert(
+		EpisodeSelectScreenScript.up_arrow_hit_rect() == Rect2(Vector2(590, 100), Vector2(45, 45)),
+		"episode select keeps the original up-arrow hitbox"
+	)
+	_assert(
+		EpisodeSelectScreenScript.down_arrow_hit_rect() == Rect2(Vector2(590, 350), Vector2(45, 45)),
+		"episode select keeps the original down-arrow hitbox"
+	)
+	var page_status_label = episode_select.find_child("PageStatus", true, false)
+	var title_header = episode_select.find_child("TitleHeader", true, false)
+	var level_header = episode_select.find_child("LevelHeader", true, false)
+	var first_row_title = episode_select.find_child("Title", true, false)
+	_assert(page_status_label != null and page_status_label.get_script() == MenuBitmapLabelScript, "episode select renders page status with the original bitmap font")
+	_assert(title_header != null and title_header.get_script() == MenuBitmapLabelScript, "episode select renders headers with the original bitmap font")
+	_assert(level_header != null and level_header.position == Vector2(535, 60), "episode select keeps the original right-aligned level column clear of the page arrows")
+	_assert(first_row_title != null and first_row_title.get_script() == MenuBitmapLabelScript, "episode select renders row captions with the original bitmap font")
 
 	var selected_summary: Dictionary = episode_select.call("selected_episode_summary")
 	_assert(selected_summary.get("slug", "") == "Abstraction", "episode select defaults to first sorted episode")
+
+	episode_select.call("_set_down_arrow_hovered", true)
+	episode_select.call("_process", EpisodeSelectScreenScript.ARROW_SELECTED_FRAME_GATE_SECONDS)
+	_assert(int(episode_select.call("down_arrow_frame")) == 0, "episode select down arrow waits for the strict original 30 ms hover gate")
+	episode_select.call("_process", 0.001)
+	_assert(int(episode_select.call("down_arrow_frame")) == 1, "episode select down arrow advances after the original hover gate")
+	episode_select.call("_set_down_arrow_hovered", false)
+	episode_select.call("_process", EpisodeSelectScreenScript.ARROW_RETURN_FRAME_GATE_SECONDS)
+	_assert(int(episode_select.call("down_arrow_frame")) == 1, "episode select down arrow waits for the strict original 10 ms return gate")
+	episode_select.call("_process", 0.001)
+	_assert(int(episode_select.call("down_arrow_frame")) == 2, "episode select down arrow returns through the original catch-up animation")
 
 	var down_button := episode_select.find_child("DownButton", true, false) as TextureButton
 	if down_button != null:
