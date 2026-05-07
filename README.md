@@ -76,9 +76,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   the current executable evidence does not prove a safe gameplay activation
   contract; do not spawn or simulate Snake behavior until that path is
   re-identified from IDA/runtime traces.
-- `KrakoutImpactEffectRenderer` draws enemy spawn, timeout, hit, and chain
-  board-impact effects from the original `Exploision` 32x32 vertical-frame
-  columns, with the original 11-frame/50ms cadence and brick-cell impact offset.
+- `KrakoutImpactEffectRenderer` draws enemy spawn, timeout, hit, chain, and
+  hard-brick board-impact effects from the original `Exploision` 32x32
+  vertical-frame columns, with the original 11-frame/50ms cadence, the
+  original hard-brick force-break/non-clearing columns, and the original
+  chain-impact brick-cell offset.
 - `KrakoutBallRenderer` draws standard balls from the extracted `Balls` atlas,
   tints non-stricked balls, and composes fireballs from a warm-tinted `Balls`
   base plus the extracted native 24px `Fb` overlay, with the session advancing
@@ -148,13 +150,14 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   10-frame 40x40 strip and static 30x30 marker beside the volume rows.
 - Gameplay now queues semantic SFX events from the session and drains them
   through `KrakoutAudio` in the Godot scene layer. IDA-backed mappings now cover
-  racket bounce, brick clear, chain explosion, bonus spawn/expire/collect,
-  projectile fire, monster spawn/timeout/hit, life lost, level-ready, level
-  complete, and game over; initial ball launch, back-wall bounce, generic bonus
-  apply, and generic projectile hit remain named but silent. The latest
-  back-wall audit found the relevant branch reuses the `eff05` handle already
-  used for level-ready behavior, so that event remains unmapped until runtime
-  traces prove a distinct bounce contract.
+  racket bounce, brick clear, hard-brick impact, chain explosion, bonus
+  spawn/expire/collect, projectile fire, monster spawn/timeout/hit, life lost,
+  level-ready, level complete, and game over. Hard-brick collisions now also
+  expose the original `Exploision` force-break/non-clearing VFX columns; initial
+  ball launch, back-wall bounce, generic bonus apply, and generic projectile hit
+  remain named but silent. The latest back-wall audit found the relevant branch
+  reuses the `eff05` handle already used for level-ready behavior, so that
+  event remains unmapped until runtime traces prove a distinct bounce contract.
 
 ## Validation
 

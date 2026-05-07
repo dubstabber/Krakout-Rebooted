@@ -992,6 +992,22 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(projectile_hit_audio_events.has(GameSessionScript.SFX_EVENT_PROJECTILE_HIT), "projectile brick hit queues projectile-hit SFX event")
 	_assert(projectile_hit_audio_events.has(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "projectile brick hit queues brick-clear SFX event")
 
+	var hard_brick_ball_session = _playing_session_from_level(_make_level_from_rows([[8, 1]]))
+	hard_brick_ball_session.force_ball(
+		PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2),
+		Vector2(-80, 0)
+	)
+	hard_brick_ball_session.update(0.01)
+	_assert(hard_brick_ball_session.board_state.tile_at(0, 0) == 8, "normal ball hit leaves hard brick intact")
+	_assert(hard_brick_ball_session.score == 0, "normal hard-brick hit awards no score")
+	_assert(not hard_brick_ball_session.consume_board_changed(), "normal hard-brick hit does not mark the board dirty")
+	var hard_brick_ball_effects: Array = hard_brick_ball_session.visible_impact_effects()
+	_assert(hard_brick_ball_effects.size() == 1, "normal hard-brick hit spawns original hard-brick impact VFX")
+	if hard_brick_ball_effects.size() == 1:
+		_assert(int(hard_brick_ball_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_HARD_BRICK_IMPACT, "normal hard-brick hit uses the original hard-brick impact column")
+		_assert(hard_brick_ball_effects[0]["position"] == PlayfieldSpecScript.brick_rect(0, 0).position, "normal hard-brick impact VFX starts at the brick origin")
+	_assert(hard_brick_ball_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_HARD_BRICK_HIT], "normal hard-brick hit queues the original hard-brick impact SFX event")
+
 	var strong_projectile_hard_session = _playing_session_from_level(_make_level_from_rows([[8, 1]]))
 	var strong_hard_projectiles: Array[Dictionary] = [_projectile(
 		GameSessionScript.PROJECTILE_TYPE_STRONG,
@@ -1002,6 +1018,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(strong_projectile_hard_session.board_state.tile_at(0, 0) == 0, "strong projectile force-breaks hard brick")
 	_assert(strong_projectile_hard_session.consume_board_changed(), "strong projectile hard-brick hit marks board for redraw")
 	_assert(strong_projectile_hard_session.score == GameSessionScript.HARD_BRICK_FORCE_SCORE, "strong projectile hard-brick hit awards original force-break score")
+	var strong_hard_effects: Array = strong_projectile_hard_session.visible_impact_effects()
+	_assert(strong_hard_effects.size() == 1, "strong projectile hard-brick hit spawns original force-break VFX")
+	if strong_hard_effects.size() == 1:
+		_assert(int(strong_hard_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK, "strong projectile hard-brick hit uses the original force-break VFX column")
+		_assert(strong_hard_effects[0]["position"] == PlayfieldSpecScript.brick_rect(0, 0).position, "strong projectile hard-brick VFX starts at the brick origin")
 
 	var strong_projectile_downgrade_session = _playing_session_from_level(_make_level_from_rows([[15, 1]]))
 	var strong_downgrade_projectiles: Array[Dictionary] = [_projectile(
@@ -1012,6 +1033,10 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	strong_projectile_downgrade_session.update(0.0)
 	_assert(strong_projectile_downgrade_session.board_state.tile_at(0, 0) == 0, "strong projectile clears downgrade brick instead of stepping it down")
 	_assert(strong_projectile_downgrade_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "strong projectile downgrade hit awards original downgrade score")
+	var strong_downgrade_effects: Array = strong_projectile_downgrade_session.visible_impact_effects()
+	_assert(strong_downgrade_effects.size() == 1, "strong projectile downgrade hit spawns original force-break VFX")
+	if strong_downgrade_effects.size() == 1:
+		_assert(int(strong_downgrade_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK, "strong projectile downgrade hit reuses the original force-break VFX column")
 
 	var projectile_expire_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	var expiring_projectiles: Array[Dictionary] = [_projectile(
@@ -1404,6 +1429,10 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(fireball_hard_session.board_state.tile_at(0, 0) == 0, "fireball force-breaks hard brick")
 	_assert(fireball_hard_session.score == GameSessionScript.HARD_BRICK_FORCE_SCORE, "fireball hard-brick hit awards original force-break score")
 	_assert(fireball_hard_session.first_ball_velocity().x < 0.0, "fireball keeps moving through hard brick instead of bouncing")
+	var fireball_hard_effects: Array = fireball_hard_session.visible_impact_effects()
+	_assert(fireball_hard_effects.size() == 1, "fireball hard-brick hit spawns original force-break VFX")
+	if fireball_hard_effects.size() == 1:
+		_assert(int(fireball_hard_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK, "fireball hard-brick hit uses the original force-break VFX column")
 
 	var fireball_pierce_session = _playing_session_from_level(_make_level_from_rows([[1, 1, 1]]))
 	fireball_pierce_session.force_ball(
@@ -1876,6 +1905,8 @@ func _validate_level_grid_renderer_defaults() -> void:
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_TIMEOUT, 10) == Rect2(Vector2(32, 320), Vector2(32, 32)), "impact renderer maps original monster-timeout final frame")
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_HIT, 3) == Rect2(Vector2(64, 96), Vector2(32, 32)), "impact renderer advances original monster-hit vertical frames")
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_CHAIN_EXPLOSION, 3) == Rect2(Vector2(64, 96), Vector2(32, 32)), "impact renderer reuses the original explosion cell for chain board VFX")
+	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK, 2) == Rect2(Vector2(96, 64), Vector2(32, 32)), "impact renderer maps original hard-brick force-break effect column")
+	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_HARD_BRICK_IMPACT, 4) == Rect2(Vector2(128, 128), Vector2(32, 32)), "impact renderer maps original hard-brick impact effect column")
 	impact_renderer.free()
 
 
@@ -2035,6 +2066,7 @@ func _validate_audio_cue_catalog() -> void:
 	var expected_sfx_names := {
 		GameSessionScript.SFX_EVENT_RACKET_BOUNCE: "eff07",
 		GameSessionScript.SFX_EVENT_BRICK_CLEAR: "eff23",
+		GameSessionScript.SFX_EVENT_HARD_BRICK_HIT: "eff22",
 		GameSessionScript.SFX_EVENT_CHAIN_EXPLOSION: "eff10",
 		GameSessionScript.SFX_EVENT_BONUS_SPAWN: "eff11",
 		GameSessionScript.SFX_EVENT_BONUS_EXPIRE: "eff12",
@@ -2066,6 +2098,7 @@ func _validate_audio_cue_catalog() -> void:
 	var sfx_events: Array[String] = AudioCueCatalogScript.known_sfx_events()
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_EXPIRE), "audio cue catalog exposes bonus-expire event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "audio cue catalog exposes bonus-apply event in known event list")
+	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_HARD_BRICK_HIT), "audio cue catalog exposes hard-brick-hit event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BEE_SPAWN), "audio cue catalog exposes bee-spawn event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BEE_STOP), "audio cue catalog exposes bee-stop event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_LEVEL_READY), "audio cue catalog exposes level-ready event in known event list")
@@ -2115,6 +2148,7 @@ func _validate_audio_service() -> void:
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_SPAWN)) == "eff11", "audio service maps bonus-spawn SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_EXPIRE)) == "eff12", "audio service maps bonus-expire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_COLLECT)) == "eff15", "audio service maps bonus-collect SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_HARD_BRICK_HIT)) == "eff22", "audio service maps hard-brick-hit SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_PROJECTILE_FIRE)) == "eff08", "audio service maps projectile-fire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_SPAWN)) == "eff13", "audio service maps monster-spawn SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_EXPIRE)) == "eff14", "audio service maps monster-expire SFX event")

@@ -230,6 +230,8 @@ const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
 const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
 const IMPACT_EFFECT_KIND_EXPLOSION := 2
+const IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK := 3
+const IMPACT_EFFECT_KIND_HARD_BRICK_IMPACT := 4
 const IMPACT_EFFECT_KIND_MONSTER_HIT := IMPACT_EFFECT_KIND_EXPLOSION
 const IMPACT_EFFECT_KIND_CHAIN_EXPLOSION := IMPACT_EFFECT_KIND_EXPLOSION
 const CHAIN_EXPLOSION_IMPACT_OFFSET := Vector2(-8, 1)
@@ -322,6 +324,7 @@ const SFX_EVENT_BALL_LAUNCH := "ball_launch"
 const SFX_EVENT_RACKET_BOUNCE := "racket_bounce"
 const SFX_EVENT_BACK_WALL_BOUNCE := "back_wall_bounce"
 const SFX_EVENT_BRICK_CLEAR := "brick_clear"
+const SFX_EVENT_HARD_BRICK_HIT := "hard_brick_hit"
 const SFX_EVENT_CHAIN_EXPLOSION := "chain_explosion"
 const SFX_EVENT_BONUS_SPAWN := "bonus_spawn"
 const SFX_EVENT_BONUS_EXPIRE := "bonus_expire"
@@ -1340,6 +1343,8 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 	var score_delta := 0
 	var audio_event := ""
 	var chain_impact_cells: Array[Vector2i] = []
+	var impact_effects_to_spawn: Array[Dictionary] = []
+	var brick_origin := PlayfieldSpecScript.brick_rect(column, row).position
 	var hit_kind := BrickSemanticsScript.hit_kind(tile_id)
 	if hit_kind == BrickSemanticsScript.HIT_KIND_CHAIN_EXPLOSION:
 		var explosion_result: Dictionary = board_state.explode_at_with_result(column, row)
@@ -1356,6 +1361,16 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 			did_change_board = true
 			score_delta = HARD_BRICK_FORCE_SCORE
 			audio_event = SFX_EVENT_BRICK_CLEAR
+			impact_effects_to_spawn.append({
+				"position": brick_origin,
+				"kind": IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK,
+			})
+		else:
+			audio_event = SFX_EVENT_HARD_BRICK_HIT
+			impact_effects_to_spawn.append({
+				"position": brick_origin,
+				"kind": IMPACT_EFFECT_KIND_HARD_BRICK_IMPACT,
+			})
 	elif hit_kind == BrickSemanticsScript.HIT_KIND_DOWNGRADE:
 		if force_break:
 			if board_state.clear_tile(column, row):
@@ -1363,6 +1378,10 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 				did_change_board = true
 				score_delta = NORMAL_BRICK_SCORE
 				audio_event = SFX_EVENT_BRICK_CLEAR
+				impact_effects_to_spawn.append({
+					"position": brick_origin,
+					"kind": IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK,
+				})
 		else:
 			var next_tile_id := BrickSemanticsScript.downgraded_tile_id(tile_id)
 			if board_state.set_tile(column, row, next_tile_id):
@@ -1381,6 +1400,7 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 		"cleared_count": cleared_count,
 		"score": score_delta,
 		"audio_event": audio_event,
+		"impact_effects": impact_effects_to_spawn,
 		"chain_impact_cells": chain_impact_cells,
 	}
 
@@ -1392,6 +1412,12 @@ func _apply_board_hit_result(hit_result: Dictionary) -> void:
 		board_changed = true
 	if score_delta > 0:
 		award_score(score_delta)
+	var impact_effects: Array = hit_result.get("impact_effects", [])
+	for effect: Dictionary in impact_effects:
+		_spawn_impact_effect(
+			effect.get("position", Vector2.ZERO),
+			int(effect.get("kind", IMPACT_EFFECT_KIND_EXPLOSION))
+		)
 	_spawn_chain_explosion_impact_effects(hit_result.get("chain_impact_cells", []))
 	var audio_event := String(hit_result.get("audio_event", ""))
 	if not audio_event.is_empty():
