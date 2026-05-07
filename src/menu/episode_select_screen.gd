@@ -332,7 +332,7 @@ func _apply_arrow_texture(button: TextureButton, texture: Texture2D, frame: int)
 
 
 func _arrow_frame_texture(texture: Texture2D, frame: int) -> AtlasTexture:
-	var cache_key := "%s:%d" % [texture.resource_path, frame]
+	var cache_key := "%d:%d" % [texture.get_instance_id(), frame]
 	if _arrow_texture_cache.has(cache_key):
 		return _arrow_texture_cache[cache_key] as AtlasTexture
 

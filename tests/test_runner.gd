@@ -2981,6 +2981,16 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(episode_select.find_child("PageStatus", true, false) != null, "episode select creates page status")
 	_assert(episode_select.find_child("UpButton", true, false) != null, "episode select creates up arrow")
 	_assert(episode_select.find_child("DownButton", true, false) != null, "episode select creates down arrow")
+	var episode_up_button = episode_select.find_child("UpButton", true, false) as TextureButton
+	var episode_down_button = episode_select.find_child("DownButton", true, false) as TextureButton
+	_assert(
+		episode_up_button != null
+		and episode_down_button != null
+		and episode_up_button.texture_normal is AtlasTexture
+		and episode_down_button.texture_normal is AtlasTexture
+		and (episode_up_button.texture_normal as AtlasTexture).atlas != (episode_down_button.texture_normal as AtlasTexture).atlas,
+		"episode select keeps separate up and down arrow atlases after runtime transparency processing"
+	)
 	_assert(
 		EpisodeSelectScreenScript.up_arrow_hit_rect() == Rect2(Vector2(590, 100), Vector2(45, 45)),
 		"episode select keeps the original up-arrow hitbox"
