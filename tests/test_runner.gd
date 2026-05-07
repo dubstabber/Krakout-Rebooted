@@ -1897,6 +1897,7 @@ func _validate_project_input_map() -> void:
 		GameScreenScript.ACTION_PAUSE,
 		GameScreenScript.ACTION_TERMINATE_GAME,
 		GameScreenScript.ACTION_CYCLE_BACKGROUND,
+		GameScreenScript.ACTION_RELEASE_CURSOR,
 		GameScreenScript.ACTION_DEBUG_CHEATS,
 	]
 	for action_name: String in expected_actions:
@@ -1911,6 +1912,7 @@ func _validate_project_input_map() -> void:
 	_assert(_action_has_key(GameScreenScript.ACTION_PAUSE, KEY_P), "pause action binds P")
 	_assert(_action_has_key(GameScreenScript.ACTION_TERMINATE_GAME, KEY_ESCAPE), "terminate-game action binds Escape")
 	_assert(_action_has_key(GameScreenScript.ACTION_CYCLE_BACKGROUND, KEY_G), "background-cycle action binds G")
+	_assert(_action_has_key(GameScreenScript.ACTION_RELEASE_CURSOR, KEY_U, true), "release-cursor action binds Ctrl+U")
 	_assert(_action_has_key(GameScreenScript.ACTION_DEBUG_CHEATS, KEY_D), "debug-cheats action binds D")
 
 
@@ -2764,6 +2766,8 @@ func _validate_menu_and_game_scenes() -> void:
 	root.add_child(game)
 	await process_frame
 	_assert(bool(game.call("is_system_cursor_hidden")), "game screen reports hidden system cursor while active")
+	_assert(bool(game.call("is_cursor_locked_to_game_map")), "game screen locks the cursor inside the gameplay viewport by default")
+	_assert(not bool(game.call("is_cursor_released_from_game_map")), "game screen starts with released-cursor state disabled")
 
 	var playfield := game.find_child("PlayfieldRenderer", true, false)
 	_assert(playfield != null, "game screen creates playfield renderer")
@@ -2911,6 +2915,15 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_FPS))
 			await process_frame
 			_assert(not game.call("is_fps_visible"), "game screen routes FPS toggle")
+			game.call("_input", _action_event(GameScreenScript.ACTION_RELEASE_CURSOR))
+			await process_frame
+			_assert(bool(game.call("is_cursor_released_from_game_map")), "game screen releases the cursor on Ctrl+U")
+			_assert(not bool(game.call("is_system_cursor_hidden")), "released gameplay cursor shows the system cursor")
+			_assert(not bool(game.call("is_cursor_locked_to_game_map")), "released gameplay cursor no longer stays confined to the viewport")
+			game.call("_input", _mouse_button_event(MOUSE_BUTTON_LEFT))
+			await process_frame
+			_assert(not bool(game.call("is_cursor_released_from_game_map")), "gameplay mouse click relocks a released cursor")
+			_assert(bool(game.call("is_cursor_locked_to_game_map")), "gameplay mouse click restores viewport-locked cursor state")
 			game.call("_input", _action_event(GameScreenScript.ACTION_CYCLE_BACKGROUND))
 			await process_frame
 			_assert(game.call("current_background_type") == 0, "game screen wraps background-cycle action across all original background types")
@@ -3366,6 +3379,13 @@ func _key_event(keycode: Key, unicode := 0) -> InputEventKey:
 	var event := InputEventKey.new()
 	event.keycode = keycode
 	event.unicode = unicode
+	event.pressed = true
+	return event
+
+
+func _mouse_button_event(button_index: MouseButton) -> InputEventMouseButton:
+	var event := InputEventMouseButton.new()
+	event.button_index = button_index
 	event.pressed = true
 	return event
 

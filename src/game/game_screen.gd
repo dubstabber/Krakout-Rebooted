@@ -27,6 +27,7 @@ const ACTION_TOGGLE_FPS := "krakout_toggle_fps"
 const ACTION_PAUSE := "krakout_pause"
 const ACTION_TERMINATE_GAME := "krakout_terminate_game"
 const ACTION_CYCLE_BACKGROUND := "krakout_cycle_background"
+const ACTION_RELEASE_CURSOR := "krakout_release_cursor"
 const ACTION_DEBUG_CHEATS := "debug_cheats"
 const EXIT_CONFIRMATION_TEXT := "Are You sure to leave\nthis board (Y / N)"
 
@@ -121,13 +122,14 @@ var _fps_value := 0
 var _previous_mouse_mode: int = Input.MOUSE_MODE_VISIBLE
 var _owns_mouse_mode := false
 var _system_cursor_hidden_for_game_map := false
+var _cursor_released_from_game_map := false
 var _debug_cheats_previous_pause := false
 
 
 func _enter_tree() -> void:
 	_previous_mouse_mode = Input.get_mouse_mode()
 	_owns_mouse_mode = true
-	_hide_system_cursor_for_game_map()
+	_lock_cursor_to_game_map()
 
 
 func _exit_tree() -> void:
@@ -135,6 +137,7 @@ func _exit_tree() -> void:
 		return
 	Input.set_mouse_mode(_previous_mouse_mode)
 	_system_cursor_hidden_for_game_map = false
+	_cursor_released_from_game_map = false
 	_owns_mouse_mode = false
 
 
@@ -186,8 +189,16 @@ func _input(event: InputEvent) -> void:
 		gameplay_session.move_racket_to(event.position.y, event.position.x)
 		_refresh_actor_renderers()
 		return
+	elif event is InputEventMouseButton and event.pressed and _cursor_released_from_game_map and not is_debug_cheats_visible():
+		_lock_cursor_to_game_map()
+		_apply_pause_overlay()
 
 	if _is_repeated_key_event(event):
+		return
+
+	if event.is_action_pressed(ACTION_RELEASE_CURSOR) and not is_debug_cheats_visible():
+		release_cursor_from_game_map()
+		get_viewport().set_input_as_handled()
 		return
 
 	if is_debug_cheats_visible():
@@ -411,6 +422,21 @@ func is_exit_confirmation_visible() -> bool:
 
 func is_system_cursor_hidden() -> bool:
 	return _system_cursor_hidden_for_game_map
+
+
+func is_cursor_locked_to_game_map() -> bool:
+	return _system_cursor_hidden_for_game_map and not _cursor_released_from_game_map
+
+
+func is_cursor_released_from_game_map() -> bool:
+	return _cursor_released_from_game_map
+
+
+func release_cursor_from_game_map() -> void:
+	if _cursor_released_from_game_map:
+		return
+	_cursor_released_from_game_map = true
+	_apply_pause_overlay()
 
 
 func open_debug_cheats() -> void:
@@ -742,10 +768,12 @@ func _ensure_overlay_nodes() -> void:
 func _apply_pause_overlay() -> void:
 	if is_debug_cheats_visible():
 		_show_system_cursor_for_debug_cheats()
+	elif _cursor_released_from_game_map:
+		_show_released_system_cursor_for_game_map()
 	else:
-		_hide_system_cursor_for_game_map()
+		_lock_cursor_to_game_map()
 	if _hourglass_cursor != null:
-		var show_hourglass := _paused and not is_debug_cheats_visible()
+		var show_hourglass := _paused and not is_debug_cheats_visible() and not _cursor_released_from_game_map
 		if show_hourglass:
 			_hourglass_cursor.set_cursor_position(get_viewport().get_mouse_position())
 		_hourglass_cursor.set_hourglass_visible(show_hourglass)
@@ -753,9 +781,15 @@ func _apply_pause_overlay() -> void:
 		_exit_confirmation_label.visible = _exit_confirmation_visible
 
 
-func _hide_system_cursor_for_game_map() -> void:
-	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+func _lock_cursor_to_game_map() -> void:
+	_cursor_released_from_game_map = false
+	Input.set_mouse_mode(Input.MOUSE_MODE_CONFINED_HIDDEN)
 	_system_cursor_hidden_for_game_map = true
+
+
+func _show_released_system_cursor_for_game_map() -> void:
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	_system_cursor_hidden_for_game_map = false
 
 
 func _show_system_cursor_for_debug_cheats() -> void:
