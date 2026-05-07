@@ -1749,10 +1749,36 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	var destroy_ball_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(destroy_ball_session, GameSessionScript.BONUS_ADD_STANDARD_BALL)
 	destroy_ball_session.activate_next_bonus()
+	destroy_ball_session.pop_audio_events()
+	var removed_ball_position: Vector2 = destroy_ball_session.visible_balls()[0].get("position", Vector2.ZERO)
 	_stack_bonus(destroy_ball_session, GameSessionScript.BONUS_DESTROY_ONE_BALL)
 	var destroy_ball_result: Dictionary = destroy_ball_session.activate_next_bonus()
+	_assert(bool(destroy_ball_result["applied"]), "destroy-ball bonus removes an active ball when one exists")
 	_assert(destroy_ball_result["effect"] == "destroy_one_ball", "destroy-ball bonus reports effect")
 	_assert(destroy_ball_session.active_ball_count() == 1, "destroy-ball bonus removes one active ball")
+	_assert(
+		destroy_ball_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BONUS_DESTROY_BALL_APPLY],
+		"destroy-ball bonus queues dedicated eff24 apply SFX event"
+	)
+	var destroy_ball_effects: Array = destroy_ball_session.visible_impact_effects()
+	_assert(destroy_ball_effects.size() == 1, "destroy-ball bonus spawns one shared explosion VFX")
+	if destroy_ball_effects.size() == 1:
+		_assert(
+			int(destroy_ball_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_EXPLOSION,
+			"destroy-ball bonus reuses the original explosion effect kind"
+		)
+		_assert(
+			destroy_ball_effects[0]["position"] == removed_ball_position,
+			"destroy-ball bonus spawns the explosion at the removed ball position"
+		)
+
+	var failed_destroy_ball_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	failed_destroy_ball_session.balls.clear()
+	_stack_bonus(failed_destroy_ball_session, GameSessionScript.BONUS_DESTROY_ONE_BALL)
+	var failed_destroy_ball_result: Dictionary = failed_destroy_ball_session.activate_next_bonus()
+	_assert(not bool(failed_destroy_ball_result["applied"]), "destroy-ball bonus reports failure when no active ball exists")
+	_assert(failed_destroy_ball_session.pop_audio_events().is_empty(), "failed destroy-ball bonus stays silent")
+	_assert(failed_destroy_ball_session.visible_impact_effects().is_empty(), "failed destroy-ball bonus spawns no VFX")
 
 	var back_wall_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(back_wall_session, GameSessionScript.BONUS_BACK_WALL)
@@ -2097,6 +2123,7 @@ func _validate_audio_cue_catalog() -> void:
 		GameSessionScript.SFX_EVENT_BONUS_EXPIRE: "eff12",
 		GameSessionScript.SFX_EVENT_BONUS_COLLECT: "eff15",
 		GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY: "eff17",
+		GameSessionScript.SFX_EVENT_BONUS_DESTROY_BALL_APPLY: "eff24",
 		GameSessionScript.SFX_EVENT_BONUS_JUMP_LEVEL_APPLY: "eff19",
 		GameSessionScript.SFX_EVENT_PROJECTILE_FIRE: "eff08",
 		GameSessionScript.SFX_EVENT_MONSTER_SPAWN: "eff13",
@@ -2126,6 +2153,7 @@ func _validate_audio_cue_catalog() -> void:
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_EXPIRE), "audio cue catalog exposes bonus-expire event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "audio cue catalog exposes bonus-apply event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY), "audio cue catalog exposes add-ball apply event in known event list")
+	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_DESTROY_BALL_APPLY), "audio cue catalog exposes destroy-ball apply event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_JUMP_LEVEL_APPLY), "audio cue catalog exposes jump-level apply event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_HARD_BRICK_HIT), "audio cue catalog exposes hard-brick-hit event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BEE_SPAWN), "audio cue catalog exposes bee-spawn event in known event list")
@@ -2183,6 +2211,7 @@ func _validate_audio_service() -> void:
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_EXPIRE)) == "eff12", "audio service maps bonus-expire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_COLLECT)) == "eff15", "audio service maps bonus-collect SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY)) == "eff17", "audio service maps add-ball apply SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_DESTROY_BALL_APPLY)) == "eff24", "audio service maps destroy-ball apply SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_JUMP_LEVEL_APPLY)) == "eff19", "audio service maps jump-level apply SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_SELECT)) == "eff02", "audio service maps main-menu selection SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_ACTIVATE)) == "eff01", "audio service maps main-menu activation SFX event")

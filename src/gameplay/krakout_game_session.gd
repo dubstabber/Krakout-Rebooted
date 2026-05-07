@@ -331,6 +331,7 @@ const SFX_EVENT_BONUS_EXPIRE := "bonus_expire"
 const SFX_EVENT_BONUS_COLLECT := "bonus_collect"
 const SFX_EVENT_BONUS_APPLY := "bonus_apply"
 const SFX_EVENT_BONUS_ADD_BALL_APPLY := "bonus_add_ball_apply"
+const SFX_EVENT_BONUS_DESTROY_BALL_APPLY := "bonus_destroy_ball_apply"
 const SFX_EVENT_BONUS_JUMP_LEVEL_APPLY := "bonus_jump_level_apply"
 const SFX_EVENT_PROJECTILE_FIRE := "projectile_fire"
 const SFX_EVENT_PROJECTILE_HIT := "projectile_hit"
@@ -879,6 +880,9 @@ func _bonus_apply_audio_event(type_id: int, result: Dictionary) -> String:
 		BONUS_ADD_STANDARD_BALL, BONUS_ADD_FIREBALL:
 			if bool(result.get("applied", false)):
 				return SFX_EVENT_BONUS_ADD_BALL_APPLY
+		BONUS_DESTROY_ONE_BALL:
+			if bool(result.get("applied", false)):
+				return SFX_EVENT_BONUS_DESTROY_BALL_APPLY
 		BONUS_JUMP_TO_NEXT_LEVEL:
 			return SFX_EVENT_BONUS_JUMP_LEVEL_APPLY
 	return ""
@@ -887,6 +891,7 @@ func _bonus_apply_audio_event(type_id: int, result: Dictionary) -> String:
 func _should_queue_generic_bonus_apply_event(type_id: int) -> bool:
 	return type_id != BONUS_ADD_STANDARD_BALL \
 		and type_id != BONUS_ADD_FIREBALL \
+		and type_id != BONUS_DESTROY_ONE_BALL \
 		and type_id != BONUS_JUMP_TO_NEXT_LEVEL
 
 
@@ -2567,7 +2572,7 @@ func _apply_bonus_effect(type_id: int) -> Dictionary:
 			lives_remaining += 1
 			return {"effect": "extra_life", "lives_remaining": lives_remaining}
 		BONUS_DESTROY_ONE_BALL:
-			return {"effect": "destroy_one_ball", "applied": _destroy_one_active_ball()}
+			return _activate_destroy_one_ball_bonus()
 		BONUS_RANDOM_BONUS:
 			return _activate_random_bonus()
 		BONUS_ONE_STRIKE_BRICKS:
@@ -2755,13 +2760,23 @@ func _activate_shooting_paddle_continuous() -> Dictionary:
 	}
 
 
-func _destroy_one_active_ball() -> bool:
+func _activate_destroy_one_ball_bonus() -> Dictionary:
+	var removed_ball := _pop_first_active_ball()
+	if removed_ball.is_empty():
+		return {"effect": "destroy_one_ball", "applied": false}
+
+	var removed_position: Vector2 = removed_ball.get("position", Vector2.ZERO)
+	_spawn_impact_effect(removed_position, IMPACT_EFFECT_KIND_EXPLOSION)
+	return {"effect": "destroy_one_ball", "applied": true}
+
+
+func _pop_first_active_ball() -> Dictionary:
 	for index in range(balls.size()):
 		var ball := balls[index]
 		if bool(ball.get("active", false)):
 			balls.remove_at(index)
-			return true
-	return false
+			return ball.duplicate()
+	return {}
 
 
 func _velocity_for_current_speed(base_velocity: Vector2) -> Vector2:
