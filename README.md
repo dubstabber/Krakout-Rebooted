@@ -145,6 +145,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   scene flow: main menu/rules/options use `Abnormal`, high score uses `theme2`,
   credits uses `theme5`, episode select uses `theme1`, gameplay uses `theme4`,
   and name entry uses `theme3`.
+- Front-end interaction cues now route through the same semantic audio layer:
+  main-menu selection/activation use `eff02`/`eff01`, while episode-browser
+  selection/activation use `eff04`/`eff03`, with startup focus and page-build
+  paths kept silent.
 - The options screen now keeps its Godot-native controls while layering the
   original `Vx` sheet as Music/SFX enabled-state VFX, using the IDA-backed
   10-frame 40x40 strip and static 30x30 marker beside the volume rows.

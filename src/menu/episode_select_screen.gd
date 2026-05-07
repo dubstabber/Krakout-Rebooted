@@ -6,6 +6,7 @@ signal back_requested
 
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 const MenuBitmapLabelScript := preload("res://src/menu/krakout_menu_bitmap_label.gd")
+const AudioCueCatalogScript := preload("res://src/audio/krakout_audio_cue_catalog.gd")
 
 const PAGE_SIZE := 10
 const ROW_START_Y := 100
@@ -110,10 +111,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	match key_event.keycode:
 		KEY_PAGEUP:
-			_change_page(_page_index - 1)
+			_change_page(_page_index - 1, true)
 			get_viewport().set_input_as_handled()
 		KEY_PAGEDOWN:
-			_change_page(_page_index + 1)
+			_change_page(_page_index + 1, true)
 			get_viewport().set_input_as_handled()
 		KEY_UP:
 			_select_relative(-1)
@@ -287,16 +288,18 @@ func _row_label(label_name: String, text: String, label_position: Vector2, label
 	return label
 
 
-func _update_selection_for_page() -> void:
+func _update_selection_for_page() -> bool:
 	if _episodes.is_empty():
 		_selected_index = -1
-		return
+		return false
 
 	var first_index: int = _page_index * PAGE_SIZE
 	var final_index: int = int(min(first_index + PAGE_SIZE, _episodes.size())) - 1
+	var previous_index := _selected_index
 	if _selected_index < first_index or _selected_index > final_index:
 		_selected_index = first_index
 	_update_row_styles()
+	return previous_index != _selected_index
 
 
 func _update_page_controls() -> void:
@@ -442,7 +445,10 @@ func _advance_single_arrow(
 func _select_episode(episode_index: int) -> void:
 	if episode_index < 0 or episode_index >= _episodes.size():
 		return
+	if _selected_index == episode_index:
+		return
 	_selected_index = episode_index
+	_play_sfx_event(AudioCueCatalogScript.SFX_EVENT_EPISODE_SELECT)
 	_update_row_styles()
 
 
@@ -457,31 +463,34 @@ func _select_relative(offset: int) -> void:
 	_selected_index = next_index
 	var next_page: int = int(_selected_index / PAGE_SIZE)
 	if next_page != _page_index:
-		_change_page(next_page)
+		_change_page(next_page, true)
 	else:
+		_play_sfx_event(AudioCueCatalogScript.SFX_EVENT_EPISODE_SELECT)
 		_update_row_styles()
 		_focus_selected_row()
 
 
-func _change_page(next_page: int) -> void:
+func _change_page(next_page: int, play_select_sfx := false) -> void:
 	var clamped_page: int = int(clamp(next_page, 0, page_count() - 1))
 	if clamped_page == _page_index:
 		return
 
 	_page_index = clamped_page
 	_rebuild_rows()
-	_update_selection_for_page()
+	var selection_changed := _update_selection_for_page()
+	if play_select_sfx and selection_changed:
+		_play_sfx_event(AudioCueCatalogScript.SFX_EVENT_EPISODE_SELECT)
 	_update_page_controls()
 	_update_arrow_frames()
 	call_deferred("_focus_selected_row")
 
 
 func _on_up_button_pressed() -> void:
-	_change_page(_page_index - 1)
+	_change_page(_page_index - 1, true)
 
 
 func _on_down_button_pressed() -> void:
-	_change_page(_page_index + 1)
+	_change_page(_page_index + 1, true)
 
 
 func _focus_selected_row() -> void:
@@ -504,6 +513,7 @@ func _activate_episode(episode_index: int) -> void:
 		return
 
 	var summary: Dictionary = _episodes[episode_index]
+	_play_sfx_event(AudioCueCatalogScript.SFX_EVENT_EPISODE_ACTIVATE)
 	episode_selected.emit(
 		String(summary.get("slug", "")),
 		int(summary.get("first_level_number", 1))
@@ -516,3 +526,10 @@ func _load_asset_texture(texture_name: String) -> Texture2D:
 		return null
 
 	return assets.call("load_texture", texture_name) as Texture2D
+
+
+func _play_sfx_event(event_name: String) -> void:
+	var audio := get_node_or_null("/root/KrakoutAudio")
+	if audio == null or not audio.has_method("play_sfx_event"):
+		return
+	audio.call("play_sfx_event", event_name)

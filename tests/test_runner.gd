@@ -2080,9 +2080,15 @@ func _validate_audio_cue_catalog() -> void:
 	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "audio cue catalog recognizes brick-clear gameplay SFX event")
 	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "audio cue catalog recognizes projectile-fire gameplay SFX event")
 	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_BEE_STOP), "audio cue catalog recognizes bee-stop gameplay SFX event")
+	_assert(AudioCueCatalogScript.has_sfx_event(AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_SELECT), "audio cue catalog recognizes main-menu selection SFX event")
+	_assert(AudioCueCatalogScript.has_sfx_event(AudioCueCatalogScript.SFX_EVENT_EPISODE_ACTIVATE), "audio cue catalog recognizes episode activation SFX event")
 	_assert(not AudioCueCatalogScript.has_sfx_event("missing_sfx_event"), "audio cue catalog rejects unknown SFX events")
 
 	var expected_sfx_names := {
+		AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_SELECT: "eff02",
+		AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_ACTIVATE: "eff01",
+		AudioCueCatalogScript.SFX_EVENT_EPISODE_SELECT: "eff04",
+		AudioCueCatalogScript.SFX_EVENT_EPISODE_ACTIVATE: "eff03",
 		GameSessionScript.SFX_EVENT_RACKET_BOUNCE: "eff07",
 		GameSessionScript.SFX_EVENT_BRICK_CLEAR: "eff23",
 		GameSessionScript.SFX_EVENT_HARD_BRICK_HIT: "eff22",
@@ -2127,6 +2133,8 @@ func _validate_audio_cue_catalog() -> void:
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_LEVEL_READY), "audio cue catalog exposes level-ready event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_MONSTER_EXPIRE), "audio cue catalog exposes monster-expire event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_GAME_OVER), "audio cue catalog exposes game-over event in known event list")
+	_assert(sfx_events.has(AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_SELECT), "audio cue catalog exposes main-menu selection event in known event list")
+	_assert(sfx_events.has(AudioCueCatalogScript.SFX_EVENT_EPISODE_ACTIVATE), "audio cue catalog exposes episode activation event in known event list")
 
 
 func _validate_audio_service() -> void:
@@ -2152,6 +2160,9 @@ func _validate_audio_service() -> void:
 	_assert(bool(_audio.call("music_stream_exists", "theme4")), "audio service resolves gameplay music track")
 	_assert(bool(_audio.call("music_stream_exists", "Abnormal")), "audio service resolves abnormal music track")
 	_assert(bool(_audio.call("sfx_stream_exists", "eff01")), "audio service resolves extracted SFX")
+	_assert(bool(_audio.call("sfx_stream_exists", "eff02")), "audio service resolves main-menu selection SFX")
+	_assert(bool(_audio.call("sfx_stream_exists", "eff03")), "audio service resolves episode activation SFX")
+	_assert(bool(_audio.call("sfx_stream_exists", "eff04")), "audio service resolves episode selection SFX")
 	_assert(bool(_audio.call("sfx_stream_exists", "EffBee")), "audio service resolves extracted bee SFX")
 	_assert(not bool(_audio.call("music_stream_exists", "missing_track")), "audio service rejects unknown music track")
 	_assert(not bool(_audio.call("sfx_stream_exists", "missing_sfx")), "audio service rejects unknown SFX")
@@ -2173,6 +2184,10 @@ func _validate_audio_service() -> void:
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_COLLECT)) == "eff15", "audio service maps bonus-collect SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY)) == "eff17", "audio service maps add-ball apply SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_JUMP_LEVEL_APPLY)) == "eff19", "audio service maps jump-level apply SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_SELECT)) == "eff02", "audio service maps main-menu selection SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_ACTIVATE)) == "eff01", "audio service maps main-menu activation SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", AudioCueCatalogScript.SFX_EVENT_EPISODE_SELECT)) == "eff04", "audio service maps episode-selection SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", AudioCueCatalogScript.SFX_EVENT_EPISODE_ACTIVATE)) == "eff03", "audio service maps episode-activation SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_HARD_BRICK_HIT)) == "eff22", "audio service maps hard-brick-hit SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_PROJECTILE_FIRE)) == "eff08", "audio service maps projectile-fire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_SPAWN)) == "eff13", "audio service maps monster-spawn SFX event")
@@ -2586,6 +2601,13 @@ func _validate_options_vx_effects() -> void:
 func _validate_menu_and_game_scenes() -> void:
 	var saved_mouse_mode := Input.get_mouse_mode()
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	if _audio != null:
+		if _audio.has_method("set_sfx_enabled"):
+			_audio.call("set_sfx_enabled", true)
+		if _audio.has_method("set_sfx_volume"):
+			_audio.call("set_sfx_volume", 100)
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
 
 	_assert(ResourceLoader.exists("res://scenes/menu/main_menu_screen.tscn"), "main menu scene exists")
 	_assert(ResourceLoader.exists("res://scenes/menu/episode_select_screen.tscn"), "episode select scene exists")
@@ -2598,6 +2620,7 @@ func _validate_menu_and_game_scenes() -> void:
 
 	var menu := MainMenuScreenScene.instantiate()
 	root.add_child(menu)
+	await process_frame
 	await process_frame
 
 	_assert(menu.has_signal("start_game_requested"), "main menu exposes start game signal")
@@ -2640,6 +2663,9 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(menu.has_method("selected_caption"), "main menu exposes selected caption for tests")
 	if menu.has_method("selected_caption"):
 		_assert(menu.call("selected_caption") == "Start New Game", "main menu defaults to start caption")
+	if _audio != null and _audio.has_method("is_sfx_playing"):
+		_assert(not bool(_audio.call("is_sfx_playing", "eff01")), "main menu startup stays silent")
+		_assert(not bool(_audio.call("is_sfx_playing", "eff02")), "main menu deferred focus stays silent")
 
 	var start_button := menu.find_child("StartGameButton", true, false) as TextureButton
 	_assert(start_button != null, "main menu creates start game button")
@@ -2650,7 +2676,14 @@ func _validate_menu_and_game_scenes() -> void:
 		_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu selected icon waits for original strict 20 ms gate")
 		menu.call("_process", 0.001)
 		_assert(int(menu.call("menu_item_frame", "start")) == 1, "main menu selected icon advances once after original sampled gate")
+		if _audio != null and _audio.has_method("stop_all") and _audio.has_method("is_sfx_playing"):
+			_audio.call("stop_all")
 		menu.call("_select_menu_item", "rules")
+		if _audio != null and _audio.has_method("is_sfx_playing"):
+			_assert(bool(_audio.call("is_sfx_playing", "eff02")), "main menu selection change plays original hover cue")
+			_audio.call("stop_all")
+			menu.call("_select_menu_item", "rules")
+			_assert(not bool(_audio.call("is_sfx_playing", "eff02")), "main menu does not replay hover cue when selection is unchanged")
 		menu.call("_process", MainMenuScreenScript.ICON_RETURN_FRAME_GATE_SECONDS + 0.001)
 		_assert(int(menu.call("menu_item_frame", "start")) == 2, "main menu old selected icon returns with original 5 ms catch-up gate")
 		_assert(int(menu.call("menu_item_frame", "rules")) == 0, "main menu newly selected icon does not advance on the 5 ms return gate")
@@ -2660,9 +2693,12 @@ func _validate_menu_and_game_scenes() -> void:
 
 		var signal_state := {"did_request_start": false}
 		menu.start_game_requested.connect(func() -> void: signal_state["did_request_start"] = true)
+		if _audio != null and _audio.has_method("stop_all"):
+			_audio.call("stop_all")
 		start_button.emit_signal("pressed")
-		await process_frame
 		_assert(signal_state["did_request_start"], "start game button emits start request")
+		if _audio != null and _audio.has_method("is_sfx_playing"):
+			_assert(bool(_audio.call("is_sfx_playing", "eff01")), "main menu activation plays original confirm cue")
 
 	var rules_button := menu.find_child("RulesButton", true, false) as TextureButton
 	if rules_button != null:
@@ -2970,7 +3006,10 @@ func _validate_menu_and_game_scenes() -> void:
 	options_screen.queue_free()
 
 	var episode_select := EpisodeSelectScreenScene.instantiate()
+	if _audio != null and _audio.has_method("stop_all"):
+		_audio.call("stop_all")
 	root.add_child(episode_select)
+	await process_frame
 	await process_frame
 
 	_assert(episode_select.has_signal("episode_selected"), "episode select exposes episode selected signal")
@@ -3010,6 +3049,17 @@ func _validate_menu_and_game_scenes() -> void:
 
 	var selected_summary: Dictionary = episode_select.call("selected_episode_summary")
 	_assert(selected_summary.get("slug", "") == "Abstraction", "episode select defaults to first sorted episode")
+	if _audio != null and _audio.has_method("is_sfx_playing"):
+		_assert(not bool(_audio.call("is_sfx_playing", "eff03")), "episode select startup stays silent")
+		_assert(not bool(_audio.call("is_sfx_playing", "eff04")), "episode select initial focus stays silent")
+	if _audio != null and _audio.has_method("stop_all"):
+		_audio.call("stop_all")
+	episode_select.call("_select_episode", 1)
+	if _audio != null and _audio.has_method("is_sfx_playing"):
+		_assert(bool(_audio.call("is_sfx_playing", "eff04")), "episode select row change plays original hover cue")
+		_audio.call("stop_all")
+		episode_select.call("_select_episode", 1)
+		_assert(not bool(_audio.call("is_sfx_playing", "eff04")), "episode select does not replay hover cue when selection is unchanged")
 
 	episode_select.call("_set_down_arrow_hovered", true)
 	episode_select.call("_process", EpisodeSelectScreenScript.ARROW_SELECTED_FRAME_GATE_SECONDS)
@@ -3024,10 +3074,13 @@ func _validate_menu_and_game_scenes() -> void:
 
 	var down_button := episode_select.find_child("DownButton", true, false) as TextureButton
 	if down_button != null:
+		if _audio != null and _audio.has_method("stop_all"):
+			_audio.call("stop_all")
 		down_button.emit_signal("pressed")
-		await process_frame
 		_assert(episode_select.call("current_page") == 1, "episode select down arrow advances page")
 		_assert(episode_select.call("visible_row_count") == 7, "episode select second page shows remaining episodes")
+		if _audio != null and _audio.has_method("is_sfx_playing"):
+			_assert(bool(_audio.call("is_sfx_playing", "eff04")), "episode select page change plays hover cue when it lands on a new row")
 
 	var episode_signal_state := {
 		"did_select_episode": false,
@@ -3041,11 +3094,14 @@ func _validate_menu_and_game_scenes() -> void:
 	)
 	var first_row_button := episode_select.find_child("EpisodeRowButton1", true, false) as Button
 	if first_row_button != null:
+		if _audio != null and _audio.has_method("stop_all"):
+			_audio.call("stop_all")
 		first_row_button.emit_signal("pressed")
-		await process_frame
 		_assert(episode_signal_state["did_select_episode"], "episode row emits episode selected")
 		_assert(not String(episode_signal_state["slug"]).is_empty(), "episode selection includes slug")
 		_assert(episode_signal_state["level_number"] == 1, "episode selection starts at first level")
+		if _audio != null and _audio.has_method("is_sfx_playing"):
+			_assert(bool(_audio.call("is_sfx_playing", "eff03")), "episode activation plays original confirm cue")
 	episode_select.queue_free()
 
 	if _profile != null and _profile.has_method("set_save_path"):

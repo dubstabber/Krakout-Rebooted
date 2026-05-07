@@ -10,6 +10,7 @@ signal quit_requested
 
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 const MenuAmbientEffectsScript := preload("res://src/menu/krakout_menu_ambient_effects.gd")
+const AudioCueCatalogScript := preload("res://src/audio/krakout_audio_cue_catalog.gd")
 const ICON_SIZE := Vector2i(100, 100)
 const ICON_FRAME_COUNT := 20
 const ICON_SELECTED_FRAME_GATE_SECONDS := 0.02
@@ -143,12 +144,20 @@ func _build_menu_items() -> void:
 
 
 func _select_menu_item(item_id: String) -> void:
+	if not _buttons_by_id.has(item_id):
+		return
+	if _selected_item_id == item_id:
+		return
 	_selected_item_id = item_id
+	_play_sfx_event(AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_SELECT)
 	_update_selected_caption()
 	_update_menu_button_frames()
 
 
 func _activate_menu_item(item_id: String) -> void:
+	if not _buttons_by_id.has(item_id):
+		return
+	_play_sfx_event(AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_ACTIVATE)
 	match item_id:
 		"rules":
 			rules_requested.emit()
@@ -261,3 +270,10 @@ func _load_asset_texture(texture_name: String) -> Texture2D:
 		return null
 
 	return assets.call("load_texture", texture_name) as Texture2D
+
+
+func _play_sfx_event(event_name: String) -> void:
+	var audio := get_node_or_null("/root/KrakoutAudio")
+	if audio == null or not audio.has_method("play_sfx_event"):
+		return
+	audio.call("play_sfx_event", event_name)
