@@ -227,11 +227,30 @@ func _validate_playfield_renderer_shell() -> void:
 	_assert(renderer.background_type == PlayfieldRendererScript.DEFAULT_BACKGROUND_TYPE, "playfield renderer defaults to original background type")
 	_assert(renderer.is_background_movable(), "playfield renderer preserves movable background setting")
 	_assert(renderer.background_source_rect_for_type(0) == Rect2(Vector2.ZERO, Vector2(50, 50)), "playfield renderer maps first background source tile")
+	_assert(renderer.background_source_rect_for_type(4) == Rect2(Vector2(0, 50), Vector2(50, 50)), "playfield renderer maps second-row background tiles")
+	_assert(renderer.background_source_rect_for_type(7) == Rect2(Vector2(150, 50), Vector2(50, 50)), "playfield renderer maps the final original background tile")
 	renderer.set_background_type(1)
 	_assert(renderer.gameplay_background_source_rect() == Rect2(Vector2(50, 0), Vector2(50, 50)), "playfield renderer can switch background source tile")
 	_assert(renderer.cycle_background_type() == 2, "playfield renderer cycles background source tiles")
+	renderer.set_background_type(99)
+	_assert(renderer.background_type == 0, "playfield renderer resets out-of-range background types to the original first entry")
+	_assert(renderer.current_background_scroll_offset() == 0.0, "playfield renderer starts the original moving-background phase at zero")
+	renderer.advance_background(PlayfieldRendererScript.BACKGROUND_SCROLL_GATE_SECONDS)
+	_assert(renderer.current_background_scroll_offset() == 0.0, "playfield renderer keeps the background phase until the original strict timer gate passes")
+	renderer.advance_background(0.001)
+	_assert(renderer.current_background_scroll_offset() == 1.0, "playfield renderer advances background phase by one pixel after the original timer gate")
+	_assert(
+		renderer.background_tile_target_rect(Vector2.ZERO) == Rect2(Vector2(-1, 1), PlayfieldRendererScript.BACKGROUND_TILE_SIZE),
+		"playfield renderer offsets original background tiles diagonally"
+	)
 	renderer.set_background_movable(false)
 	_assert(not renderer.is_background_movable(), "playfield renderer records background movable setting")
+	renderer.advance_background(1.0)
+	_assert(renderer.current_background_scroll_offset() == 1.0, "playfield renderer freezes background phase when motion is disabled")
+	renderer.set_background_movable(true)
+	for _index in range(int(PlayfieldRendererScript.BACKGROUND_SCROLL_WRAP_PIXELS) - 1):
+		renderer.advance_background(PlayfieldRendererScript.BACKGROUND_SCROLL_GATE_SECONDS + 0.001)
+	_assert(renderer.current_background_scroll_offset() == 0.0, "playfield renderer wraps moving-background phase at one original tile")
 	_assert(PlayfieldRendererScript.WALL_LEFT_X == 2, "left wall x remains original-screen aligned")
 	_assert(PlayfieldRendererScript.WALL_RIGHT_X == 613, "right wall x remains original-screen aligned")
 	_assert(PlayfieldRendererScript.WALL_TOP_Y == 36, "top wall y remains original-screen aligned")
@@ -1923,7 +1942,7 @@ func _validate_profile_service() -> void:
 	_assert(profile.set_ball_tracks_visible(false), "profile persists hidden ball tracks setting")
 	_assert(profile.set_fps_visible(true), "profile persists visible FPS setting")
 	_assert(profile.set_background_movable(false), "profile persists static background setting")
-	_assert(profile.set_background_type(1), "profile persists background type setting")
+	_assert(profile.set_background_type(7), "profile persists the final original background type")
 	_assert(profile.set_music_enabled(false), "profile persists disabled music setting")
 	_assert(profile.set_sfx_enabled(false), "profile persists disabled SFX setting")
 	_assert(profile.set_music_volume(35), "profile persists music volume setting")
@@ -1936,7 +1955,7 @@ func _validate_profile_service() -> void:
 	_assert(not reloaded_profile.ball_tracks_visible(), "profile reloads ball tracks setting")
 	_assert(reloaded_profile.fps_visible(), "profile reloads FPS setting")
 	_assert(not reloaded_profile.background_movable(), "profile reloads background movable setting")
-	_assert(reloaded_profile.background_type() == 1, "profile reloads background type setting")
+	_assert(reloaded_profile.background_type() == 7, "profile reloads background type setting")
 	_assert(not reloaded_profile.music_enabled(), "profile reloads music enabled setting")
 	_assert(not reloaded_profile.sfx_enabled(), "profile reloads SFX enabled setting")
 	_assert(reloaded_profile.music_volume() == 35, "profile reloads music volume setting")
@@ -1946,7 +1965,12 @@ func _validate_profile_service() -> void:
 	var final_profile = ProfileScript.new()
 	final_profile.set_save_path(save_path, true)
 	_assert(final_profile.best_score() == 1200, "profile persists updated high score")
-	_assert(final_profile.background_type() == 1, "profile keeps presentation settings when high score changes")
+	_assert(final_profile.background_type() == 7, "profile keeps presentation settings when high score changes")
+	_assert(profile.set_background_type(42), "profile normalizes out-of-range background types")
+	_assert(profile.background_type() == 0, "profile resets out-of-range background types to the original first entry")
+	var normalized_profile = ProfileScript.new()
+	normalized_profile.set_save_path(save_path, true)
+	_assert(normalized_profile.background_type() == 0, "profile reload keeps normalized out-of-range background type")
 	_assert(final_profile.music_volume() == 35, "profile keeps audio settings when high score changes")
 
 	var table_path := _test_profile_path("profile_table")
@@ -1976,6 +2000,7 @@ func _validate_profile_service() -> void:
 	profile.free()
 	reloaded_profile.free()
 	final_profile.free()
+	normalized_profile.free()
 	table_profile.free()
 	reloaded_table_profile.free()
 
@@ -2604,7 +2629,7 @@ func _validate_menu_and_game_scenes() -> void:
 		_profile.call("set_ball_tracks_visible", false)
 		_profile.call("set_fps_visible", true)
 		_profile.call("set_background_movable", false)
-		_profile.call("set_background_type", 1)
+		_profile.call("set_background_type", 7)
 
 	var options_screen := OptionsScreenScene.instantiate()
 	root.add_child(options_screen)
@@ -2624,7 +2649,7 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(not bool(options_snapshot["ball_tracks_visible"]), "options screen loads ball-track setting")
 	_assert(bool(options_snapshot["fps_visible"]), "options screen loads FPS setting")
 	_assert(not bool(options_snapshot["background_movable"]), "options screen loads background-movable setting")
-	_assert(int(options_snapshot["background_type"]) == 1, "options screen loads background type")
+	_assert(int(options_snapshot["background_type"]) == 7, "options screen loads full-range background type")
 	if options_vx_effects != null:
 		_assert(
 			int(options_vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.DISABLED_TARGET_FRAME,
@@ -2642,7 +2667,7 @@ func _validate_menu_and_game_scenes() -> void:
 	options_screen.call("set_ball_tracks_visible", true)
 	options_screen.call("set_fps_visible", false)
 	options_screen.call("set_background_movable", true)
-	options_screen.call("set_background_type", 2)
+	options_screen.call("set_background_type", 7)
 	if options_vx_effects != null:
 		_assert(
 			int(options_vx_effects.target_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.ENABLED_TARGET_FRAME,
@@ -2667,7 +2692,11 @@ func _validate_menu_and_game_scenes() -> void:
 		_assert(bool(_profile.call("ball_tracks_visible")), "options screen persists ball-track setting")
 		_assert(not bool(_profile.call("fps_visible")), "options screen persists FPS setting")
 		_assert(bool(_profile.call("background_movable")), "options screen persists background-movable setting")
-		_assert(int(_profile.call("background_type")) == 2, "options screen persists background type")
+		_assert(int(_profile.call("background_type")) == 7, "options screen persists full-range background type")
+	options_screen.call("set_background_type", 99)
+	_assert(int(options_screen.call("settings_snapshot")["background_type"]) == 0, "options screen normalizes out-of-range background types to the original first entry")
+	if _profile != null:
+		_assert(int(_profile.call("background_type")) == 0, "options screen persists normalized out-of-range background type")
 	if _audio != null:
 		_assert(bool(_audio.call("music_enabled")), "options screen syncs audio music enabled")
 		_assert(bool(_audio.call("sfx_enabled")), "options screen syncs audio SFX enabled")
@@ -2726,7 +2755,7 @@ func _validate_menu_and_game_scenes() -> void:
 		_profile.call("set_ball_tracks_visible", false)
 		_profile.call("set_fps_visible", true)
 		_profile.call("set_background_movable", false)
-		_profile.call("set_background_type", 1)
+		_profile.call("set_background_type", 7)
 
 	var game := GameScreenScene.instantiate()
 	_assert(game.has_signal("game_over_confirmed"), "game screen exposes game-over confirmation signal")
@@ -2759,7 +2788,7 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(game.call("is_bonus_stack_visible") == false, "game screen loads bonus-stack visibility setting")
 			_assert(game.call("are_ball_tracks_visible") == false, "game screen loads ball-track visibility setting")
 			_assert(game.call("is_fps_visible"), "game screen loads FPS visibility setting")
-			_assert(game.call("current_background_type") == 1, "game screen loads background type setting")
+			_assert(game.call("current_background_type") == 7, "game screen loads full-range background type setting")
 			_assert(game.call("is_background_movable") == false, "game screen loads background movable setting")
 			_assert(gameplay.is_level_ready_sequence_active(), "game screen starts level-ready sequence when board is loaded")
 			var startup_indicators: Array[Dictionary] = gameplay.active_bonus_indicators()
@@ -2778,7 +2807,7 @@ func _validate_menu_and_game_scenes() -> void:
 			var game_ball_renderer := game.find_child("BallRenderer", true, false)
 			if game_ball_renderer != null:
 				_assert(not game_ball_renderer.call("are_tracks_visible"), "ball renderer applies hidden tracks setting")
-			_assert(playfield.background_type == 1, "playfield applies loaded background type")
+			_assert(playfield.background_type == 7, "playfield applies loaded full-range background type")
 			_assert(not playfield.call("is_background_movable"), "playfield applies loaded background movable setting")
 			var fps_overlay := game.find_child("FpsOverlay", true, false) as Label
 			_assert(fps_overlay != null and fps_overlay.visible, "game screen shows FPS overlay when enabled")
@@ -2884,8 +2913,8 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(not game.call("is_fps_visible"), "game screen routes FPS toggle")
 			game.call("_input", _action_event(GameScreenScript.ACTION_CYCLE_BACKGROUND))
 			await process_frame
-			_assert(game.call("current_background_type") == 2, "game screen routes background-cycle action")
-			_assert(playfield.background_type == 2, "background-cycle action updates playfield")
+			_assert(game.call("current_background_type") == 0, "game screen wraps background-cycle action across all original background types")
+			_assert(playfield.background_type == 0, "background-cycle action updates the playfield with wrapped background type")
 			game.call("_input", _action_event(GameScreenScript.ACTION_PAUSE))
 			await process_frame
 			_assert(game.call("is_game_paused"), "game screen routes pause action")

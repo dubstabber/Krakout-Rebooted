@@ -4,6 +4,7 @@ class_name OptionsScreen
 signal back_requested
 
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
+const PlayfieldRendererScript := preload("res://src/playfield/playfield_renderer.gd")
 const OptionsVxEffectsScript := preload("res://src/menu/options_vx_effects.gd")
 
 const ROW_X := 100.0
@@ -93,7 +94,7 @@ func set_background_movable(is_movable: bool) -> void:
 
 
 func set_background_type(type_id: int) -> void:
-	_background_type_slider.value = clampi(type_id, 0, 2)
+	_background_type_slider.value = PlayfieldRendererScript.normalize_background_type(type_id)
 	_on_background_type_changed(_background_type_slider.value)
 
 
@@ -134,7 +135,12 @@ func _build_scene() -> void:
 	_ball_tracks_toggle = _toggle("BallTracksToggle", "Ball Tracks", FIRST_ROW_Y + ROW_STEP * 5.0)
 	_fps_toggle = _toggle("FpsToggle", "FPS", FIRST_ROW_Y + ROW_STEP * 6.0)
 	_background_movable_toggle = _toggle("BackgroundMovableToggle", "Moving Background", FIRST_ROW_Y + ROW_STEP * 7.0)
-	_background_type_slider = _slider("BackgroundTypeSlider", FIRST_ROW_Y + ROW_STEP * 8.0, 0, 2)
+	_background_type_slider = _slider(
+		"BackgroundTypeSlider",
+		FIRST_ROW_Y + ROW_STEP * 8.0,
+		0,
+		PlayfieldRendererScript.BACKGROUND_TYPE_COUNT - 1
+	)
 	_background_type_slider.step = 1.0
 	_vx_effects = OptionsVxEffectsScript.new()
 	_vx_effects.name = "OptionsVxEffects"
@@ -219,7 +225,9 @@ func _load_settings() -> void:
 	_ball_tracks_toggle.button_pressed = _profile_bool(profile, "ball_tracks_visible", true)
 	_fps_toggle.button_pressed = _profile_bool(profile, "fps_visible", false)
 	_background_movable_toggle.button_pressed = _profile_bool(profile, "background_movable", true)
-	_background_type_slider.value = clampi(_profile_int(profile, "background_type", 2), 0, 2)
+	_background_type_slider.value = PlayfieldRendererScript.normalize_background_type(
+		_profile_int(profile, "background_type", 2)
+	)
 	_sync_vx_effects(true)
 	_sync_audio_from_profile()
 

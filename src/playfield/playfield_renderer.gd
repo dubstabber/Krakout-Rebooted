@@ -7,8 +7,14 @@ const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
 
 const BACKGROUND_TILE_SIZE := Vector2(50, 50)
 const DEFAULT_BACKGROUND_TYPE := 2
-const BACKGROUND_TYPE_COUNT := 3
+const BACKGROUND_TYPE_COLUMNS := 4
+const BACKGROUND_TYPE_COUNT := 8
 const GAMEPLAY_BACKGROUND_SOURCE := Rect2(Vector2(DEFAULT_BACKGROUND_TYPE * BACKGROUND_TILE_SIZE.x, 0), BACKGROUND_TILE_SIZE)
+const BACKGROUND_SCROLL_GATE_SECONDS := 0.01
+const BACKGROUND_SCROLL_STEP_PIXELS := 1.0
+const BACKGROUND_SCROLL_WRAP_PIXELS := 50.0
+const BACKGROUND_DRAW_WIDTH := 700
+const BACKGROUND_DRAW_HEIGHT := 500
 const WALL_REPEAT_STEP := 45
 const WALL_TOP_SOURCE := Rect2(Vector2(0, 45), Vector2(45, 25))
 const WALL_SIDE_SOURCE := Rect2(Vector2(11, 0), Vector2(25, 45))
@@ -35,6 +41,8 @@ var grid_renderer: LevelGridRenderer
 var background_texture: Texture2D
 var walls_texture: Texture2D
 var back_wall_active := false
+var _background_scroll_offset := 0.0
+var _background_scroll_elapsed := 0.0
 
 
 func _ready() -> void:
@@ -45,6 +53,10 @@ func _ready() -> void:
 		set_level(_load_default_level())
 	else:
 		_apply_level()
+
+
+func _process(delta: float) -> void:
+	advance_background(delta)
 
 
 func set_level(data: KrakoutLevelData) -> void:
@@ -70,14 +82,27 @@ func gameplay_background_source_rect() -> Rect2:
 
 
 func background_source_rect_for_type(type_id: int) -> Rect2:
-	return Rect2(Vector2(clampi(type_id, 0, BACKGROUND_TYPE_COUNT - 1) * BACKGROUND_TILE_SIZE.x, 0), BACKGROUND_TILE_SIZE)
+	var normalized_type := normalize_background_type(type_id)
+	return Rect2(
+		Vector2(
+			float(normalized_type % BACKGROUND_TYPE_COLUMNS) * BACKGROUND_TILE_SIZE.x,
+			float(floori(float(normalized_type) / float(BACKGROUND_TYPE_COLUMNS))) * BACKGROUND_TILE_SIZE.y
+		),
+		BACKGROUND_TILE_SIZE
+	)
+
+
+static func normalize_background_type(type_id: int) -> int:
+	if type_id < 0 or type_id >= BACKGROUND_TYPE_COUNT:
+		return 0
+	return type_id
 
 
 func set_background_type(type_id: int) -> void:
-	var clamped_type := clampi(type_id, 0, BACKGROUND_TYPE_COUNT - 1)
-	if background_type == clamped_type:
+	var normalized_type := normalize_background_type(type_id)
+	if background_type == normalized_type:
 		return
-	background_type = clamped_type
+	background_type = normalized_type
 	queue_redraw()
 
 
@@ -87,11 +112,40 @@ func cycle_background_type() -> int:
 
 
 func set_background_movable(is_movable: bool) -> void:
+	if background_movable == is_movable:
+		return
 	background_movable = is_movable
 
 
 func is_background_movable() -> bool:
 	return background_movable
+
+
+func current_background_scroll_offset() -> float:
+	return _background_scroll_offset
+
+
+func background_tile_target_rect(base_position: Vector2) -> Rect2:
+	return Rect2(
+		base_position + Vector2(-_background_scroll_offset, _background_scroll_offset),
+		BACKGROUND_TILE_SIZE
+	)
+
+
+func advance_background(delta: float) -> void:
+	if not background_movable or delta <= 0.0:
+		return
+
+	_background_scroll_elapsed += delta
+	if _background_scroll_elapsed <= BACKGROUND_SCROLL_GATE_SECONDS:
+		return
+
+	_background_scroll_elapsed = 0.0
+	_background_scroll_offset = fposmod(
+		_background_scroll_offset + BACKGROUND_SCROLL_STEP_PIXELS,
+		BACKGROUND_SCROLL_WRAP_PIXELS
+	)
+	queue_redraw()
 
 
 func refresh_board() -> void:
@@ -147,12 +201,13 @@ func _draw_background_tiles() -> void:
 	if background_texture == null:
 		return
 
-	for y in range(0, PlayfieldSpecScript.VIEWPORT_SIZE.y, int(BACKGROUND_TILE_SIZE.y)):
-		for x in range(0, PlayfieldSpecScript.VIEWPORT_SIZE.x, int(BACKGROUND_TILE_SIZE.x)):
+	var source_rect := gameplay_background_source_rect()
+	for x in range(0, BACKGROUND_DRAW_WIDTH, int(BACKGROUND_TILE_SIZE.x)):
+		for y in range(0, BACKGROUND_DRAW_HEIGHT, int(BACKGROUND_TILE_SIZE.y)):
 			draw_texture_rect_region(
 				background_texture,
-				Rect2(Vector2(x, y), BACKGROUND_TILE_SIZE),
-				gameplay_background_source_rect()
+				background_tile_target_rect(Vector2(x, y)),
+				source_rect
 			)
 
 

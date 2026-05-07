@@ -17,8 +17,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - `LevelGridRenderer` renders raw visual board IDs through an isolated IDA-backed
   brick atlas mapping, keeping gameplay meaning out of the visual loader.
 - `PlayfieldRenderer` composes the 640x480 playfield shell from the original
-  lattice `Backgr` tile, `Walls`, and the selected level board, then creates a
-  mutable board state for gameplay.
+  `Backgr` sheet, `Walls`, and the selected level board, then creates a mutable
+  board state for gameplay. It now supports all eight original 50x50 background
+  tiles, keeps the original invalid-type reset-to-zero behavior, and shifts the
+  selected tile field by one pixel on a strict 10ms gate, wrapping at the 50px
+  tile size while preserving the static-background profile toggle.
 - `KrakoutBrickSemantics` and `KrakoutBoardState` preserve the original brick
   active/completion rules, the IDA-backed behavior-case table, and delayed 3x3
   chain explosions for tile IDs 43/68.
@@ -100,7 +103,7 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   `InfoIcons` countdown runs until launch.
 - Gameplay controls now flow through Godot InputMap actions for launching,
   bonus use, pause, the Escape leave-board confirmation, FPS, bonus-stack
-  visibility, ball-track visibility, a provisional background-cycle action, and
+  visibility, ball-track visibility, full original background-type cycling, and
   a debug-cheats stack editor. Runtime presentation toggles persist through
   `KrakoutProfile`.
 - The non-original debug-cheats action pauses gameplay and opens a stack editor
@@ -147,8 +150,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   racket bounce, brick clear, chain explosion, bonus spawn/expire/collect,
   projectile fire, monster spawn/timeout/hit, life lost, level-ready, level
   complete, and game over; initial ball launch, back-wall bounce, generic bonus
-  apply, and generic projectile hit remain named but silent until original
-  evidence proves a direct sample.
+  apply, and generic projectile hit remain named but silent. The latest
+  back-wall audit found the relevant branch reuses the `eff05` handle already
+  used for level-ready behavior, so that event remains unmapped until runtime
+  traces prove a distinct bounce contract.
 
 ## Validation
 

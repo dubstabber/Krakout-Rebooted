@@ -361,7 +361,7 @@ func cycle_background_type() -> int:
 
 
 func set_background_type(type_id: int) -> void:
-	_background_type = clampi(type_id, 0, PlayfieldRendererScript.BACKGROUND_TYPE_COUNT - 1)
+	_background_type = PlayfieldRendererScript.normalize_background_type(type_id)
 	var profile := _profile_service()
 	if profile != null and profile.has_method("set_background_type"):
 		profile.call("set_background_type", _background_type)
@@ -616,7 +616,7 @@ func _load_presentation_settings() -> void:
 	if profile.has_method("background_movable"):
 		_background_movable = bool(profile.call("background_movable"))
 	if profile.has_method("background_type"):
-		_background_type = clampi(int(profile.call("background_type")), 0, PlayfieldRendererScript.BACKGROUND_TYPE_COUNT - 1)
+		_background_type = PlayfieldRendererScript.normalize_background_type(int(profile.call("background_type")))
 
 
 func _apply_presentation_settings() -> void:

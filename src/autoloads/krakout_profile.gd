@@ -1,5 +1,7 @@
 extends Node
 
+const PlayfieldRendererScript := preload("res://src/playfield/playfield_renderer.gd")
+
 const DEFAULT_SAVE_PATH := "user://krakout_profile.cfg"
 const SCORES_SECTION := "scores"
 const BEST_SCORE_KEY := "best_score"
@@ -161,7 +163,7 @@ func background_type() -> int:
 
 func set_background_type(type_id: int) -> bool:
 	_ensure_loaded()
-	var normalized_type := maxi(0, type_id)
+	var normalized_type := PlayfieldRendererScript.normalize_background_type(type_id)
 	if _background_type == normalized_type:
 		return false
 	_background_type = normalized_type
@@ -240,7 +242,9 @@ func load_profile() -> bool:
 	_ball_tracks_visible = bool(config.get_value(SETTINGS_SECTION, BALL_TRACKS_VISIBLE_KEY, DEFAULT_BALL_TRACKS_VISIBLE))
 	_fps_visible = bool(config.get_value(SETTINGS_SECTION, FPS_VISIBLE_KEY, DEFAULT_FPS_VISIBLE))
 	_background_movable = bool(config.get_value(SETTINGS_SECTION, BACKGROUND_MOVABLE_KEY, DEFAULT_BACKGROUND_MOVABLE))
-	_background_type = maxi(0, int(config.get_value(SETTINGS_SECTION, BACKGROUND_TYPE_KEY, DEFAULT_BACKGROUND_TYPE)))
+	_background_type = PlayfieldRendererScript.normalize_background_type(
+		int(config.get_value(SETTINGS_SECTION, BACKGROUND_TYPE_KEY, DEFAULT_BACKGROUND_TYPE))
+	)
 	_music_enabled = bool(config.get_value(SETTINGS_SECTION, MUSIC_ENABLED_KEY, DEFAULT_MUSIC_ENABLED))
 	_sfx_enabled = bool(config.get_value(SETTINGS_SECTION, SFX_ENABLED_KEY, DEFAULT_SFX_ENABLED))
 	_music_volume = clampi(int(config.get_value(SETTINGS_SECTION, MUSIC_VOLUME_KEY, DEFAULT_MUSIC_VOLUME)), 0, 100)
