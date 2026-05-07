@@ -1397,7 +1397,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(add_ball_result["effect"] == "add_standard_ball", "standard-ball bonus reports effect")
 	_assert(add_ball_session.active_ball_count() == 2, "standard-ball bonus adds an active ball")
 	_assert(add_ball_session.bonus_stack_entries().is_empty(), "applied bonus consumes first stack entry")
-	_assert(add_ball_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BONUS_APPLY], "applied non-projectile bonus queues bonus-apply SFX event")
+	_assert(add_ball_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY], "standard-ball bonus queues add-ball apply SFX event")
 
 	var fireball_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(fireball_session, GameSessionScript.BONUS_ADD_FIREBALL)
@@ -1410,13 +1410,16 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		if int(ball.get("type_id", GameSessionScript.BALL_TYPE_STANDARD)) == GameSessionScript.BALL_TYPE_FIREBALL:
 			fireball_count += 1
 	_assert(fireball_count == 1, "fireball bonus marks exactly one added ball as fireball")
+	_assert(fireball_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY], "fireball bonus queues add-ball apply SFX event")
 	while fireball_session.active_ball_count() < GameSessionScript.MAX_BALLS:
 		_stack_bonus(fireball_session, GameSessionScript.BONUS_ADD_FIREBALL)
 		fireball_session.activate_next_bonus()
+		fireball_session.pop_audio_events()
 	_stack_bonus(fireball_session, GameSessionScript.BONUS_ADD_FIREBALL)
 	var capped_fireball_result: Dictionary = fireball_session.activate_next_bonus()
 	_assert(not bool(capped_fireball_result["applied"]), "fireball bonus respects original five-ball pool cap")
 	_assert(fireball_session.active_ball_count() == GameSessionScript.MAX_BALLS, "fireball bonus cannot overflow active balls")
+	_assert(fireball_session.pop_audio_events().is_empty(), "capped fireball bonus queues no add-ball apply SFX event")
 
 	var fireball_hard_session = _playing_session_from_level(_make_level_from_rows([[8, 1]]))
 	fireball_hard_session.force_ball(
@@ -1769,9 +1772,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_stack_bonus(jump_level_session, GameSessionScript.BONUS_JUMP_TO_NEXT_LEVEL)
 	jump_level_session.activate_next_bonus()
 	_assert(jump_level_session.state == GameSessionScript.STATE_LEVEL_COMPLETE, "jump-level bonus routes through level-complete state")
-	var jump_level_audio_events: Array[String] = jump_level_session.pop_audio_events()
-	_assert(jump_level_audio_events.has(GameSessionScript.SFX_EVENT_LEVEL_COMPLETE), "jump-level bonus queues level-complete SFX event")
-	_assert(jump_level_audio_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "jump-level bonus queues bonus-apply SFX event")
+	_assert(jump_level_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BONUS_JUMP_LEVEL_APPLY], "jump-level bonus queues dedicated jump-level apply SFX event")
 
 
 func _validate_brick_atlas_mapping() -> void:
@@ -2071,6 +2072,8 @@ func _validate_audio_cue_catalog() -> void:
 		GameSessionScript.SFX_EVENT_BONUS_SPAWN: "eff11",
 		GameSessionScript.SFX_EVENT_BONUS_EXPIRE: "eff12",
 		GameSessionScript.SFX_EVENT_BONUS_COLLECT: "eff15",
+		GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY: "eff17",
+		GameSessionScript.SFX_EVENT_BONUS_JUMP_LEVEL_APPLY: "eff19",
 		GameSessionScript.SFX_EVENT_PROJECTILE_FIRE: "eff08",
 		GameSessionScript.SFX_EVENT_MONSTER_SPAWN: "eff13",
 		GameSessionScript.SFX_EVENT_MONSTER_EXPIRE: "eff14",
@@ -2098,6 +2101,8 @@ func _validate_audio_cue_catalog() -> void:
 	var sfx_events: Array[String] = AudioCueCatalogScript.known_sfx_events()
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_EXPIRE), "audio cue catalog exposes bonus-expire event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "audio cue catalog exposes bonus-apply event in known event list")
+	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY), "audio cue catalog exposes add-ball apply event in known event list")
+	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BONUS_JUMP_LEVEL_APPLY), "audio cue catalog exposes jump-level apply event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_HARD_BRICK_HIT), "audio cue catalog exposes hard-brick-hit event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BEE_SPAWN), "audio cue catalog exposes bee-spawn event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_BEE_STOP), "audio cue catalog exposes bee-stop event in known event list")
@@ -2148,6 +2153,8 @@ func _validate_audio_service() -> void:
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_SPAWN)) == "eff11", "audio service maps bonus-spawn SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_EXPIRE)) == "eff12", "audio service maps bonus-expire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_COLLECT)) == "eff15", "audio service maps bonus-collect SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY)) == "eff17", "audio service maps add-ball apply SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_JUMP_LEVEL_APPLY)) == "eff19", "audio service maps jump-level apply SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_HARD_BRICK_HIT)) == "eff22", "audio service maps hard-brick-hit SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_PROJECTILE_FIRE)) == "eff08", "audio service maps projectile-fire SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_MONSTER_SPAWN)) == "eff13", "audio service maps monster-spawn SFX event")

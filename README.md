@@ -151,10 +151,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - Gameplay now queues semantic SFX events from the session and drains them
   through `KrakoutAudio` in the Godot scene layer. IDA-backed mappings now cover
   racket bounce, brick clear, hard-brick impact, chain explosion, bonus
-  spawn/expire/collect, projectile fire, monster spawn/timeout/hit, life lost,
-  level-ready, level complete, and game over. Hard-brick collisions now also
-  expose the original `Exploision` force-break/non-clearing VFX columns; initial
-  ball launch, back-wall bounce, generic bonus apply, and generic projectile hit
+  spawn/expire/collect, add-ball bonus apply, jump-level bonus apply,
+  projectile fire, monster spawn/timeout/hit, life lost, level-ready, level
+  complete, and game over. Hard-brick collisions now also expose the original
+  `Exploision` force-break/non-clearing VFX columns; initial ball launch,
+  back-wall bounce, generic unaudited bonus apply, and generic projectile hit
   remain named but silent. The latest back-wall audit found the relevant branch
   reuses the `eff05` handle already used for level-ready behavior, so that
   event remains unmapped until runtime traces prove a distinct bounce contract.

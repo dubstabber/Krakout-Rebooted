@@ -330,6 +330,8 @@ const SFX_EVENT_BONUS_SPAWN := "bonus_spawn"
 const SFX_EVENT_BONUS_EXPIRE := "bonus_expire"
 const SFX_EVENT_BONUS_COLLECT := "bonus_collect"
 const SFX_EVENT_BONUS_APPLY := "bonus_apply"
+const SFX_EVENT_BONUS_ADD_BALL_APPLY := "bonus_add_ball_apply"
+const SFX_EVENT_BONUS_JUMP_LEVEL_APPLY := "bonus_jump_level_apply"
 const SFX_EVENT_PROJECTILE_FIRE := "projectile_fire"
 const SFX_EVENT_PROJECTILE_HIT := "projectile_hit"
 const SFX_EVENT_MONSTER_SPAWN := "monster_spawn"
@@ -864,8 +866,28 @@ func activate_next_bonus() -> Dictionary:
 	result["status"] = "applied"
 	result["type_id"] = type_id
 	result["name"] = bonus_type_name(type_id)
-	_queue_audio_event(SFX_EVENT_BONUS_APPLY)
+	var audio_event := _bonus_apply_audio_event(type_id, result)
+	if not audio_event.is_empty():
+		_queue_audio_event(audio_event)
+	elif _should_queue_generic_bonus_apply_event(type_id):
+		_queue_audio_event(SFX_EVENT_BONUS_APPLY)
 	return result
+
+
+func _bonus_apply_audio_event(type_id: int, result: Dictionary) -> String:
+	match type_id:
+		BONUS_ADD_STANDARD_BALL, BONUS_ADD_FIREBALL:
+			if bool(result.get("applied", false)):
+				return SFX_EVENT_BONUS_ADD_BALL_APPLY
+		BONUS_JUMP_TO_NEXT_LEVEL:
+			return SFX_EVENT_BONUS_JUMP_LEVEL_APPLY
+	return ""
+
+
+func _should_queue_generic_bonus_apply_event(type_id: int) -> bool:
+	return type_id != BONUS_ADD_STANDARD_BALL \
+		and type_id != BONUS_ADD_FIREBALL \
+		and type_id != BONUS_JUMP_TO_NEXT_LEVEL
 
 
 static func bonus_type_name(type_id: int) -> String:
@@ -2555,7 +2577,7 @@ func _apply_bonus_effect(type_id: int) -> Dictionary:
 		BONUS_EXPAND_EXPLODING:
 			return _activate_expand_exploding()
 		BONUS_JUMP_TO_NEXT_LEVEL:
-			_mark_level_complete()
+			_mark_level_complete(false)
 			return {"effect": "jump_to_next_level"}
 		BONUS_EXPLODE_ALL_EXPLODINGS:
 			return _activate_explode_all_explodings()
@@ -2811,11 +2833,12 @@ func _update_displayed_score() -> void:
 		displayed_score += 1
 
 
-func _mark_level_complete() -> void:
+func _mark_level_complete(play_audio_event := true) -> void:
 	if state == STATE_LEVEL_COMPLETE:
 		return
 	state = STATE_LEVEL_COMPLETE
-	_queue_audio_event(SFX_EVENT_LEVEL_COMPLETE)
+	if play_audio_event:
+		_queue_audio_event(SFX_EVENT_LEVEL_COMPLETE)
 
 
 func _queue_audio_event(event_name: String) -> void:
