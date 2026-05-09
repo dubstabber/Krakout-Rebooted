@@ -23,6 +23,7 @@ const MonsterRendererScript := preload("res://src/render/monster_renderer.gd")
 const BeeRendererScript := preload("res://src/render/bee_renderer.gd")
 const SnakeRendererScript := preload("res://src/render/snake_renderer.gd")
 const ImpactEffectRendererScript := preload("res://src/render/impact_effect_renderer.gd")
+const ScorePopupRendererScript := preload("res://src/render/score_popup_renderer.gd")
 const LevelReadyRollerRendererScript := preload("res://src/render/level_ready_roller_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
 const GameScreenScript := preload("res://src/game/game_screen.gd")
@@ -456,8 +457,41 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.active_bee_count() == 0, "game session starts without active bees")
 	_assert(session.visible_snake_segments().is_empty(), "game session starts without Snake VFX segments")
 	_assert(session.visible_impact_effects().is_empty(), "game session starts without impact effects")
+	_assert(session.visible_score_popups().is_empty(), "game session starts without score-popup VFX")
 	_assert(not session.is_racket_stunned(), "game session starts with active racket control")
 	_assert(session.pop_audio_events().is_empty(), "game session starts without queued SFX events")
+
+	var direct_score_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	direct_score_session.award_score(30)
+	_assert(direct_score_session.score == 30, "direct score award still updates the run score")
+	_assert(direct_score_session.visible_score_popups().is_empty(), "direct score awards do not create original floating score VFX")
+
+	var popup_motion_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	_assert(bool(popup_motion_session.call("_spawn_score_popup", Vector2(100, 100), 123)), "score-popup pool accepts a test popup")
+	popup_motion_session.update(GameSessionScript.SCORE_POPUP_STEP_SECONDS + 0.001)
+	var moved_score_popups: Array[Dictionary] = popup_motion_session.visible_score_popups()
+	_assert(moved_score_popups.size() == 1, "score popup remains visible after one original drift step")
+	if moved_score_popups.size() == 1:
+		_assert(moved_score_popups[0]["position"] == Vector2(100, 97), "score popup rises by the original three pixels per update")
+
+	var popup_frame_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	popup_frame_session.call("_spawn_score_popup", Vector2(100, 100), 5)
+	popup_frame_session.update(GameSessionScript.SCORE_POPUP_FRAME_SECONDS + 0.001)
+	var framed_score_popups: Array[Dictionary] = popup_frame_session.visible_score_popups()
+	if framed_score_popups.size() == 1:
+		_assert(int(framed_score_popups[0]["frame"]) == 1, "score popup advances one DigitsSmall source row after the original 35 ms frame gate")
+	popup_frame_session.update(GameSessionScript.SCORE_POPUP_FRAME_SECONDS * GameSessionScript.SCORE_POPUP_FRAME_COUNT)
+	_assert(popup_frame_session.visible_score_popups().is_empty(), "score popup expires after the original fifteen-frame animation")
+
+	var popup_y_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	popup_y_session.call("_spawn_score_popup", Vector2(10, 11), 5)
+	popup_y_session.update(GameSessionScript.SCORE_POPUP_STEP_SECONDS + 0.001)
+	_assert(popup_y_session.visible_score_popups().is_empty(), "score popup expires when it crosses the original y cutoff")
+
+	var capped_score_popup_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	for score_popup_index in range(GameSessionScript.MAX_SCORE_POPUPS + 5):
+		capped_score_popup_session.call("_spawn_score_popup", Vector2(score_popup_index, 100), score_popup_index + 1)
+	_assert(capped_score_popup_session.visible_score_popups().size() == GameSessionScript.MAX_SCORE_POPUPS, "score-popup pool keeps the original forty-slot cap")
 
 	var track_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	track_session.set_ball_track_rng_seed(1)
@@ -720,6 +754,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(brick_session.board_state.tile_at(0, 0) == 0, "ball hit clears brick through board state")
 	_assert(brick_session.consume_board_changed(), "brick hit marks board for redraw")
 	_assert(brick_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "normal brick hit awards original score increment")
+	var brick_score_popups: Array[Dictionary] = brick_session.visible_score_popups()
+	_assert(brick_score_popups.size() == 1, "normal brick clear spawns original floating score VFX")
+	if brick_score_popups.size() == 1:
+		_assert(int(brick_score_popups[0]["value"]) == GameSessionScript.NORMAL_BRICK_SCORE, "normal brick score popup uses original five-point value")
+		_assert(brick_score_popups[0]["position"] == PlayfieldSpecScript.brick_rect(0, 0).position + GameSessionScript.SCORE_POPUP_BRICK_OFFSET, "normal brick score popup starts at the original brick offset")
 	var brick_clear_effects: Array = brick_session.visible_impact_effects()
 	_assert(brick_clear_effects.size() == 1, "normal brick clear spawns original clear VFX")
 	if brick_clear_effects.size() == 1:
@@ -877,6 +916,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(chain_session.board_state.tile_at(1, 0) == 68, "chain tile hit leaves neighbor pending")
 	_assert(chain_session.board_state.pending_chain_explosion_count() == 1, "chain tile hit schedules delayed neighbor")
 	_assert(chain_session.score == GameSessionScript.BRICK_SCORE, "chain hit scores immediate cleared tile")
+	var immediate_chain_popups: Array[Dictionary] = chain_session.visible_score_popups()
+	_assert(immediate_chain_popups.size() == 1, "chain tile hit spawns immediate score-popup VFX")
+	if immediate_chain_popups.size() == 1:
+		_assert(int(immediate_chain_popups[0]["value"]) == GameSessionScript.CHAIN_BRICK_SCORE, "chain score popup uses original fifteen-point value")
+		_assert(immediate_chain_popups[0]["position"] == PlayfieldSpecScript.brick_rect(0, 0).position + GameSessionScript.SCORE_POPUP_CHAIN_OFFSET, "chain score popup starts at original chain offset")
 	var immediate_chain_effects: Array = chain_session.visible_impact_effects()
 	_assert(immediate_chain_effects.size() == 1, "chain tile hit spawns immediate board impact VFX")
 	if immediate_chain_effects.size() == 1:
@@ -887,6 +931,10 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(chain_session.board_state.tile_at(1, 0) == 0, "delayed chain explosion clears neighbor")
 	_assert(chain_session.score == GameSessionScript.BRICK_SCORE * 2, "delayed chain explosion awards score")
 	_assert(chain_session.state == GameSessionScript.STATE_LEVEL_COMPLETE, "chain explosion can complete level")
+	var delayed_chain_popups: Array[Dictionary] = chain_session.visible_score_popups()
+	_assert(delayed_chain_popups.size() == 2, "delayed chain clear adds a second score-popup VFX")
+	if delayed_chain_popups.size() == 2:
+		_assert(delayed_chain_popups[1]["position"] == PlayfieldSpecScript.brick_rect(1, 0).position + GameSessionScript.SCORE_POPUP_CHAIN_OFFSET, "delayed chain score popup uses original chain offset")
 	var delayed_chain_effects: Array = chain_session.visible_impact_effects()
 	_assert(delayed_chain_effects.size() == 2, "delayed chain clear adds a second board impact VFX")
 	if delayed_chain_effects.size() == 2:
@@ -1398,6 +1446,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	monster_ball_hit_session.update(0.0)
 	_assert(monster_ball_hit_session.active_monster_count() == 0, "ball collision removes active monster")
 	_assert(monster_ball_hit_session.score == GameSessionScript.MONSTER_BALL_HIT_SCORE, "ball collision awards original ball-contact monster score")
+	var monster_ball_score_popups: Array[Dictionary] = monster_ball_hit_session.visible_score_popups()
+	_assert(monster_ball_score_popups.size() == 1, "ball monster collision spawns original floating score VFX")
+	if monster_ball_score_popups.size() == 1:
+		_assert(int(monster_ball_score_popups[0]["value"]) == GameSessionScript.MONSTER_BALL_HIT_SCORE, "monster score popup uses original ball-contact value")
+		_assert(monster_ball_score_popups[0]["position"] == Vector2(200, 200), "monster score popup starts at enemy position")
 	_assert(not monster_ball_hit_session.first_ball_velocity().is_zero_approx(), "ball collision changes the ball trajectory")
 	_assert(monster_ball_hit_session.visible_impact_effects().size() == 1, "ball collision spawns monster hit VFX")
 	_assert(monster_ball_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_MONSTER_HIT], "monster collision queues monster-hit SFX event")
@@ -1433,6 +1486,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	type1_ball_hit_session.update(0.0)
 	_assert(type1_ball_hit_session.active_monster_count() == 1, "type 1 monster survives original ball contact")
 	_assert(type1_ball_hit_session.score == GameSessionScript.MONSTER_BALL_HIT_SCORE, "type 1 monster ball contact still awards original score")
+	_assert(type1_ball_hit_session.visible_score_popups().size() == 1, "surviving type 1 monster contact still spawns score-popup VFX")
 	_assert(not type1_ball_hit_session.first_ball_velocity().is_zero_approx(), "type 1 monster ball contact still rotates the ball")
 	var type1_ball_angle := fposmod(rad_to_deg(atan2(-type1_ball_hit_session.first_ball_velocity().y, type1_ball_hit_session.first_ball_velocity().x)), 360.0)
 	_assert(is_equal_approx(type1_ball_angle, float(GameSessionScript.MONSTER_TYPE1_BALL_ROTATION_DEGREES)), "type 1 monster applies the original fixed ball turn")
@@ -1515,6 +1569,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	bee_ball_hit_session.update(0.0)
 	_assert(bee_ball_hit_session.active_bee_count() == 0, "ball collision removes active bee")
 	_assert(bee_ball_hit_session.score == GameSessionScript.BEE_BALL_HIT_SCORE, "ball collision awards bee ball-contact score")
+	var bee_ball_score_popups: Array[Dictionary] = bee_ball_hit_session.visible_score_popups()
+	_assert(bee_ball_score_popups.size() == 1, "bee ball collision spawns original floating score VFX")
+	if bee_ball_score_popups.size() == 1:
+		_assert(int(bee_ball_score_popups[0]["value"]) == GameSessionScript.BEE_BALL_HIT_SCORE, "bee score popup uses original ball-contact value")
+		_assert(bee_ball_score_popups[0]["position"] == Vector2(200, 200), "bee score popup starts at enemy position")
 	_assert(not bee_ball_hit_session.first_ball_velocity().is_zero_approx(), "bee ball collision changes the ball trajectory")
 	_assert(not bee_ball_hit_session.is_racket_stunned(), "bee ball collision does not stun the racket")
 	_assert(bee_ball_hit_session.visible_impact_effects().size() == 1, "bee ball collision spawns impact VFX")
@@ -2259,6 +2318,22 @@ func _validate_level_grid_renderer_defaults() -> void:
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR, 0) == Rect2(Vector2(160, 0), Vector2(20, 32)), "impact renderer maps original narrow bonus-clear effect column")
 	_assert(impact_renderer.target_rect_for_effect(Vector2(10, 20), GameSessionScript.IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR) == Rect2(Vector2(10, 20), Vector2(20, 32)), "impact renderer draws narrow effect columns at original width")
 	impact_renderer.free()
+
+	var score_popup_renderer = ScorePopupRendererScript.new()
+	_assert(ScorePopupRendererScript.digit_source_rect(5, 3) == Rect2(Vector2(40, 36), Vector2(8, 12)), "score-popup renderer maps DigitsSmall digit columns and animation rows")
+	_assert(ScorePopupRendererScript.digit_source_rect(12, 99) == Rect2(Vector2(72, 168), Vector2(8, 12)), "score-popup renderer clamps out-of-range DigitsSmall coordinates")
+	_assert(ScorePopupRendererScript.digit_target_rect(Vector2(20, 30), 2) == Rect2(Vector2(36, 30), Vector2(8, 12)), "score-popup renderer advances target digits by original 8px cells")
+	var score_popup_rects: Array[Dictionary] = score_popup_renderer.popup_digit_rects({
+		"position": Vector2(20, 30),
+		"value": 105,
+		"frame": 2,
+	})
+	_assert(score_popup_rects.size() == 3, "score-popup renderer emits one draw region per decimal digit")
+	if score_popup_rects.size() == 3:
+		_assert(score_popup_rects[0]["source"] == Rect2(Vector2(8, 24), Vector2(8, 12)), "score-popup renderer maps first multi-digit source")
+		_assert(score_popup_rects[1]["source"] == Rect2(Vector2(0, 24), Vector2(8, 12)), "score-popup renderer maps zero inside multi-digit values")
+		_assert(score_popup_rects[2]["destination"] == Rect2(Vector2(36, 30), Vector2(8, 12)), "score-popup renderer places trailing digit at original offset")
+	score_popup_renderer.free()
 
 
 func _validate_project_presentation_settings() -> void:
@@ -3652,6 +3727,7 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(game.find_child("BeeRenderer", true, false) != null, "game screen creates bee renderer")
 			_assert(game.find_child("SnakeRenderer", true, false) != null, "game screen creates snake VFX renderer")
 			_assert(game.find_child("ImpactEffectRenderer", true, false) != null, "game screen creates impact effect renderer")
+			_assert(game.find_child("ScorePopupRenderer", true, false) != null, "game screen creates score-popup renderer")
 			_assert(game.find_child("LevelReadyRollerRenderer", true, false) != null, "game screen creates level-ready roller renderer")
 			var snake_renderer_node := game.find_child("SnakeRenderer", true, false)
 			var monster_renderer_node := game.find_child("MonsterRenderer", true, false)
@@ -3659,6 +3735,12 @@ func _validate_menu_and_game_scenes() -> void:
 			if snake_renderer_node != null and monster_renderer_node != null and bee_renderer_node != null:
 				_assert(snake_renderer_node.get_index() < monster_renderer_node.get_index(), "game screen draws Snake VFX below registered monsters")
 				_assert(monster_renderer_node.get_index() < bee_renderer_node.get_index(), "game screen keeps Bee hazard draw order above regular monsters")
+			var impact_renderer_node := game.find_child("ImpactEffectRenderer", true, false)
+			var score_popup_renderer_node := game.find_child("ScorePopupRenderer", true, false)
+			var hud_renderer_node := game.find_child("GameHud", true, false)
+			if impact_renderer_node != null and score_popup_renderer_node != null and hud_renderer_node != null:
+				_assert(impact_renderer_node.get_index() < score_popup_renderer_node.get_index(), "game screen draws score popups above impact effects")
+				_assert(score_popup_renderer_node.get_index() < hud_renderer_node.get_index(), "game screen keeps HUD above score popups")
 			_assert(game.call("is_bonus_stack_visible") == false, "game screen loads bonus-stack visibility setting")
 			_assert(game.call("are_ball_tracks_visible") == false, "game screen loads ball-track visibility setting")
 			_assert(not gameplay.are_ball_tracks_enabled(), "game screen applies loaded ball-track visibility to gameplay generation")

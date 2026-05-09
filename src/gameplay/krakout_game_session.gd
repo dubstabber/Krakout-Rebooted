@@ -256,6 +256,14 @@ const IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR := 5
 const IMPACT_EFFECT_KIND_MONSTER_HIT := IMPACT_EFFECT_KIND_EXPLOSION
 const IMPACT_EFFECT_KIND_CHAIN_EXPLOSION := IMPACT_EFFECT_KIND_EXPLOSION
 const CHAIN_EXPLOSION_IMPACT_OFFSET := Vector2(-8, 1)
+const MAX_SCORE_POPUPS := 40
+const SCORE_POPUP_FRAME_COUNT := 15
+const SCORE_POPUP_FRAME_SECONDS := 0.035
+const SCORE_POPUP_STEP_SECONDS := 1.0 / ORIGINAL_UPDATE_HZ
+const SCORE_POPUP_STEP_PIXELS := 3.0
+const SCORE_POPUP_MIN_Y := 10.0
+const SCORE_POPUP_BRICK_OFFSET := Vector2(5, 0)
+const SCORE_POPUP_CHAIN_OFFSET := Vector2(5, 5)
 const FIREBALL_WALL_IMPACT_NONE := 0
 const FIREBALL_WALL_IMPACT_LEFT := 1
 const FIREBALL_WALL_IMPACT_BACK := 2
@@ -398,6 +406,7 @@ var monsters: Array[Dictionary] = []
 var bees: Array[Dictionary] = []
 var snake_segments: Array[Dictionary] = []
 var impact_effects: Array[Dictionary] = []
+var score_popups: Array[Dictionary] = []
 var back_wall_time_remaining := 0.0
 var level_ready_time_remaining := 0.0
 var _drunk_paddle_time_remaining := 0.0
@@ -489,6 +498,7 @@ func reset_round() -> void:
 	_clear_ball_tracks()
 	falling_bonuses.clear()
 	_clear_monster_state()
+	_clear_score_popups()
 	_clear_timed_bonus_state()
 	_clear_level_ready_sequence()
 	_reset_bonus_drop_gate()
@@ -504,6 +514,35 @@ func award_score(points: int) -> void:
 	while score >= points_to_next_extra_life:
 		lives_remaining += 1
 		points_to_next_extra_life += EXTRA_LIFE_SCORE_STEP
+
+
+func _award_score_with_popup(points: int, position: Vector2) -> void:
+	if points <= 0:
+		return
+
+	award_score(points)
+	_spawn_score_popup(position, points)
+
+
+func _award_chain_clear_score(cleared_count: int, cleared_cells: Array) -> void:
+	var score_delta: int = maxi(0, cleared_count) * CHAIN_BRICK_SCORE
+	if score_delta <= 0:
+		return
+
+	award_score(score_delta)
+	for cell: Vector2i in cleared_cells:
+		_spawn_score_popup(
+			PlayfieldSpecScript.brick_rect(cell.x, cell.y).position + SCORE_POPUP_CHAIN_OFFSET,
+			CHAIN_BRICK_SCORE
+		)
+
+
+func visible_score_popups() -> Array[Dictionary]:
+	var visible: Array[Dictionary] = []
+	for popup: Dictionary in score_popups:
+		if bool(popup.get("active", false)):
+			visible.append(popup.duplicate())
+	return visible
 
 
 func visible_lives() -> int:
@@ -572,6 +611,7 @@ func update(delta: float) -> void:
 	_update_level_ready_sequence(delta)
 	_update_bonus_timers(delta)
 	_update_impact_effects(delta)
+	_update_score_popups(delta)
 	_update_racket_visual(delta)
 	_update_bonus_stack(delta)
 
@@ -580,8 +620,9 @@ func update(delta: float) -> void:
 		var chain_cleared_count := int(chain_result.get("cleared_count", 0))
 		if chain_cleared_count > 0:
 			board_changed = true
-			award_score(chain_cleared_count * CHAIN_BRICK_SCORE)
-			_spawn_chain_explosion_impact_effects(chain_result.get("cleared_cells", []))
+			var chain_cells: Array = chain_result.get("cleared_cells", [])
+			_award_chain_clear_score(chain_cleared_count, chain_cells)
+			_spawn_chain_explosion_impact_effects(chain_cells)
 			_queue_audio_event(SFX_EVENT_CHAIN_EXPLOSION)
 
 	if board_state != null and board_state.is_complete():
@@ -1628,6 +1669,7 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 	var audio_event := ""
 	var chain_impact_cells: Array[Vector2i] = []
 	var impact_effects_to_spawn: Array[Dictionary] = []
+	var score_popups_to_spawn: Array[Dictionary] = []
 	var brick_origin := PlayfieldSpecScript.brick_rect(column, row).position
 	var hit_kind := BrickSemanticsScript.hit_kind(tile_id)
 	if hit_kind == BrickSemanticsScript.HIT_KIND_CHAIN_EXPLOSION:
@@ -1635,6 +1677,10 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 		cleared_count = int(explosion_result.get("cleared_count", 0))
 		for cell: Vector2i in explosion_result.get("cleared_cells", []):
 			chain_impact_cells.append(cell)
+			score_popups_to_spawn.append({
+				"position": PlayfieldSpecScript.brick_rect(cell.x, cell.y).position + SCORE_POPUP_CHAIN_OFFSET,
+				"value": CHAIN_BRICK_SCORE,
+			})
 		did_change_board = cleared_count > 0
 		if cleared_count > 0:
 			score_delta = cleared_count * CHAIN_BRICK_SCORE
@@ -1645,6 +1691,10 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 			did_change_board = true
 			score_delta = HARD_BRICK_FORCE_SCORE
 			audio_event = SFX_EVENT_BRICK_CLEAR
+			score_popups_to_spawn.append({
+				"position": brick_origin,
+				"value": HARD_BRICK_FORCE_SCORE,
+			})
 			impact_effects_to_spawn.append({
 				"position": brick_origin,
 				"kind": IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK,
@@ -1662,6 +1712,10 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 				did_change_board = true
 				score_delta = NORMAL_BRICK_SCORE
 				audio_event = SFX_EVENT_BRICK_CLEAR
+				score_popups_to_spawn.append({
+					"position": brick_origin + SCORE_POPUP_BRICK_OFFSET,
+					"value": NORMAL_BRICK_SCORE,
+				})
 				impact_effects_to_spawn.append({
 					"position": brick_origin,
 					"kind": IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK,
@@ -1672,6 +1726,10 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 				did_change_board = true
 				score_delta = NORMAL_BRICK_SCORE
 				audio_event = SFX_EVENT_BRICK_CLEAR
+				score_popups_to_spawn.append({
+					"position": brick_origin + SCORE_POPUP_BRICK_OFFSET,
+					"value": NORMAL_BRICK_SCORE,
+				})
 	else:
 		var regular_hit_result := _resolve_regular_brick_hit(column, row, tile_id)
 		cleared_count = int(regular_hit_result.get("cleared_count", 0))
@@ -1680,6 +1738,8 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 		audio_event = String(regular_hit_result.get("audio_event", ""))
 		for effect: Dictionary in regular_hit_result.get("impact_effects", []):
 			impact_effects_to_spawn.append(effect)
+		for popup: Dictionary in regular_hit_result.get("score_popups", []):
+			score_popups_to_spawn.append(popup)
 
 	return {
 		"changed": did_change_board,
@@ -1688,6 +1748,7 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 		"audio_event": audio_event,
 		"impact_effects": impact_effects_to_spawn,
 		"chain_impact_cells": chain_impact_cells,
+		"score_popups": score_popups_to_spawn,
 	}
 
 
@@ -1698,6 +1759,9 @@ func _apply_board_hit_result(hit_result: Dictionary) -> void:
 		board_changed = true
 	if score_delta > 0:
 		award_score(score_delta)
+	var popup_entries: Array = hit_result.get("score_popups", [])
+	for popup: Dictionary in popup_entries:
+		_spawn_score_popup(popup.get("position", Vector2.ZERO), int(popup.get("value", 0)))
 	var impact_effects: Array = hit_result.get("impact_effects", [])
 	for effect: Dictionary in impact_effects:
 		_spawn_impact_effect(
@@ -1724,6 +1788,10 @@ func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictiona
 				"position": brick_origin,
 				"kind": IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR,
 			}],
+			"score_popups": [{
+				"position": brick_origin + SCORE_POPUP_BRICK_OFFSET,
+				"value": NORMAL_BRICK_SCORE,
+			}],
 		}
 
 	var cleared_count := 0
@@ -1740,10 +1808,15 @@ func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictiona
 			_queue_audio_event(SFX_EVENT_BONUS_SPAWN)
 
 	var impact_effects: Array[Dictionary] = []
+	var score_popup_entries: Array[Dictionary] = []
 	if cleared_count > 0:
 		impact_effects.append({
 			"position": brick_origin,
 			"kind": impact_kind,
+		})
+		score_popup_entries.append({
+			"position": brick_origin + SCORE_POPUP_BRICK_OFFSET,
+			"value": NORMAL_BRICK_SCORE,
 		})
 
 	return {
@@ -1752,6 +1825,7 @@ func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictiona
 		"score": NORMAL_BRICK_SCORE if cleared_count > 0 else 0,
 		"audio_event": SFX_EVENT_BRICK_CLEAR if cleared_count > 0 else "",
 		"impact_effects": impact_effects,
+		"score_popups": score_popup_entries,
 	}
 
 
@@ -2580,7 +2654,7 @@ func _collide_ball_with_monsters(ball: Dictionary) -> bool:
 			var type_id := int(monster.get("type_id", 0))
 			var score_value := _score_for_monster_ball_contact(monster)
 			if _monster_survives_ball_contact(monster):
-				award_score(score_value)
+				_award_score_with_popup(score_value, monster.get("position", Vector2.ZERO))
 			else:
 				_kill_monster_at_index(index, score_value)
 			_apply_ball_enemy_response(ball, type_id)
@@ -2635,7 +2709,8 @@ func _kill_monster_at_index(index: int, score_value: int = -1) -> void:
 	var monster := monsters[index]
 	monster["active"] = false
 	monsters[index] = monster
-	award_score(score_value if score_value >= 0 else _score_for_monster_paddle_contact(monster))
+	var final_score := score_value if score_value >= 0 else _score_for_monster_paddle_contact(monster)
+	_award_score_with_popup(final_score, monster.get("position", Vector2.ZERO))
 	_spawn_impact_effect(monster.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_MONSTER_HIT)
 	_queue_audio_event(SFX_EVENT_MONSTER_HIT)
 
@@ -2770,7 +2845,7 @@ func _kill_bee_at_index(index: int, score_value: int) -> void:
 	var bee := bees[index]
 	bee["active"] = false
 	bees[index] = bee
-	award_score(score_value)
+	_award_score_with_popup(score_value, bee.get("position", Vector2.ZERO))
 	_spawn_impact_effect(bee.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_MONSTER_HIT)
 	_queue_audio_event(SFX_EVENT_BEE_STOP)
 	_queue_audio_event(SFX_EVENT_MONSTER_HIT)
@@ -2806,6 +2881,40 @@ func _update_impact_effects(delta: float) -> void:
 	_compact_impact_effects()
 
 
+func _update_score_popups(delta: float) -> void:
+	for index in range(score_popups.size()):
+		var popup := score_popups[index]
+		if not bool(popup.get("active", false)):
+			continue
+
+		var position: Vector2 = popup.get("position", Vector2.ZERO)
+		var step_elapsed := float(popup.get("step_elapsed", 0.0)) + delta
+		while step_elapsed >= SCORE_POPUP_STEP_SECONDS:
+			step_elapsed -= SCORE_POPUP_STEP_SECONDS
+			position.y -= SCORE_POPUP_STEP_PIXELS
+
+		var frame_elapsed := float(popup.get("frame_elapsed", 0.0)) + delta
+		var frame := int(popup.get("frame", 0))
+		while frame_elapsed >= SCORE_POPUP_FRAME_SECONDS and bool(popup.get("active", false)):
+			frame_elapsed -= SCORE_POPUP_FRAME_SECONDS
+			frame += 1
+			if frame >= SCORE_POPUP_FRAME_COUNT:
+				popup["active"] = false
+				frame = SCORE_POPUP_FRAME_COUNT - 1
+				frame_elapsed = 0.0
+
+		if position.y < SCORE_POPUP_MIN_Y:
+			popup["active"] = false
+
+		popup["position"] = position
+		popup["step_elapsed"] = step_elapsed
+		popup["frame"] = frame
+		popup["frame_elapsed"] = frame_elapsed
+		score_popups[index] = popup
+
+	_compact_score_popups()
+
+
 func _spawn_impact_effect(position: Vector2, kind: int) -> bool:
 	_compact_impact_effects()
 	if impact_effects.size() >= MAX_IMPACT_EFFECTS:
@@ -2817,6 +2926,25 @@ func _spawn_impact_effect(position: Vector2, kind: int) -> bool:
 		"frame": 0,
 		"frame_elapsed": 0.0,
 		"age": 0.0,
+	})
+	return true
+
+
+func _spawn_score_popup(position: Vector2, value: int) -> bool:
+	if value <= 0:
+		return false
+
+	_compact_score_popups()
+	if score_popups.size() >= MAX_SCORE_POPUPS:
+		return false
+
+	score_popups.append({
+		"active": true,
+		"position": position,
+		"value": value,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+		"step_elapsed": 0.0,
 	})
 	return true
 
@@ -2878,6 +3006,18 @@ func _compact_impact_effects() -> void:
 		if bool(effect.get("active", false)):
 			compacted.append(effect)
 	impact_effects = compacted
+
+
+func _compact_score_popups() -> void:
+	var compacted: Array[Dictionary] = []
+	for popup: Dictionary in score_popups:
+		if bool(popup.get("active", false)):
+			compacted.append(popup)
+	score_popups = compacted
+
+
+func _clear_score_popups() -> void:
+	score_popups.clear()
 
 
 func _compact_projectiles() -> void:

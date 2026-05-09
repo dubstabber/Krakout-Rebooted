@@ -88,6 +88,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   chain-impact brick-cell offset, and the original bonus/chain-selector clear
   flash. Fireballs now also spawn the original wall-impact `Exploision` flash
   on left/top/bottom wall hits and active back-wall bounces.
+- `KrakoutScorePopupRenderer` draws original floating score numbers from
+  `DigitsSmall`, with the 40-slot pool, 15-frame/35ms animation rows, 3px
+  upward drift at the original 50Hz cadence, y<10 expiry cutoff, and IDA-backed
+  spawn offsets for normal bricks, chain clears, monsters, and Bees.
 - `KrakoutBallRenderer` draws standard balls from the extracted `Balls` atlas,
   tints non-stricked balls, and composes fireballs from a warm-tinted `Balls`
   base plus the extracted native 24px `Fb` overlay, with the session advancing
