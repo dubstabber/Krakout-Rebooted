@@ -193,6 +193,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   cue pair, and static info screens use the original animated `Backward` art
   plus `eff01` for Back activation. Startup focus, unchanged selection, and
   slider adjustments stay silent.
+- The credits screen now follows the original menu VFX path from `sub_417D60`:
+  the credit rows auto-roll from y `480`, move one pixel per 50 Hz front-end
+  tick, wrap below `-1260`, keep the executable-backed row offsets, and place
+  the `Backward` animation at the original credits position `(539,379)`.
 - The options screen keeps page 1 as an original-backed audio control panel
   using the executable's four hit indices (`128..131`) for Music/SFX toggles
   and volume sliders. Those controls draw from the original `SoundSlider`,

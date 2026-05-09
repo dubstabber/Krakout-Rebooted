@@ -36,6 +36,7 @@ const OptionsVxEffectsScript := preload("res://src/menu/options_vx_effects.gd")
 const OptionsScreenScript := preload("res://src/menu/options_screen.gd")
 const MainMenuScreenScript := preload("res://src/menu/main_menu_screen.gd")
 const EpisodeSelectScreenScript := preload("res://src/menu/episode_select_screen.gd")
+const CreditsScreenScript := preload("res://src/menu/credits_screen.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 const RulesScreenScene := preload("res://scenes/menu/rules_screen.tscn")
@@ -3571,19 +3572,25 @@ func _validate_menu_and_game_scenes() -> void:
 	var credits_back_button = credits_screen.find_child("BackButton", true, false)
 	_assert(credits_back_button != null and credits_back_button.get_script() == StaticMenuBackButtonScript, "credits screen creates original Backward art button")
 	_assert(credits_screen.find_children("*", "Button", true, false).is_empty(), "credits screen no longer creates a native back button")
+	if credits_back_button != null:
+		_assert(credits_back_button.position == Vector2(539, 379), "credits screen places Backward button at the original credits position")
 	_assert(String(credits_screen.call("screen_title")) == "Credits", "credits screen exposes title")
 	var credits_title = credits_screen.find_child("TitleLabel", true, false)
 	var credits_body = credits_screen.find_child("BodyLabel", true, false)
-	_assert(credits_title != null and credits_title.get_script() == MenuBitmapLabelScript, "credits screen renders title with original bitmap font")
-	_assert(credits_body != null and credits_body.get_script() == MenuBitmapLabelScript, "credits screen renders body copy with original bitmap font")
+	_assert(credits_title == null, "credits screen does not add a non-original static title label")
+	_assert(credits_body != null and credits_body.get_script() == MenuBitmapLabelScript, "credits screen renders rolling body copy with original bitmap font")
 	var credit_sections: Array = credits_screen.call("credit_sections")
 	_assert(credit_sections.size() == 5, "credits screen exposes original executable credit groups")
 	_assert(String(credit_sections[0]["role"]) == "Main Programmer", "credits screen preserves original programmer role")
 	var programmer_names: Array = credit_sections[0]["names"]
 	_assert(programmer_names.has("Andrey A. Ugolnik"), "credits screen preserves original programmer credit")
+	var design_names: Array = credit_sections[1]["names"]
+	_assert(design_names.has("Eugene P. Janushkevich"), "credits screen preserves original design and graphics co-credit")
 	_assert(String(credit_sections[2]["role"]) == "Levels Designers", "credits screen preserves original level-designer role")
 	var level_designer_names: Array = credit_sections[2]["names"]
 	_assert(level_designer_names.has("Eugene P. Janushkevich"), "credits screen preserves original level-designer credit")
+	var beta_tester_names: Array = credit_sections[3]["names"]
+	_assert(beta_tester_names.has("Ludmila N. Ugolnik"), "credits screen preserves original beta-tester credit")
 	_assert(String(credit_sections[4]["role"]) == "Original Music", "credits screen preserves original music role")
 	var music_names: Array = credit_sections[4]["names"]
 	_assert(music_names.has("Konstantin Elgazin"), "credits screen preserves original music credit")
@@ -3593,13 +3600,36 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(credit_footer_lines.has("http://www.wegroup.org"), "credits screen preserves original website line")
 	var credit_lines: Array = credits_screen.call("body_lines")
 	_assert(not credit_lines.has("Reimplementation:"), "credits screen no longer shows placeholder reimplementation copy")
-	_assert(float(credits_screen.call("max_scroll_offset")) > 0.0, "credits screen exposes a scroll range for original credit content")
-	var credits_scroll_start := float(credits_screen.call("scroll_offset"))
+	credits_screen.call("set_credits_scroll_y_for_test", CreditsScreenScript.ORIGINAL_CREDITS_ROLL_START_Y)
+	_assert(
+		is_equal_approx(float(credits_screen.call("credits_scroll_y")), CreditsScreenScript.ORIGINAL_CREDITS_ROLL_START_Y),
+		"credits screen starts the original auto-roll below the viewport"
+	)
+	credits_screen.call("advance_credits_roll", CreditsScreenScript.ORIGINAL_CREDITS_ROLL_STEP_SECONDS - 0.001)
+	_assert(
+		is_equal_approx(float(credits_screen.call("credits_scroll_y")), CreditsScreenScript.ORIGINAL_CREDITS_ROLL_START_Y),
+		"credits screen waits for the original strict roll timer gate"
+	)
+	credits_screen.call("advance_credits_roll", 0.001)
+	_assert(
+		is_equal_approx(float(credits_screen.call("credits_scroll_y")), CreditsScreenScript.ORIGINAL_CREDITS_ROLL_START_Y - 1.0),
+		"credits screen advances the roll by one pixel after the original timer gate"
+	)
+	credits_screen.call("set_credits_scroll_y_for_test", CreditsScreenScript.ORIGINAL_CREDITS_ROLL_WRAP_Y)
+	credits_screen.call("advance_credits_roll", CreditsScreenScript.ORIGINAL_CREDITS_ROLL_STEP_SECONDS)
+	_assert(
+		is_equal_approx(float(credits_screen.call("credits_scroll_y")), CreditsScreenScript.ORIGINAL_CREDITS_ROLL_START_Y),
+		"credits screen wraps the original roll below the executable cutoff"
+	)
+	var credits_scroll_start := float(credits_screen.call("credits_scroll_y"))
 	var credits_down_event := InputEventKey.new()
 	credits_down_event.keycode = KEY_DOWN
 	credits_down_event.pressed = true
 	credits_screen.call("_unhandled_input", credits_down_event)
-	_assert(float(credits_screen.call("scroll_offset")) > credits_scroll_start, "credits screen scrolls down with original key navigation")
+	_assert(
+		is_equal_approx(float(credits_screen.call("credits_scroll_y")), credits_scroll_start),
+		"credits screen ignores manual key scrolling like the original auto-roll"
+	)
 	if _audio != null and _audio.has_method("is_sfx_playing"):
 		if _audio.has_method("stop_all"):
 			_audio.call("stop_all")
