@@ -15,18 +15,25 @@ const BACKGROUND_SCROLL_STEP_PIXELS := 1.0
 const BACKGROUND_SCROLL_WRAP_PIXELS := 50.0
 const BACKGROUND_DRAW_WIDTH := 700
 const BACKGROUND_DRAW_HEIGHT := 500
-const WALL_REPEAT_STEP := 45
+const WALL_REPEAT_STEP := 45.0
+const WALL_SCROLL_STEP_PIXELS := 1.0
+const WALL_SCROLL_WRAP_PIXELS := 45.0
 const WALL_TOP_SOURCE := Rect2(Vector2(0, 45), Vector2(45, 25))
 const WALL_SIDE_SOURCE := Rect2(Vector2(11, 0), Vector2(25, 45))
 const WALL_TOP_LEFT_SOURCE := Rect2(Vector2(45, 0), Vector2(45, 45))
 const WALL_TOP_RIGHT_SOURCE := Rect2(Vector2(90, 0), Vector2(45, 27))
 const WALL_BOTTOM_LEFT_SOURCE := Rect2(Vector2(90, 27), Vector2(45, 45))
 const WALL_BOTTOM_RIGHT_SOURCE := Rect2(Vector2(45, 45), Vector2(45, 27))
+const WALL_REPEAT_CLIP_LEFT_X := 45.0
+const WALL_REPEAT_CLIP_RIGHT_X := 595.0
 const WALL_LEFT_X := 2
 const WALL_RIGHT_X := 613
 const WALL_TOP_Y := 36
+const WALL_TOP_REPEAT_Y := 38
 const WALL_BOTTOM_Y := 453
 const WALL_SIDE_START_Y := 81
+const WALL_SIDE_BASE_Y := 36.0
+const WALL_LEFT_VISIBLE_BOTTOM_Y := 435.0
 
 @export var default_episode := PlayfieldSpecScript.DEFAULT_EPISODE
 @export var default_level_number := PlayfieldSpecScript.DEFAULT_LEVEL_NUMBER
@@ -43,6 +50,8 @@ var walls_texture: Texture2D
 var back_wall_active := false
 var _background_scroll_offset := 0.0
 var _background_scroll_elapsed := 0.0
+var _wall_horizontal_scroll_offset := 0.0
+var _wall_vertical_scroll_offset := 0.0
 
 
 func _ready() -> void:
@@ -57,6 +66,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	advance_background(delta)
+	advance_wall_animation()
 
 
 func set_level(data: KrakoutLevelData) -> void:
@@ -148,6 +158,42 @@ func advance_background(delta: float) -> void:
 	queue_redraw()
 
 
+func current_wall_horizontal_scroll_offset() -> float:
+	return _wall_horizontal_scroll_offset
+
+
+func current_wall_vertical_scroll_offset() -> float:
+	return _wall_vertical_scroll_offset
+
+
+func top_wall_repeat_start_x() -> float:
+	return WALL_REPEAT_STEP - _wall_horizontal_scroll_offset
+
+
+func bottom_wall_repeat_start_x() -> float:
+	return _wall_horizontal_scroll_offset
+
+
+func left_wall_repeat_start_y() -> float:
+	return WALL_SIDE_BASE_Y + _wall_vertical_scroll_offset
+
+
+func back_wall_repeat_start_y() -> float:
+	return PlayfieldSpecScript.WALL_INNER_TOP_Y - _wall_vertical_scroll_offset
+
+
+func advance_wall_animation() -> void:
+	_wall_horizontal_scroll_offset = fposmod(
+		_wall_horizontal_scroll_offset + WALL_SCROLL_STEP_PIXELS,
+		WALL_SCROLL_WRAP_PIXELS
+	)
+	_wall_vertical_scroll_offset = fposmod(
+		_wall_vertical_scroll_offset + WALL_SCROLL_STEP_PIXELS,
+		WALL_SCROLL_WRAP_PIXELS
+	)
+	queue_redraw()
+
+
 func refresh_board() -> void:
 	if grid_renderer != null:
 		grid_renderer.queue_redraw()
@@ -215,19 +261,55 @@ func _draw_walls() -> void:
 	if walls_texture == null:
 		return
 
-	for x in range(WALL_REPEAT_STEP, PlayfieldSpecScript.VIEWPORT_SIZE.x, WALL_REPEAT_STEP):
-		draw_texture_rect_region(walls_texture, Rect2(Vector2(x, WALL_TOP_Y), WALL_TOP_SOURCE.size), WALL_TOP_SOURCE)
-		draw_texture_rect_region(walls_texture, Rect2(Vector2(x, WALL_BOTTOM_Y), WALL_TOP_SOURCE.size), WALL_TOP_SOURCE)
+	var horizontal_clip := Rect2(
+		Vector2(WALL_REPEAT_CLIP_LEFT_X, WALL_TOP_Y),
+		Vector2(WALL_REPEAT_CLIP_RIGHT_X - WALL_REPEAT_CLIP_LEFT_X, PlayfieldSpecScript.VIEWPORT_SIZE.y - WALL_TOP_Y)
+	)
+	for x in _wall_repeat_positions(top_wall_repeat_start_x(), PlayfieldSpecScript.VIEWPORT_SIZE.x):
+		_draw_wall_region_clipped(Vector2(x, WALL_TOP_REPEAT_Y), WALL_TOP_SOURCE, horizontal_clip)
 
-	for y in range(WALL_SIDE_START_Y, WALL_BOTTOM_Y, WALL_REPEAT_STEP):
-		draw_texture_rect_region(walls_texture, Rect2(Vector2(WALL_LEFT_X, y), WALL_SIDE_SOURCE.size), WALL_SIDE_SOURCE)
-		if back_wall_active:
-			draw_texture_rect_region(walls_texture, Rect2(Vector2(WALL_RIGHT_X, y), WALL_SIDE_SOURCE.size), WALL_SIDE_SOURCE)
+	for x in _wall_repeat_positions(bottom_wall_repeat_start_x(), PlayfieldSpecScript.VIEWPORT_SIZE.x):
+		_draw_wall_region_clipped(Vector2(x, WALL_BOTTOM_Y), WALL_TOP_SOURCE, horizontal_clip)
+
+	var left_wall_clip := Rect2(
+		Vector2(0, WALL_SIDE_START_Y),
+		Vector2(PlayfieldSpecScript.VIEWPORT_SIZE.x, WALL_LEFT_VISIBLE_BOTTOM_Y - WALL_SIDE_START_Y)
+	)
+	for y in _wall_repeat_positions(left_wall_repeat_start_y(), PlayfieldSpecScript.VIEWPORT_SIZE.y):
+		_draw_wall_region_clipped(Vector2(WALL_LEFT_X, y), WALL_SIDE_SOURCE, left_wall_clip)
+
+	if back_wall_active:
+		var back_wall_clip := Rect2(
+			Vector2(0, PlayfieldSpecScript.WALL_INNER_TOP_Y),
+			Vector2(PlayfieldSpecScript.VIEWPORT_SIZE.x, WALL_BOTTOM_Y - PlayfieldSpecScript.WALL_INNER_TOP_Y)
+		)
+		for y in _wall_repeat_positions(back_wall_repeat_start_y(), PlayfieldSpecScript.VIEWPORT_SIZE.y):
+			_draw_wall_region_clipped(Vector2(WALL_RIGHT_X, y), WALL_SIDE_SOURCE, back_wall_clip)
 
 	draw_texture_rect_region(walls_texture, Rect2(Vector2(0, WALL_TOP_Y), WALL_TOP_LEFT_SOURCE.size), WALL_TOP_LEFT_SOURCE)
 	draw_texture_rect_region(walls_texture, Rect2(Vector2(595, WALL_TOP_Y), WALL_TOP_RIGHT_SOURCE.size), WALL_TOP_RIGHT_SOURCE)
 	draw_texture_rect_region(walls_texture, Rect2(Vector2(0, 435), WALL_BOTTOM_LEFT_SOURCE.size), WALL_BOTTOM_LEFT_SOURCE)
 	draw_texture_rect_region(walls_texture, Rect2(Vector2(595, WALL_BOTTOM_Y), WALL_BOTTOM_RIGHT_SOURCE.size), WALL_BOTTOM_RIGHT_SOURCE)
+
+
+func _wall_repeat_positions(start: float, limit: int) -> Array[float]:
+	var positions: Array[float] = []
+	var cursor := start
+	while cursor < float(limit):
+		positions.append(cursor)
+		cursor += WALL_REPEAT_STEP
+	return positions
+
+
+func _draw_wall_region_clipped(position: Vector2, source_rect: Rect2, clip_rect: Rect2) -> void:
+	var destination_rect := Rect2(position, source_rect.size)
+	var clipped_destination := destination_rect.intersection(clip_rect)
+	if clipped_destination.size.x <= 0.0 or clipped_destination.size.y <= 0.0:
+		return
+
+	var source_offset := clipped_destination.position - destination_rect.position
+	var clipped_source := Rect2(source_rect.position + source_offset, clipped_destination.size)
+	draw_texture_rect_region(walls_texture, clipped_destination, clipped_source)
 
 
 func _apply_level() -> void:

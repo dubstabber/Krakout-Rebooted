@@ -96,6 +96,20 @@ func _run() -> void:
 				is_zero_approx(arrow_up_image.get_pixel(0, 0).a),
 				"Arrowup texture converts black key color to transparent background"
 			)
+	var walls_texture := _assets.load_texture("Walls") as Texture2D
+	_assert(walls_texture != null, "Walls texture is loadable")
+	if walls_texture != null:
+		var walls_image := walls_texture.get_image()
+		_assert(walls_image != null, "Walls texture exposes image data")
+		if walls_image != null:
+			_assert(
+				is_zero_approx(walls_image.get_pixel(0, 0).a),
+				"Walls texture converts original palette-index-0 key color to transparent background"
+			)
+			_assert(
+				is_equal_approx(walls_image.get_pixel(20, 20).a, 1.0),
+				"Walls texture keeps non-key wall pixels opaque"
+			)
 
 	var episode_slugs: Array = _assets.episode_slugs()
 	_assert(episode_slugs.has("Default"), "Default episode is indexed")
@@ -270,9 +284,27 @@ func _validate_playfield_renderer_shell() -> void:
 	for _index in range(int(PlayfieldRendererScript.BACKGROUND_SCROLL_WRAP_PIXELS) - 1):
 		renderer.advance_background(PlayfieldRendererScript.BACKGROUND_SCROLL_GATE_SECONDS + 0.001)
 	_assert(renderer.current_background_scroll_offset() == 0.0, "playfield renderer wraps moving-background phase at one original tile")
+	_assert(renderer.current_wall_horizontal_scroll_offset() == 0.0, "playfield renderer starts horizontal wall phase at zero")
+	_assert(renderer.current_wall_vertical_scroll_offset() == 0.0, "playfield renderer starts vertical wall phase at zero")
+	_assert(renderer.top_wall_repeat_start_x() == PlayfieldRendererScript.WALL_REPEAT_STEP, "top wall repeat starts one tile in at phase zero")
+	_assert(renderer.bottom_wall_repeat_start_x() == 0.0, "bottom wall repeat starts at screen edge at phase zero")
+	_assert(renderer.left_wall_repeat_start_y() == PlayfieldRendererScript.WALL_SIDE_BASE_Y, "left wall repeat starts at original side base y")
+	_assert(renderer.back_wall_repeat_start_y() == PlayfieldSpecScript.WALL_INNER_TOP_Y, "back wall repeat starts at original inner top")
+	renderer.advance_wall_animation()
+	_assert(renderer.current_wall_horizontal_scroll_offset() == 1.0, "playfield renderer advances horizontal wall phase by one pixel per frame")
+	_assert(renderer.current_wall_vertical_scroll_offset() == 1.0, "playfield renderer advances vertical wall phase by one pixel per frame")
+	_assert(renderer.top_wall_repeat_start_x() == PlayfieldRendererScript.WALL_REPEAT_STEP - 1.0, "top wall scrolls left from the original phase")
+	_assert(renderer.bottom_wall_repeat_start_x() == 1.0, "bottom wall scrolls right from the original phase")
+	_assert(renderer.left_wall_repeat_start_y() == PlayfieldRendererScript.WALL_SIDE_BASE_Y + 1.0, "left wall scrolls down from the original phase")
+	_assert(renderer.back_wall_repeat_start_y() == PlayfieldSpecScript.WALL_INNER_TOP_Y - 1.0, "back wall scrolls up from the original phase")
+	for _index in range(int(PlayfieldRendererScript.WALL_SCROLL_WRAP_PIXELS) - 1):
+		renderer.advance_wall_animation()
+	_assert(renderer.current_wall_horizontal_scroll_offset() == 0.0, "playfield renderer wraps horizontal wall phase at one wall tile")
+	_assert(renderer.current_wall_vertical_scroll_offset() == 0.0, "playfield renderer wraps vertical wall phase at one wall tile")
 	_assert(PlayfieldRendererScript.WALL_LEFT_X == 2, "left wall x remains original-screen aligned")
 	_assert(PlayfieldRendererScript.WALL_RIGHT_X == 613, "right wall x remains original-screen aligned")
 	_assert(PlayfieldRendererScript.WALL_TOP_Y == 36, "top wall y remains original-screen aligned")
+	_assert(PlayfieldRendererScript.WALL_TOP_REPEAT_Y == 38, "top repeated wall strip keeps original two-pixel inset")
 	_assert(PlayfieldRendererScript.WALL_BOTTOM_Y == 453, "bottom wall y remains original-screen aligned")
 	_assert(PlayfieldRendererScript.WALL_SIDE_START_Y == 81, "side wall start remains original-screen aligned")
 	_assert(PlayfieldSpecScript.WALL_INNER_LEFT_X == PlayfieldRendererScript.WALL_LEFT_X + PlayfieldRendererScript.WALL_SIDE_SOURCE.size.x, "left collision starts after left wall visual")

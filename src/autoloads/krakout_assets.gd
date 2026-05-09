@@ -201,10 +201,16 @@ func _path_from_name(index: Dictionary, name: String, default_extension: String)
 func _apply_runtime_texture_processing(name: String, texture: Texture2D) -> Texture2D:
 	if name == "Arrowup" or name == "Arrowdown":
 		return _black_to_transparent_texture(texture)
+	if name == "Walls":
+		return _key_color_to_transparent_texture(texture, Color(4.0 / 255.0, 2.0 / 255.0, 4.0 / 255.0, 1.0))
 	return texture
 
 
 func _black_to_transparent_texture(texture: Texture2D) -> Texture2D:
+	return _key_color_to_transparent_texture(texture, Color.BLACK)
+
+
+func _key_color_to_transparent_texture(texture: Texture2D, key_color: Color) -> Texture2D:
 	var image := texture.get_image()
 	if image == null:
 		return texture
@@ -213,10 +219,18 @@ func _black_to_transparent_texture(texture: Texture2D) -> Texture2D:
 	var changed := false
 	var width := image.get_width()
 	var height := image.get_height()
+	var key_r := roundi(key_color.r * 255.0)
+	var key_g := roundi(key_color.g * 255.0)
+	var key_b := roundi(key_color.b * 255.0)
 	for y in range(height):
 		for x in range(width):
 			var color := image.get_pixel(x, y)
-			if color.a > 0.0 and color.r == 0.0 and color.g == 0.0 and color.b == 0.0:
+			if (
+				color.a > 0.0
+				and roundi(color.r * 255.0) == key_r
+				and roundi(color.g * 255.0) == key_g
+				and roundi(color.b * 255.0) == key_b
+			):
 				color.a = 0.0
 				image.set_pixel(x, y, color)
 				changed = true
