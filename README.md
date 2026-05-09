@@ -211,8 +211,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   for presentation/gameplay toggles, separated by the original-style page-arrow
   flow.
 - Gameplay now queues semantic SFX events from the session and drains them
-  through `KrakoutAudio` in the Godot scene layer. IDA-backed mappings now cover
-  racket bounce, brick clear, hard-brick impact, chain explosion, bonus
+  through `KrakoutAudio` in the Godot scene layer. The event queue now carries
+  optional source-x payloads and applies the original pan formula
+  `clamp(x * 0.3125 - 100, -100, 100)` through the positioned SFX pool while
+  preserving the older event-name drain for compatibility. IDA-backed mappings
+  now cover racket bounce, brick clear, hard-brick impact, chain explosion, bonus
   spawn/expire/collect, add-ball bonus apply, destroy-ball bonus apply,
   jump-level bonus apply,
   projectile fire, monster spawn/timeout/hit, life lost, level-ready, level

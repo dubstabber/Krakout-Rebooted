@@ -485,6 +485,9 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.current_racket_visual_mode() == GameSessionScript.RACKET_VISUAL_MODE_NORMAL, "game session starts with original normal racket insert")
 	_assert(session.score == 0, "game session starts with zero score")
 	_assert(session.displayed_score == 0, "game session starts with zero displayed score")
+	_assert(is_equal_approx(GameSessionScript.sfx_pan100_for_source_x(0.0), -100.0), "game session SFX pan formula clamps the left screen edge")
+	_assert(is_equal_approx(GameSessionScript.sfx_pan100_for_source_x(320.0), 0.0), "game session SFX pan formula centers at original x 320")
+	_assert(is_equal_approx(GameSessionScript.sfx_pan100_for_source_x(640.0), 100.0), "game session SFX pan formula clamps the right screen edge")
 	_assert(session.lives_remaining == GameSessionScript.INITIAL_LIVES, "game session starts with original spare ball count")
 	_assert(session.points_to_next_extra_life == GameSessionScript.EXTRA_LIFE_SCORE_STEP, "game session starts with original extra life threshold")
 	_assert(session.display_level_number == 1, "game session displays source level number")
@@ -738,7 +741,12 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	racket_session.update(0.1)
 	_assert(racket_session.first_ball_velocity().x < 0.0, "ball bounces off racket")
 	_assert(is_equal_approx(racket_session.first_ball_velocity().length(), 200.0), "racket bounce preserves forced ball speed")
-	_assert(racket_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_RACKET_BOUNCE], "racket bounce queues semantic SFX event")
+	var racket_audio_payloads: Array[Dictionary] = racket_session.pop_audio_event_payloads()
+	_assert(_payload_events(racket_audio_payloads) == [GameSessionScript.SFX_EVENT_RACKET_BOUNCE], "racket bounce queues semantic SFX event")
+	if racket_audio_payloads.size() == 1:
+		var racket_bounce_source_x := GameSessionScript.RACKET_X - GameSessionScript.BALL_SIZE
+		_assert(is_equal_approx(float(racket_audio_payloads[0].get("source_x", -1.0)), racket_bounce_source_x), "racket bounce SFX payload records the ball source x")
+		_assert(is_equal_approx(float(racket_audio_payloads[0].get("pan100", -999.0)), GameSessionScript.sfx_pan100_for_source_x(racket_bounce_source_x)), "racket bounce SFX payload uses the original pan formula")
 
 	var angled_racket_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	angled_racket_session.move_racket_to(220.0)
@@ -1027,7 +1035,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	if bonus_spawn_effects.size() == 1:
 		_assert(int(bonus_spawn_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR, "bonus-spawning brick clear uses original bonus-clear VFX column")
 		_assert(bonus_spawn_effects[0]["position"] == PlayfieldSpecScript.brick_rect(0, 0).position, "bonus-spawning brick clear VFX starts at brick origin")
-	_assert(bonus_spawn_session.pop_audio_events().has(GameSessionScript.SFX_EVENT_BONUS_SPAWN), "bonus spawn queues semantic SFX event")
+	var bonus_spawn_audio_payloads: Array[Dictionary] = bonus_spawn_session.pop_audio_event_payloads()
+	_assert(_payload_events(bonus_spawn_audio_payloads).has(GameSessionScript.SFX_EVENT_BONUS_SPAWN), "bonus spawn queues semantic SFX event")
+	for payload: Dictionary in bonus_spawn_audio_payloads:
+		if String(payload.get("event", "")) == GameSessionScript.SFX_EVENT_BONUS_SPAWN:
+			_assert(is_equal_approx(float(payload.get("pan100", -999.0)), GameSessionScript.sfx_pan100_for_source_x(PlayfieldSpecScript.GRID_ORIGIN.x)), "bonus-spawn SFX payload uses source brick x")
 
 	var moving_bonus_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	var moving_bonuses: Array[Dictionary] = [{
@@ -1584,7 +1596,10 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	if spawned_bees.size() == 1:
 		_assert(spawned_bees[0]["position"] == Vector2(GameSessionScript.BEE_SPAWN_X, bee_spawn_session.racket_rect().position.y + 13.0), "bee starts from original racket-relative y position")
 		_assert(bee_spawn_session.bee_rect(spawned_bees[0]).size == GameSessionScript.BEE_COLLISION_SIZE, "bee collision uses original 36px contact box")
-	_assert(bee_spawn_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BEE_SPAWN], "bee spawn queues EffBee SFX event")
+	var bee_spawn_audio_payloads: Array[Dictionary] = bee_spawn_session.pop_audio_event_payloads()
+	_assert(_payload_events(bee_spawn_audio_payloads) == [GameSessionScript.SFX_EVENT_BEE_SPAWN], "bee spawn queues EffBee SFX event")
+	if bee_spawn_audio_payloads.size() == 1:
+		_assert(is_equal_approx(float(bee_spawn_audio_payloads[0].get("pan100", 0.0)), GameSessionScript.SFX_BEE_SPAWN_PAN100), "bee spawn SFX payload preserves the original fixed left pan")
 	bee_spawn_session.update(GameSessionScript.BEE_FRAME_SECONDS)
 	spawned_bees = bee_spawn_session.visible_bees()
 	var expected_bee_x := GameSessionScript.BEE_SPAWN_X + GameSessionScript.BEE_STEP_X * GameSessionScript.ORIGINAL_ENEMY_UPDATE_HZ * GameSessionScript.BEE_FRAME_SECONDS
@@ -1875,7 +1890,10 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(add_ball_result["effect"] == "add_standard_ball", "standard-ball bonus reports effect")
 	_assert(add_ball_session.active_ball_count() == 2, "standard-ball bonus adds an active ball")
 	_assert(add_ball_session.bonus_stack_entries().is_empty(), "applied bonus consumes first stack entry")
-	_assert(add_ball_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY], "standard-ball bonus queues add-ball apply SFX event")
+	var add_ball_audio_payloads: Array[Dictionary] = add_ball_session.pop_audio_event_payloads()
+	_assert(_payload_events(add_ball_audio_payloads) == [GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY], "standard-ball bonus queues add-ball apply SFX event")
+	if add_ball_audio_payloads.size() == 1:
+		_assert(is_equal_approx(float(add_ball_audio_payloads[0].get("source_x", -1.0)), float(add_ball_result.get("source_x", -2.0))), "standard-ball bonus SFX payload follows the added ball source x")
 
 	var fireball_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(fireball_session, GameSessionScript.BONUS_ADD_FIREBALL)
@@ -2812,6 +2830,9 @@ func _validate_audio_service() -> void:
 	_assert(_audio.has_method("music_name_for_context"), "audio service exposes music context lookup")
 	_assert(_audio.has_method("play_sfx"), "audio service exposes SFX playback")
 	_assert(_audio.has_method("play_sfx_event"), "audio service exposes semantic SFX event playback")
+	_assert(_audio.has_method("play_sfx_event_at_pan100"), "audio service exposes positioned semantic SFX playback")
+	_assert(_audio.has_method("play_sfx_event_payload"), "audio service exposes SFX event payload playback")
+	_assert(_audio.has_method("last_sfx_pan100_for_name"), "audio service exposes testable SFX pan metadata")
 	_assert(_audio.has_method("stop_sfx_event"), "audio service exposes semantic SFX stop events")
 	_assert(_audio.has_method("is_sfx_stop_event"), "audio service exposes SFX stop event lookup")
 	_assert(_audio.has_method("is_sfx_playing"), "audio service exposes active SFX lookup")
@@ -2886,6 +2907,10 @@ func _validate_audio_service() -> void:
 	_assert(int(_audio.call("sfx_volume")) == 0, "audio service clamps minimum SFX volume")
 	_assert(not bool(_audio.call("play_sfx", "eff01")), "audio service suppresses muted SFX")
 	_audio.call("set_sfx_volume", 65)
+	_assert(bool(_audio.call("play_sfx_event_at_pan100", GameSessionScript.SFX_EVENT_BRICK_CLEAR, -50.0)), "audio service can play positioned semantic gameplay SFX")
+	_assert(is_equal_approx(float(_audio.call("last_sfx_pan100_for_name", "eff23")), -50.0), "audio service stores the last pan for positioned gameplay SFX")
+	_assert(bool(_audio.call("play_sfx_event_payload", {"event": GameSessionScript.SFX_EVENT_PROJECTILE_FIRE, "pan100": 75.0})), "audio service can play dictionary SFX payloads")
+	_assert(is_equal_approx(float(_audio.call("last_sfx_pan100_for_name", "eff08")), 75.0), "audio service applies SFX payload pan")
 	_assert(bool(_audio.call("play_sfx", "EffBee")), "audio service can start active bee SFX")
 	_assert(bool(_audio.call("is_sfx_playing", "EffBee")), "audio service tracks active bee SFX")
 	_assert(bool(_audio.call("stop_sfx_event", GameSessionScript.SFX_EVENT_BEE_STOP)), "audio service stops active bee SFX by semantic event")
@@ -4207,6 +4232,10 @@ func _validate_menu_and_game_scenes() -> void:
 				gameplay.call("_queue_audio_event", GameSessionScript.SFX_EVENT_BEE_STOP)
 				game.call("_play_pending_audio_events")
 				_assert(not bool(_audio.call("is_sfx_playing", "EffBee")), "game screen routes bee-stop events to stop EffBee")
+				if _audio.has_method("last_sfx_pan100_for_name"):
+					gameplay.call("_queue_audio_event_at_x", GameSessionScript.SFX_EVENT_RACKET_BOUNCE, 0.0)
+					game.call("_play_pending_audio_events")
+					_assert(is_equal_approx(float(_audio.call("last_sfx_pan100_for_name", "eff07")), -100.0), "game screen drains positioned gameplay SFX payloads")
 			var game_bonus_renderer := game.find_child("BonusRenderer", true, false)
 			if game_bonus_renderer != null:
 				_assert(not game_bonus_renderer.call("is_stack_visible"), "bonus renderer applies hidden stack setting")
@@ -4986,6 +5015,18 @@ func _assert_app_original_cursor_inactive(app: Node, message: String) -> void:
 	if cursor_overlay == null:
 		return
 	_assert(not bool(cursor_overlay.call("is_cursor_active")), "%s is inactive" % message)
+
+
+func _payload_events(payloads: Array) -> Array[String]:
+	var events: Array[String] = []
+	for payload: Variant in payloads:
+		if payload is Dictionary:
+			var event_name := String(payload.get("event", ""))
+			if not event_name.is_empty():
+				events.append(event_name)
+		else:
+			events.append(String(payload))
+	return events
 
 
 func _assert(condition: bool, message: String) -> void:

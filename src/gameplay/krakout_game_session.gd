@@ -388,6 +388,11 @@ const SFX_EVENT_LIFE_LOST := "life_lost"
 const SFX_EVENT_LEVEL_READY := "level_ready"
 const SFX_EVENT_LEVEL_COMPLETE := "level_complete"
 const SFX_EVENT_GAME_OVER := "game_over"
+const SFX_PAN_SOURCE_SCALE := 0.3125
+const SFX_PAN_SOURCE_OFFSET := -100.0
+const SFX_PAN_MIN := -100.0
+const SFX_PAN_MAX := 100.0
+const SFX_BEE_SPAWN_PAN100 := -100.0
 
 var board_state
 var state := STATE_READY
@@ -451,7 +456,7 @@ var _level_ready_roller_step_elapsed := 0.0
 var _level_ready_auto_launch_pending := false
 var _ball_track_spawn_elapsed: Array[float] = []
 var _snake_update_elapsed := 0.0
-var _audio_events: Array[String] = []
+var _audio_events: Array[Dictionary] = []
 
 
 func _init() -> void:
@@ -546,6 +551,12 @@ func _award_chain_clear_score(cleared_count: int, cleared_cells: Array) -> void:
 		)
 
 
+func _chain_cells_source_x(cleared_cells: Array) -> float:
+	for cell: Vector2i in cleared_cells:
+		return PlayfieldSpecScript.brick_rect(cell.x, cell.y).position.x
+	return PlayfieldSpecScript.GRID_ORIGIN.x
+
+
 func visible_score_popups() -> Array[Dictionary]:
 	var visible: Array[Dictionary] = []
 	for popup: Dictionary in score_popups:
@@ -632,7 +643,7 @@ func update(delta: float) -> void:
 			var chain_cells: Array = chain_result.get("cleared_cells", [])
 			_award_chain_clear_score(chain_cleared_count, chain_cells)
 			_spawn_chain_explosion_impact_effects(chain_cells)
-			_queue_audio_event(SFX_EVENT_CHAIN_EXPLOSION)
+			_queue_audio_event_at_x(SFX_EVENT_CHAIN_EXPLOSION, _chain_cells_source_x(chain_cells))
 
 	if board_state != null and board_state.is_complete():
 		_mark_level_complete()
@@ -1011,10 +1022,28 @@ func fire_shooting_paddle() -> Dictionary:
 	return {"status": "blocked", "projectile_type": projectile_type}
 
 
+static func sfx_pan100_for_source_x(source_x: float) -> float:
+	return clampf(source_x * SFX_PAN_SOURCE_SCALE + SFX_PAN_SOURCE_OFFSET, SFX_PAN_MIN, SFX_PAN_MAX)
+
+
+static func sfx_pan_for_source_x(source_x: float) -> float:
+	return sfx_pan100_for_source_x(source_x) / SFX_PAN_MAX
+
+
 func pop_audio_events() -> Array[String]:
 	var events: Array[String] = []
-	for event_name: String in _audio_events:
-		events.append(event_name)
+	for event_payload: Dictionary in _audio_events:
+		var event_name := String(event_payload.get("event", ""))
+		if not event_name.is_empty():
+			events.append(event_name)
+	_audio_events.clear()
+	return events
+
+
+func pop_audio_event_payloads() -> Array[Dictionary]:
+	var events: Array[Dictionary] = []
+	for event_payload: Dictionary in _audio_events:
+		events.append(event_payload.duplicate(true))
 	_audio_events.clear()
 	return events
 
@@ -1041,7 +1070,10 @@ func activate_next_bonus() -> Dictionary:
 	result["name"] = bonus_type_name(type_id)
 	var audio_event := _bonus_apply_audio_event(type_id, result)
 	if not audio_event.is_empty():
-		_queue_audio_event(audio_event)
+		if result.has("source_x"):
+			_queue_audio_event_at_x(audio_event, float(result["source_x"]))
+		else:
+			_queue_audio_event(audio_event)
 	elif _should_queue_generic_bonus_apply_event(type_id):
 		_queue_audio_event(SFX_EVENT_BONUS_APPLY)
 	return result
@@ -1645,7 +1677,7 @@ func _collide_with_racket(ball: Dictionary) -> bool:
 			_attach_ball_to_magnet(ball, racket_hit_rect)
 		else:
 			_bounce_ball_from_racket(ball, racket_hit_rect)
-		_queue_audio_event(SFX_EVENT_RACKET_BOUNCE)
+		_queue_audio_event_at_x(SFX_EVENT_RACKET_BOUNCE, ball_rect(ball).position.x)
 		return true
 
 	return false
@@ -1668,7 +1700,7 @@ func _collide_with_back_wall(ball: Dictionary) -> bool:
 	ball["position"] = rect.position
 	ball["velocity"] = velocity
 	_register_ball_speed_hit(ball)
-	_queue_audio_event(SFX_EVENT_BACK_WALL_BOUNCE)
+	_queue_audio_event_at_x(SFX_EVENT_BACK_WALL_BOUNCE, rect.position.x)
 	return true
 
 
@@ -1781,6 +1813,7 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 		"cleared_count": cleared_count,
 		"score": score_delta,
 		"audio_event": audio_event,
+		"source_x": brick_origin.x,
 		"impact_effects": impact_effects_to_spawn,
 		"chain_impact_cells": chain_impact_cells,
 		"score_popups": score_popups_to_spawn,
@@ -1806,7 +1839,10 @@ func _apply_board_hit_result(hit_result: Dictionary) -> void:
 	_spawn_chain_explosion_impact_effects(hit_result.get("chain_impact_cells", []))
 	var audio_event := String(hit_result.get("audio_event", ""))
 	if not audio_event.is_empty():
-		_queue_audio_event(audio_event)
+		if hit_result.has("source_x"):
+			_queue_audio_event_at_x(audio_event, float(hit_result["source_x"]))
+		else:
+			_queue_audio_event(audio_event)
 
 
 func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictionary:
@@ -1840,7 +1876,7 @@ func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictiona
 			brick_origin
 		):
 			impact_kind = IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR
-			_queue_audio_event(SFX_EVENT_BONUS_SPAWN)
+			_queue_audio_event_at_x(SFX_EVENT_BONUS_SPAWN, brick_origin.x)
 
 	var impact_effects: Array[Dictionary] = []
 	var score_popup_entries: Array[Dictionary] = []
@@ -2234,8 +2270,9 @@ func _update_falling_bonuses(delta: float) -> void:
 
 		_advance_falling_bonus(bonus, delta)
 		if _bonus_intersects_any_racket(bonus) and _push_bonus_stack(int(bonus.get("type_id", 0))):
+			var bonus_position: Vector2 = bonus.get("position", Vector2.ZERO)
 			bonus["active"] = false
-			_queue_audio_event(SFX_EVENT_BONUS_COLLECT)
+			_queue_audio_event_at_x(SFX_EVENT_BONUS_COLLECT, bonus_position.x)
 
 		falling_bonuses[index] = bonus
 
@@ -2260,7 +2297,7 @@ func _advance_falling_bonus(bonus: Dictionary, delta: float) -> void:
 		next_y = clampf(next_y, BONUS_MIN_Y, BONUS_MAX_Y)
 		if next_x > BONUS_EXPIRE_X:
 			bonus["active"] = false
-			_queue_audio_event(SFX_EVENT_BONUS_EXPIRE)
+			_queue_audio_event_at_x(SFX_EVENT_BONUS_EXPIRE, next_x)
 			substep_accumulator = 0.0
 			break
 
@@ -2289,16 +2326,17 @@ func _spawn_projectile(projectile_type: int) -> bool:
 	if projectiles.size() >= MAX_PROJECTILES:
 		return false
 
+	var position := _projectile_spawn_position()
 	projectiles.append({
 		"active": true,
 		"type": projectile_type,
-		"position": _projectile_spawn_position(),
+		"position": position,
 		"head_frame": 0,
 		"head_frame_elapsed": 0.0,
 		"trail_frame": 0,
 		"trail_frame_elapsed": 0.0,
 	})
-	_queue_audio_event(SFX_EVENT_PROJECTILE_FIRE)
+	_queue_audio_event_at_x(SFX_EVENT_PROJECTILE_FIRE, position.x)
 	return true
 
 
@@ -2368,7 +2406,7 @@ func _collide_projectile_with_board(projectile: Dictionary) -> bool:
 		int(projectile.get("type", PROJECTILE_TYPE_CONTINUOUS)) == PROJECTILE_TYPE_STRONG
 	)
 	_apply_board_hit_result(hit_result)
-	_queue_audio_event(SFX_EVENT_PROJECTILE_HIT)
+	_queue_audio_event_at_x(SFX_EVENT_PROJECTILE_HIT, projectile_rect(projectile).position.x)
 	return true
 
 
@@ -2528,7 +2566,7 @@ func _spawn_next_monster() -> bool:
 
 	monsters.append(_new_monster(position, type_id, angle))
 	_spawn_impact_effect(position, IMPACT_EFFECT_KIND_MONSTER_SPAWN)
-	_queue_audio_event(SFX_EVENT_MONSTER_SPAWN)
+	_queue_audio_event_at_x(SFX_EVENT_MONSTER_SPAWN, position.x)
 	return true
 
 
@@ -2553,9 +2591,10 @@ func _advance_monster(monster: Dictionary, delta: float) -> void:
 	var age := float(monster.get("age", 0.0)) + delta
 	monster["age"] = age
 	if age >= MONSTER_LIFETIME_SECONDS:
+		var expire_position: Vector2 = monster.get("position", Vector2.ZERO)
 		monster["active"] = false
 		_spawn_impact_effect(monster.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_MONSTER_TIMEOUT)
-		_queue_audio_event(SFX_EVENT_MONSTER_EXPIRE)
+		_queue_audio_event_at_x(SFX_EVENT_MONSTER_EXPIRE, expire_position.x)
 		return
 
 	var type_id := int(monster.get("type_id", 0))
@@ -2724,7 +2763,7 @@ func _collide_projectile_with_monsters(projectile: Dictionary) -> bool:
 			continue
 		if rect.intersects(monster_rect(monster)):
 			_kill_monster_at_index(index, _score_for_monster_paddle_contact(monster))
-			_queue_audio_event(SFX_EVENT_PROJECTILE_HIT)
+			_queue_audio_event_at_x(SFX_EVENT_PROJECTILE_HIT, projectile_rect(projectile).position.x)
 			return true
 	return false
 
@@ -2748,7 +2787,8 @@ func _kill_monster_at_index(index: int, score_value: int = -1) -> void:
 	var final_score := score_value if score_value >= 0 else _score_for_monster_paddle_contact(monster)
 	_award_score_with_popup(final_score, monster.get("position", Vector2.ZERO))
 	_spawn_impact_effect(monster.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_MONSTER_HIT)
-	_queue_audio_event(SFX_EVENT_MONSTER_HIT)
+	var hit_position: Vector2 = monster.get("position", Vector2.ZERO)
+	_queue_audio_event_at_x(SFX_EVENT_MONSTER_HIT, hit_position.x)
 
 
 func _score_for_monster_paddle_contact(monster: Dictionary) -> int:
@@ -2834,7 +2874,7 @@ func _spawn_next_bee() -> bool:
 		return false
 
 	bees.append(_new_bee(_bee_spawn_position()))
-	_queue_audio_event(SFX_EVENT_BEE_SPAWN)
+	_queue_audio_event_with_pan100(SFX_EVENT_BEE_SPAWN, SFX_BEE_SPAWN_PAN100)
 	return true
 
 
@@ -2884,7 +2924,8 @@ func _kill_bee_at_index(index: int, score_value: int) -> void:
 	_award_score_with_popup(score_value, bee.get("position", Vector2.ZERO))
 	_spawn_impact_effect(bee.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_MONSTER_HIT)
 	_queue_audio_event(SFX_EVENT_BEE_STOP)
-	_queue_audio_event(SFX_EVENT_MONSTER_HIT)
+	var hit_position: Vector2 = bee.get("position", Vector2.ZERO)
+	_queue_audio_event_at_x(SFX_EVENT_MONSTER_HIT, hit_position.x)
 
 
 func _apply_racket_stun() -> void:
@@ -3126,9 +3167,11 @@ func _visible_bonus_type_for_stock_id(stock_id: int) -> int:
 func _apply_bonus_effect(type_id: int) -> Dictionary:
 	match type_id:
 		BONUS_ADD_STANDARD_BALL:
-			return {"effect": "add_standard_ball", "applied": _add_active_standard_ball()}
+			var standard_ball_source_x := _ready_ball_position().x
+			return {"effect": "add_standard_ball", "applied": _add_active_standard_ball(), "source_x": standard_ball_source_x}
 		BONUS_ADD_FIREBALL:
-			return {"effect": "add_fireball", "applied": _add_active_fireball()}
+			var fireball_source_x := _ready_ball_position().x
+			return {"effect": "add_fireball", "applied": _add_active_fireball(), "source_x": fireball_source_x}
 		BONUS_NON_STRICKED_BALLS:
 			return _activate_non_stricked_balls()
 		BONUS_DECREASE_BALL_SIZE:
@@ -3352,7 +3395,7 @@ func _activate_destroy_one_ball_bonus() -> Dictionary:
 
 	var removed_position: Vector2 = removed_ball.get("position", Vector2.ZERO)
 	_spawn_impact_effect(removed_position, IMPACT_EFFECT_KIND_EXPLOSION)
-	return {"effect": "destroy_one_ball", "applied": true}
+	return {"effect": "destroy_one_ball", "applied": true, "source_x": removed_position.x}
 
 
 func _pop_first_active_ball() -> Dictionary:
@@ -3426,7 +3469,7 @@ func _handle_round_lost() -> void:
 		_queue_audio_event(SFX_EVENT_GAME_OVER)
 		return
 
-	_queue_audio_event(SFX_EVENT_LIFE_LOST)
+	_queue_audio_event_at_x(SFX_EVENT_LIFE_LOST, BALL_LOST_X)
 	reset_round()
 	start_level_ready_sequence(false)
 
@@ -3447,6 +3490,32 @@ func _mark_level_complete(play_audio_event := true) -> void:
 
 
 func _queue_audio_event(event_name: String) -> void:
+	_queue_audio_event_payload({"event": event_name})
+
+
+func _queue_audio_event_at_x(event_name: String, source_x: float) -> void:
+	_queue_audio_event_payload({
+		"event": event_name,
+		"source_x": source_x,
+		"pan100": sfx_pan100_for_source_x(source_x),
+	})
+
+
+func _queue_audio_event_with_pan100(event_name: String, pan100: float) -> void:
+	_queue_audio_event_payload({
+		"event": event_name,
+		"pan100": pan100,
+	})
+
+
+func _queue_audio_event_payload(event_payload: Dictionary) -> void:
+	var event_name := String(event_payload.get("event", ""))
 	if event_name.is_empty():
 		return
-	_audio_events.append(event_name)
+	var normalized_payload := event_payload.duplicate(true)
+	normalized_payload["event"] = event_name
+	if normalized_payload.has("source_x") and not normalized_payload.has("pan100"):
+		normalized_payload["pan100"] = sfx_pan100_for_source_x(float(normalized_payload["source_x"]))
+	elif normalized_payload.has("pan100"):
+		normalized_payload["pan100"] = clampf(float(normalized_payload["pan100"]), SFX_PAN_MIN, SFX_PAN_MAX)
+	_audio_events.append(normalized_payload)

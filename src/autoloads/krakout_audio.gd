@@ -6,15 +6,20 @@ const DEFAULT_MUSIC_CONTEXT := "main_menu"
 const DEFAULT_MUSIC_NAME := "Abnormal"
 const SFX_POOL_SIZE := 8
 const MIN_VOLUME_DB := -80.0
+const SFX_CENTER_POSITION := Vector2(320.0, 240.0)
+const SFX_PAN_POSITION_SCALE := 320.0
+const SFX_MAX_DISTANCE := 100000.0
 
 var _music_player: AudioStreamPlayer
-var _sfx_players: Array[AudioStreamPlayer] = []
+var _sfx_players: Array[AudioStreamPlayer2D] = []
 var _music_enabled := true
 var _sfx_enabled := true
 var _music_volume := 80
 var _sfx_volume := 85
 var _current_music_name := ""
 var _current_music_context := ""
+var _last_sfx_pan100_by_name: Dictionary = {}
+var _last_sfx_position_by_name: Dictionary = {}
 
 
 func _ready() -> void:
@@ -88,13 +93,21 @@ func stop_all(clear_streams := false) -> void:
 	if clear_streams:
 		_music_player.stream = null
 
-	for player: AudioStreamPlayer in _sfx_players:
+	for player: AudioStreamPlayer2D in _sfx_players:
 		player.stop()
 		if clear_streams:
 			player.stream = null
 
 
 func play_sfx(name: String) -> bool:
+	return play_sfx_at_pan100(name, 0.0)
+
+
+func play_sfx_at_pan(name: String, pan: float) -> bool:
+	return play_sfx_at_pan100(name, clampf(pan, -1.0, 1.0) * 100.0)
+
+
+func play_sfx_at_pan100(name: String, pan100: float) -> bool:
 	_ensure_players()
 	if not _sfx_enabled or _sfx_volume <= 0:
 		return false
@@ -103,10 +116,17 @@ func play_sfx(name: String) -> bool:
 	if stream == null:
 		return false
 
+	var clamped_pan100 := clampf(pan100, -100.0, 100.0)
+	var normalized_pan := clamped_pan100 / 100.0
 	var player := _next_sfx_player()
 	player.stream = stream
 	player.volume_db = _volume_db(_sfx_volume)
+	player.position = SFX_CENTER_POSITION + Vector2(normalized_pan * SFX_PAN_POSITION_SCALE, 0.0)
 	player.set_meta("krakout_sfx_name", name)
+	player.set_meta("krakout_sfx_pan100", clamped_pan100)
+	player.set_meta("krakout_sfx_pan", normalized_pan)
+	_last_sfx_pan100_by_name[name] = clamped_pan100
+	_last_sfx_position_by_name[name] = player.position
 	player.play()
 	return true
 
@@ -118,10 +138,28 @@ func play_sfx_event(event_name: String) -> bool:
 	return play_sfx(sfx_name)
 
 
+func play_sfx_event_at_pan100(event_name: String, pan100: float) -> bool:
+	var sfx_name := sfx_name_for_event(event_name)
+	if sfx_name.is_empty():
+		return false
+	return play_sfx_at_pan100(sfx_name, pan100)
+
+
+func play_sfx_event_payload(event_payload: Dictionary) -> bool:
+	var event_name := String(event_payload.get("event", ""))
+	if event_name.is_empty():
+		return false
+	if event_payload.has("pan100"):
+		return play_sfx_event_at_pan100(event_name, float(event_payload["pan100"]))
+	if event_payload.has("pan"):
+		return play_sfx_event_at_pan100(event_name, float(event_payload["pan"]) * 100.0)
+	return play_sfx_event(event_name)
+
+
 func stop_sfx(name: String) -> bool:
 	_ensure_players()
 	var did_stop := false
-	for player: AudioStreamPlayer in _sfx_players:
+	for player: AudioStreamPlayer2D in _sfx_players:
 		if String(player.get_meta("krakout_sfx_name", "")) != name:
 			continue
 		if player.playing:
@@ -147,10 +185,21 @@ func is_sfx_stop_event(event_name: String) -> bool:
 
 func is_sfx_playing(name: String) -> bool:
 	_ensure_players()
-	for player: AudioStreamPlayer in _sfx_players:
+	for player: AudioStreamPlayer2D in _sfx_players:
 		if player.playing and String(player.get_meta("krakout_sfx_name", "")) == name:
 			return true
 	return false
+
+
+func last_sfx_pan100_for_name(name: String) -> float:
+	return float(_last_sfx_pan100_by_name.get(name, 0.0))
+
+
+func last_sfx_position_for_name(name: String) -> Vector2:
+	var position: Variant = _last_sfx_position_by_name.get(name, SFX_CENTER_POSITION)
+	if position is Vector2:
+		return position
+	return SFX_CENTER_POSITION
 
 
 func sfx_name_for_event(event_name: String) -> String:
@@ -186,7 +235,7 @@ func sfx_enabled() -> bool:
 func set_sfx_enabled(is_enabled: bool) -> void:
 	_sfx_enabled = is_enabled
 	if not _sfx_enabled:
-		for player: AudioStreamPlayer in _sfx_players:
+		for player: AudioStreamPlayer2D in _sfx_players:
 			player.stop()
 
 
@@ -234,8 +283,12 @@ func _ensure_players() -> void:
 		add_child(_music_player)
 
 	while _sfx_players.size() < SFX_POOL_SIZE:
-		var player := AudioStreamPlayer.new()
+		var player := AudioStreamPlayer2D.new()
 		player.name = "SfxPlayer%d" % (_sfx_players.size() + 1)
+		player.position = SFX_CENTER_POSITION
+		player.max_distance = SFX_MAX_DISTANCE
+		player.attenuation = 0.0
+		player.panning_strength = 1.0
 		_sfx_players.append(player)
 		add_child(player)
 
@@ -261,12 +314,12 @@ func _apply_volume_settings() -> void:
 	if not _music_enabled or _music_volume <= 0:
 		_music_player.stop()
 
-	for player: AudioStreamPlayer in _sfx_players:
+	for player: AudioStreamPlayer2D in _sfx_players:
 		player.volume_db = _volume_db(_sfx_volume)
 
 
-func _next_sfx_player() -> AudioStreamPlayer:
-	for player: AudioStreamPlayer in _sfx_players:
+func _next_sfx_player() -> AudioStreamPlayer2D:
+	for player: AudioStreamPlayer2D in _sfx_players:
 		if not player.playing:
 			return player
 	return _sfx_players[0]

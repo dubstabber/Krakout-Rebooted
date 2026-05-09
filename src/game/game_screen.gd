@@ -889,25 +889,43 @@ func _sync_level_ready_reveal() -> void:
 
 
 func _play_pending_audio_events() -> void:
-	if gameplay_session == null or not gameplay_session.has_method("pop_audio_events"):
+	if gameplay_session == null:
 		return
 
-	var events: Array = gameplay_session.call("pop_audio_events")
+	var events: Array = []
+	if gameplay_session.has_method("pop_audio_event_payloads"):
+		events = gameplay_session.call("pop_audio_event_payloads")
+	elif gameplay_session.has_method("pop_audio_events"):
+		events = gameplay_session.call("pop_audio_events")
+	else:
+		return
 	if events.is_empty():
 		return
 
 	var audio := get_node_or_null("/root/KrakoutAudio")
-	if audio == null or not audio.has_method("play_sfx_event"):
+	if audio == null:
 		return
 
-	for event_name: Variant in events:
-		var semantic_event := String(event_name)
+	for event_entry: Variant in events:
+		var event_payload := {}
+		var semantic_event := ""
+		if event_entry is Dictionary:
+			event_payload = event_entry
+			semantic_event = String(event_payload.get("event", ""))
+		else:
+			semantic_event = String(event_entry)
+		if semantic_event.is_empty():
+			continue
 		if audio.has_method("is_sfx_stop_event") \
 			and audio.has_method("stop_sfx_event") \
 			and bool(audio.call("is_sfx_stop_event", semantic_event)):
 			audio.call("stop_sfx_event", semantic_event)
-		else:
+		elif not event_payload.is_empty() and audio.has_method("play_sfx_event_payload"):
+			audio.call("play_sfx_event_payload", event_payload)
+		elif audio.has_method("play_sfx_event"):
 			audio.call("play_sfx_event", semantic_event)
+		else:
+			return
 
 
 func _advance_to_next_level() -> void:
