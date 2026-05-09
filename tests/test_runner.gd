@@ -33,9 +33,11 @@ const MenuBitmapLabelScript := preload("res://src/menu/krakout_menu_bitmap_label
 const MenuAmbientEffectsScript := preload("res://src/menu/krakout_menu_ambient_effects.gd")
 const StaticMenuBackButtonScript := preload("res://src/menu/static_menu_back_button.gd")
 const OptionsVxEffectsScript := preload("res://src/menu/options_vx_effects.gd")
+const WaveBitmapLabelScript := preload("res://src/menu/krakout_wave_bitmap_label.gd")
 const OptionsScreenScript := preload("res://src/menu/options_screen.gd")
 const MainMenuScreenScript := preload("res://src/menu/main_menu_screen.gd")
 const EpisodeSelectScreenScript := preload("res://src/menu/episode_select_screen.gd")
+const RulesScreenScript := preload("res://src/menu/rules_screen.gd")
 const CreditsScreenScript := preload("res://src/menu/credits_screen.gd")
 const NameEntryScreenScript := preload("res://src/menu/name_entry_screen.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
@@ -3551,8 +3553,21 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(String(rules_screen.call("screen_title")) == "Game Rules", "rules screen exposes title")
 	var rules_title = rules_screen.find_child("TitleLabel", true, false)
 	var rules_body = rules_screen.find_child("BodyLabel", true, false)
+	var rules_hint = rules_screen.find_child("ScrollHintLabel", true, false)
+	var rules_scroll_view = rules_screen.find_child("RulesScrollView", true, false)
 	_assert(rules_title != null and rules_title.get_script() == MenuBitmapLabelScript, "rules screen renders title with original bitmap font")
 	_assert(rules_body != null and rules_body.get_script() == MenuBitmapLabelScript, "rules screen renders body copy with original bitmap font")
+	_assert(rules_hint != null and rules_hint.get_script() == MenuBitmapLabelScript and String(rules_hint.text) == "Use Up/Down/PgUp/PgDn to scroll.", "rules screen renders original footer scroll hint label")
+	_assert(rules_scroll_view != null, "rules screen creates original clipped scroll area")
+	if rules_title != null:
+		_assert(rules_title.position == RulesScreenScript.TITLE_POSITION, "rules screen keeps original title y coordinate")
+	if rules_hint != null:
+		_assert(rules_hint.position == RulesScreenScript.HINT_POSITION, "rules screen keeps original footer scroll hint coordinate")
+	if rules_scroll_view != null:
+		_assert(rules_scroll_view.position == RulesScreenScript.VIEW_POSITION, "rules screen scroll clipping starts at original y=50")
+		_assert(rules_scroll_view.size == RulesScreenScript.VIEW_SIZE, "rules screen scroll clipping ends at original y=435")
+	if rules_back_button != null:
+		_assert(rules_back_button.position == RulesScreenScript.BACK_POSITION, "rules screen Backward art uses original rules coordinate")
 	var rules_lines: Array = rules_screen.call("body_lines")
 	_assert(rules_lines.has("--==| | Game Rules and Keys | |==--"), "rules screen uses original executable heading")
 	_assert(rules_lines.has("-=| Game Overview |=-"), "rules screen includes original game overview section")
@@ -3569,19 +3584,35 @@ func _validate_menu_and_game_scenes() -> void:
 	var final_bonus_icon := rules_screen.find_child("BonusIcon21", true, false) as TextureRect
 	_assert(first_bonus_icon != null and first_bonus_icon.texture is AtlasTexture, "rules screen draws first original bonus icon from atlas")
 	_assert(final_bonus_icon != null and final_bonus_icon.texture is AtlasTexture, "rules screen draws final original bonus icon from atlas")
-	_assert(float(rules_screen.call("max_scroll_offset")) > 0.0, "rules screen exposes a scroll range for original rules content")
+	if first_bonus_icon != null:
+		_assert(first_bonus_icon.position.x == RulesScreenScript.BONUS_ICON_X, "rules screen first bonus icon uses original x coordinate")
+	_assert(RulesScreenScript.bonus_icon_source_rect(0, 0) == Rect2(Vector2(0, 0), Vector2(32, 32)), "rules screen bonus atlas starts at first type/frame cell")
+	_assert(RulesScreenScript.bonus_icon_source_rect(21, 9) == Rect2(Vector2(672, 288), Vector2(32, 32)), "rules screen bonus atlas maps original 22x10 sheet orientation")
+	rules_screen.call("reset_bonus_icon_animation")
+	_assert(int(rules_screen.call("bonus_icon_frame", 0)) == 0, "rules screen bonus animation starts on frame zero")
+	rules_screen.call("advance_bonus_icon_animation", RulesScreenScript.BONUS_ICON_FRAME_SECONDS)
+	_assert(int(rules_screen.call("bonus_icon_frame", 0)) == 0, "rules screen bonus animation keeps the original strict 50 ms gate")
+	rules_screen.call("advance_bonus_icon_animation", 0.001)
+	_assert(int(rules_screen.call("bonus_icon_frame", 0)) == 1, "rules screen bonus animation advances after the original 50 ms gate")
+	_assert(is_equal_approx(float(rules_screen.call("max_scroll_offset")), 1140.0), "rules screen exposes the original 50 to -1090 scroll range")
 	var rules_scroll_start := float(rules_screen.call("scroll_offset"))
 	var rules_down_event := InputEventKey.new()
 	rules_down_event.keycode = KEY_DOWN
 	rules_down_event.pressed = true
 	rules_screen.call("_unhandled_input", rules_down_event)
-	_assert(float(rules_screen.call("scroll_offset")) > rules_scroll_start, "rules screen scrolls down with original key navigation")
+	_assert(is_equal_approx(float(rules_screen.call("scroll_offset")), rules_scroll_start), "rules screen arrow key press itself does not perform one-shot scrolling")
+	rules_screen.call("advance_scroll_key_state", false, true)
+	_assert(is_equal_approx(float(rules_screen.call("scroll_offset")), rules_scroll_start + RulesScreenScript.SCROLL_LINE_PIXELS), "rules screen scrolls down by original 3px held-key step")
+	rules_screen.call("advance_scroll_key_state", false, true)
+	_assert(is_equal_approx(float(rules_screen.call("scroll_offset")), rules_scroll_start + RulesScreenScript.SCROLL_LINE_PIXELS * 2.0), "rules screen keeps scrolling while Down is held")
+	rules_screen.call("advance_scroll_key_state", true, false)
+	_assert(is_equal_approx(float(rules_screen.call("scroll_offset")), rules_scroll_start + RulesScreenScript.SCROLL_LINE_PIXELS), "rules screen keeps scrolling upward while Up is held")
 	var rules_after_down := float(rules_screen.call("scroll_offset"))
 	var rules_page_down_event := InputEventKey.new()
 	rules_page_down_event.keycode = KEY_PAGEDOWN
 	rules_page_down_event.pressed = true
 	rules_screen.call("_unhandled_input", rules_page_down_event)
-	_assert(float(rules_screen.call("scroll_offset")) > rules_after_down, "rules screen scrolls by page-down key")
+	_assert(is_equal_approx(float(rules_screen.call("scroll_offset")), rules_after_down + RulesScreenScript.PAGE_SCROLL_PIXELS), "rules screen scrolls by original 400px page-down step")
 	rules_screen.call("scroll_by", 100000.0)
 	_assert(is_equal_approx(float(rules_screen.call("scroll_offset")), float(rules_screen.call("max_scroll_offset"))), "rules screen clamps scroll at the bottom")
 	var rules_page_up_event := InputEventKey.new()
@@ -3689,6 +3720,8 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(high_score_screen.has_signal("back_requested"), "high score screen exposes back signal")
 	var high_score_back_button = high_score_screen.find_child("BackButton", true, false)
 	_assert(high_score_back_button != null and high_score_back_button.get_script() == StaticMenuBackButtonScript, "high score screen creates original Backward art button")
+	if high_score_back_button != null:
+		_assert(high_score_back_button.position == Vector2(539, 379), "high score screen places Backward button at the original table position")
 	_assert(high_score_screen.find_children("*", "Button", true, false).is_empty(), "high score screen no longer creates a native back button")
 	_assert(int(high_score_screen.call("best_score")) == 321, "high score screen reads persisted high score")
 	var high_score_entries: Array = high_score_screen.call("high_score_entries")
@@ -3699,8 +3732,43 @@ func _validate_menu_and_game_scenes() -> void:
 	var high_score_header = high_score_screen.find_child("HeaderName", true, false)
 	var high_score_value = high_score_screen.find_child("EntryScore1", true, false)
 	_assert(high_score_header != null and high_score_header.get_script() == MenuBitmapLabelScript, "high score screen renders table headers with original bitmap font")
+	_assert(high_score_header != null and high_score_header.position == Vector2(50, 80), "high score screen places headers at original coordinates")
 	_assert(high_score_value != null and String(high_score_value.get("text")) == "321", "high score screen renders score values in fixed bitmap-text columns")
+	_assert(high_score_value != null and high_score_value.position == Vector2(465, 125), "high score screen right-anchors score values at original x=555")
+	var high_score_footer = high_score_screen.find_child("EpisodeHoverHint", true, false)
+	_assert(high_score_footer != null and String(high_score_footer.get("text")) == "Use cursor to view episode name.", "high score screen shows original episode-name hover hint")
 	high_score_screen.queue_free()
+
+	if _profile != null and _profile.has_method("submit_high_score"):
+		_profile.call("submit_high_score", "Wave", 777, 5, "Retro")
+	var highlighted_high_score := HighScoreScreenScene.instantiate()
+	if highlighted_high_score.has_method("configure_highlight_entry"):
+		highlighted_high_score.call("configure_highlight_entry", {
+			"name": "Wave",
+			"score": 777,
+			"level": 5,
+			"episode": "Retro",
+		})
+	root.add_child(highlighted_high_score)
+	await process_frame
+	_assert(int(highlighted_high_score.call("highlighted_row_index")) == 0, "high score screen highlights the newly submitted original row")
+	var wave_overlay := highlighted_high_score.find_child("HighScoreWaveOverlay", true, false)
+	_assert(wave_overlay != null, "high score screen creates original row-wave overlay")
+	var wave_name = highlighted_high_score.find_child("WaveName", true, false)
+	_assert(wave_name != null and wave_name.get_script() == WaveBitmapLabelScript, "high score screen renders highlighted row with sine-wave bitmap text")
+	if wave_name != null:
+		_assert(String(wave_name.get("text")) == "Wave", "high score wave label mirrors highlighted player name")
+		_assert(wave_name.position == Vector2(50, 120), "high score wave label preserves original row baseline with 5px amplitude room")
+	highlighted_high_score.call("reset_high_score_vfx_for_test")
+	highlighted_high_score.call("advance_high_score_vfx", HighScoreScreen.ROW_WAVE_STEP_SECONDS)
+	_assert(is_equal_approx(float(highlighted_high_score.call("row_wave_phase_degrees")), 0.0), "high score row wave waits for the original strict 40 ms gate")
+	highlighted_high_score.call("advance_high_score_vfx", 0.001)
+	_assert(is_equal_approx(float(highlighted_high_score.call("row_wave_phase_degrees")), 20.0), "high score row wave advances by the original 20 degree step")
+	highlighted_high_score.call("set_hover_probe_for_test", Vector2(60, HighScoreScreen.TABLE_ROW_START_Y + 1.0))
+	_assert(String(highlighted_high_score.call("hovered_episode_text")) == "Retro", "high score screen shows the hovered row episode name")
+	highlighted_high_score.call("set_hover_probe_for_test", Vector2(60, HighScoreScreen.TABLE_ROW_START_Y))
+	_assert(String(highlighted_high_score.call("hovered_episode_text")).is_empty(), "high score hover uses the original strict row boundary")
+	highlighted_high_score.queue_free()
 
 	var name_entry_screen := NameEntryScreenScene.instantiate()
 	root.add_child(name_entry_screen)
@@ -4712,6 +4780,7 @@ func _validate_menu_and_game_scenes() -> void:
 							_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_HIGH_SCORE, "score submission routes to high-score music context")
 						var routed_high_score := app.find_child("HighScoreScreen", true, false)
 						if routed_high_score != null:
+							_assert(int(routed_high_score.call("highlighted_row_index")) == 0, "submitted high-score table highlights the last finished player")
 							routed_high_score.emit_signal("back_requested")
 							await process_frame
 				await process_frame
@@ -4720,6 +4789,16 @@ func _validate_menu_and_game_scenes() -> void:
 				if _audio != null and _audio.has_method("current_music_context"):
 					_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_MAIN_MENU, "high-score back restores main-menu music context")
 					_assert(String(_audio.call("current_music_name")) == "Abnormal", "high-score back restores original main-menu music")
+				app_menu = app.find_child("MainMenuScreen", true, false)
+				if app_menu != null:
+					app_menu.emit_signal("high_score_requested")
+					await process_frame
+					var reopened_high_score := app.find_child("HighScoreScreen", true, false)
+					_assert(reopened_high_score != null, "app can reopen high-score screen after returning to menu")
+					if reopened_high_score != null:
+						_assert(int(reopened_high_score.call("highlighted_row_index")) == 0, "reopened high-score screen keeps the last finished player highlighted")
+						reopened_high_score.emit_signal("back_requested")
+						await process_frame
 
 	if _profile != null and _profile.has_method("set_save_path"):
 		_profile.call("set_save_path", _test_profile_path("non_qualifying_route"), false)

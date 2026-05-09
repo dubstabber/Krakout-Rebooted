@@ -192,6 +192,19 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   scene flow: main menu/rules/options use `Abnormal`, high score uses `theme2`,
   credits uses `theme5`, episode select uses `theme1`, gameplay uses `theme4`,
   and name entry uses `theme3`.
+- The rules page now follows the original `sub_4181B0` layout: the content is
+  clipped to y `50..435`, the title and scroll hint sit at y `20` and `445`,
+  the `Backward` art sits at `(539,379)`, held Up/Down scrolling uses the
+  original per-frame 3px step, PgUp/PgDn use 400px jumps over the `50..-1090`
+  range, and all 22 bonus labels use animated 10-frame bonus icons with the
+  original 50ms frame gate.
+- The high-score page now follows the original `sub_417850` table presentation:
+  the title/header/row/footer coordinates match the executable, the `Backward`
+  art sits at `(539,379)`, just-submitted rows use the original 5px sine-wave
+  bitmap-text effect with a strict 40ms/20-degree phase gate, and hovering a row
+  shows its episode name beside the cursor. The last finished player highlight
+  is app-owned, so it remains active if the table is closed and reopened during
+  the same session.
 - Front-end interaction cues now route through the same semantic audio layer:
   main-menu selection/activation use `eff02`/`eff01`, while episode-browser
   selection/activation use `eff04`/`eff03`. Options-screen control selection,

@@ -17,6 +17,7 @@ var _previous_mouse_mode: int = Input.MOUSE_MODE_VISIBLE
 var _owns_mouse_mode := false
 var _system_cursor_hidden_for_menu := false
 var _fullscreen_enabled := false
+var _last_high_score_highlight_entry: Dictionary = {}
 
 
 func _ready() -> void:
@@ -74,9 +75,13 @@ func _show_rules() -> void:
 	_set_screen(screen)
 
 
-func _show_high_score() -> void:
+func _show_high_score(highlight_entry: Dictionary = {}) -> void:
 	_play_music_context(AudioCueCatalogScript.CONTEXT_HIGH_SCORE)
+	if not highlight_entry.is_empty():
+		_last_high_score_highlight_entry = highlight_entry.duplicate()
 	var screen := HighScoreScreenScene.instantiate()
+	if not _last_high_score_highlight_entry.is_empty() and screen.has_method("configure_highlight_entry"):
+		screen.call("configure_highlight_entry", _last_high_score_highlight_entry)
 	screen.back_requested.connect(_show_main_menu)
 	_set_screen(screen)
 
@@ -136,6 +141,12 @@ func _on_score_submitted(player_name: String, score: int, reached_level: int, ep
 	var profile := _profile_service()
 	if profile != null and profile.has_method("submit_high_score"):
 		profile.call("submit_high_score", player_name, score, reached_level, episode_slug)
+	_last_high_score_highlight_entry = {
+		"name": player_name,
+		"score": score,
+		"level": reached_level,
+		"episode": episode_slug,
+	}
 	_show_high_score()
 
 

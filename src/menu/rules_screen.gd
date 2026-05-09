@@ -33,32 +33,38 @@ const ORIGINAL_KEY_LINES := [
 	"<Shift> + <+/-> - SFX volume.",
 ]
 
-const TITLE_POSITION := Vector2(0, 34)
-const TITLE_SIZE := Vector2(640, 34)
-const HINT_POSITION := Vector2(0, 70)
-const HINT_SIZE := Vector2(640, 26)
-const VIEW_POSITION := Vector2(38, 98)
-const VIEW_SIZE := Vector2(564, 242)
-const BACK_POSITION := Vector2(270, 358)
-const SECTION_LABEL_SIZE := Vector2(564, 28)
-const BODY_LABEL_SIZE := Vector2(564, 28)
-const KEY_LABEL_SIZE := Vector2(564, 54)
-const BONUS_LABEL_SIZE := Vector2(484, 54)
+const TITLE_POSITION := Vector2(0, 20)
+const TITLE_SIZE := Vector2(640, 24)
+const HINT_POSITION := Vector2(0, 445)
+const HINT_SIZE := Vector2(640, 24)
+const VIEW_POSITION := Vector2(0, 50)
+const VIEW_SIZE := Vector2(640, 385)
+const BACK_POSITION := Vector2(539, 379)
+const SECTION_LABEL_SIZE := Vector2(640, 24)
+const BODY_LABEL_SIZE := Vector2(640, 24)
+const KEY_LABEL_SIZE := Vector2(640, 24)
+const BONUS_LABEL_SIZE := Vector2(560, 24)
 const BONUS_ICON_SIZE := Vector2(32, 32)
-const LINE_STEP := 27.0
-const KEY_ROW_HEIGHT := 54.0
-const SECTION_GAP := 10.0
-const BONUS_ROW_HEIGHT := 56.0
-const BONUS_ICON_X := 12.0
-const BONUS_LABEL_X := 60.0
-const SCROLL_LINE_PIXELS := 28.0
-const PAGE_SCROLL_PIXELS := 196.0
+const LINE_STEP := 25.0
+const SECTION_GAP := 80.0
+const BONUS_ROW_HEIGHT := 36.0
+const BONUS_ICON_X := 30.0
+const BONUS_LABEL_X := 50.0
+const SCROLL_LINE_PIXELS := 3.0
+const PAGE_SCROLL_PIXELS := 400.0
+const ORIGINAL_SCROLL_TOP_Y := 50.0
+const ORIGINAL_SCROLL_BOTTOM_Y := -1090.0
+const BONUS_ICON_FRAME_COUNT := 10
+const BONUS_ICON_FRAME_SECONDS := 0.05
 
 var _scroll_view: Control
 var _scroll_content: Control
 var _bonus_texture: Texture2D
 var _content_height := 0.0
 var _scroll_offset := 0.0
+var _bonus_icons: Array[TextureRect] = []
+var _bonus_icon_frames: Array[int] = []
+var _bonus_icon_elapsed: Array[float] = []
 
 
 func screen_title() -> String:
@@ -110,11 +116,61 @@ func scroll_offset() -> float:
 
 
 func max_scroll_offset() -> float:
-	return maxf(0.0, _content_height - VIEW_SIZE.y)
+	return ORIGINAL_SCROLL_TOP_Y - ORIGINAL_SCROLL_BOTTOM_Y
 
 
 func scroll_by(delta_pixels: float) -> void:
 	_set_scroll_offset(_scroll_offset + delta_pixels)
+
+
+func advance_scroll_key_state(up_pressed: bool, down_pressed: bool) -> void:
+	if up_pressed:
+		scroll_by(-SCROLL_LINE_PIXELS)
+	if down_pressed:
+		scroll_by(SCROLL_LINE_PIXELS)
+
+
+func bonus_icon_frame(type_id: int) -> int:
+	if type_id < 0 or type_id >= _bonus_icon_frames.size():
+		return 0
+	return _bonus_icon_frames[type_id]
+
+
+static func bonus_icon_source_rect(type_id: int, frame: int) -> Rect2:
+	return Rect2(
+		Vector2(float(type_id) * BONUS_ICON_SIZE.x, float(posmod(frame, BONUS_ICON_FRAME_COUNT)) * BONUS_ICON_SIZE.y),
+		BONUS_ICON_SIZE
+	)
+
+
+func advance_bonus_icon_animation(delta: float) -> void:
+	if delta <= 0.0:
+		return
+
+	for type_id in range(_bonus_icons.size()):
+		_bonus_icon_elapsed[type_id] += delta
+		if _bonus_icon_elapsed[type_id] <= BONUS_ICON_FRAME_SECONDS:
+			continue
+
+		_bonus_icon_elapsed[type_id] = 0.0
+		_bonus_icon_frames[type_id] = (_bonus_icon_frames[type_id] + 1) % BONUS_ICON_FRAME_COUNT
+		var atlas := _bonus_icons[type_id].texture as AtlasTexture
+		if atlas != null:
+			atlas.region = bonus_icon_source_rect(type_id, _bonus_icon_frames[type_id])
+
+
+func reset_bonus_icon_animation() -> void:
+	for type_id in range(_bonus_icons.size()):
+		_bonus_icon_elapsed[type_id] = 0.0
+		_bonus_icon_frames[type_id] = 0
+		var atlas := _bonus_icons[type_id].texture as AtlasTexture
+		if atlas != null:
+			atlas.region = bonus_icon_source_rect(type_id, 0)
+
+
+func _process(delta: float) -> void:
+	advance_bonus_icon_animation(delta)
+	advance_scroll_key_state(Input.is_key_pressed(KEY_UP), Input.is_key_pressed(KEY_DOWN))
 
 
 func _build_scene() -> void:
@@ -181,11 +237,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if key_event.pressed and not key_event.echo:
 			match key_event.keycode:
 				KEY_UP:
-					scroll_by(-SCROLL_LINE_PIXELS)
 					get_viewport().set_input_as_handled()
 					return
 				KEY_DOWN:
-					scroll_by(SCROLL_LINE_PIXELS)
 					get_viewport().set_input_as_handled()
 					return
 				KEY_PAGEUP:
@@ -200,37 +254,37 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _build_rules_content() -> void:
-	var y := 0.0
+	_bonus_icons.clear()
+	_bonus_icon_frames.clear()
+	_bonus_icon_elapsed.clear()
+
+	var y := 25.0
 	_body_label = _add_text_label("BodyLabel", ORIGINAL_OVERVIEW_HEADING, Vector2(0, y), SECTION_LABEL_SIZE, HORIZONTAL_ALIGNMENT_CENTER)
-	y += LINE_STEP + 2.0
 	for line: String in ORIGINAL_OVERVIEW_LINES:
-		_add_text_label("OverviewLine", line, Vector2(0, y), BODY_LABEL_SIZE, HORIZONTAL_ALIGNMENT_CENTER)
 		y += LINE_STEP
+		_add_text_label("OverviewLine", line, Vector2(0, y), BODY_LABEL_SIZE, HORIZONTAL_ALIGNMENT_CENTER)
 
 	y += SECTION_GAP
 	_add_text_label("KeysHeadingLabel", ORIGINAL_KEY_HEADING, Vector2(0, y), SECTION_LABEL_SIZE, HORIZONTAL_ALIGNMENT_CENTER)
-	y += LINE_STEP + 2.0
 	for line: String in ORIGINAL_KEY_LINES:
-		_add_text_label("KeyLine", line, Vector2(0, y), KEY_LABEL_SIZE, HORIZONTAL_ALIGNMENT_CENTER, true)
-		y += KEY_ROW_HEIGHT
+		y += LINE_STEP
+		_add_text_label("KeyLine", line, Vector2(0, y), KEY_LABEL_SIZE, HORIZONTAL_ALIGNMENT_CENTER)
 
 	y += SECTION_GAP
 	_add_text_label("BonusesHeadingLabel", ORIGINAL_BONUS_HEADING, Vector2(0, y), SECTION_LABEL_SIZE, HORIZONTAL_ALIGNMENT_CENTER)
-	y += LINE_STEP + 4.0
 	var names := bonus_names()
 	for type_id in range(names.size()):
-		_add_bonus_icon(type_id, Vector2(BONUS_ICON_X, y + 6.0))
+		y += BONUS_ROW_HEIGHT
+		_add_bonus_icon(type_id, Vector2(BONUS_ICON_X, y))
 		_add_text_label(
 			"BonusName%dLabel" % type_id,
 			names[type_id],
 			Vector2(BONUS_LABEL_X, y),
 			BONUS_LABEL_SIZE,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			true
+			HORIZONTAL_ALIGNMENT_RIGHT
 		)
-		y += BONUS_ROW_HEIGHT
 
-	_content_height = y
+	_content_height = y + BONUS_ICON_SIZE.y
 	_scroll_content.size = Vector2(VIEW_SIZE.x, _content_height)
 	_set_scroll_offset(_scroll_offset)
 
@@ -262,7 +316,7 @@ func _add_bonus_icon(type_id: int, icon_position: Vector2) -> void:
 		return
 	var atlas := AtlasTexture.new()
 	atlas.atlas = _bonus_texture
-	atlas.region = Rect2(Vector2(type_id * BONUS_ICON_SIZE.x, 0), BONUS_ICON_SIZE)
+	atlas.region = bonus_icon_source_rect(type_id, 0)
 
 	var icon := TextureRect.new()
 	icon.name = "BonusIcon%d" % type_id
@@ -272,9 +326,12 @@ func _add_bonus_icon(type_id: int, icon_position: Vector2) -> void:
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP
 	_scroll_content.add_child(icon)
+	_bonus_icons.append(icon)
+	_bonus_icon_frames.append(0)
+	_bonus_icon_elapsed.append(0.0)
 
 
 func _set_scroll_offset(value: float) -> void:
 	_scroll_offset = clampf(value, 0.0, max_scroll_offset())
 	if _scroll_content != null:
-		_scroll_content.position = Vector2(0, -_scroll_offset)
+		_scroll_content.position = Vector2(0, ORIGINAL_SCROLL_TOP_Y - _scroll_offset - VIEW_POSITION.y)
