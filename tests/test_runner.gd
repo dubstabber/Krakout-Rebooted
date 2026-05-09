@@ -3222,6 +3222,67 @@ func _validate_options_vx_effects() -> void:
 		"options screen clamps original mouse-to-volume mapping at maximum"
 	)
 	_assert(
+		OptionsScreenScript.original_audio_control_ids() == [
+			OptionsScreenScript.CONTROL_MUSIC_TOGGLE,
+			OptionsScreenScript.CONTROL_SFX_TOGGLE,
+			OptionsScreenScript.CONTROL_MUSIC_SLIDER,
+			OptionsScreenScript.CONTROL_SFX_SLIDER,
+		],
+		"options screen exposes the original four-control audio panel contract"
+	)
+	_assert(
+		OptionsScreenScript.original_options_control_id_for_hit_index(OptionsScreenScript.ORIGINAL_OPTIONS_HIT_MUSIC_TOGGLE)
+			== OptionsScreenScript.CONTROL_MUSIC_TOGGLE,
+		"options screen maps original hit 128 to the music toggle"
+	)
+	_assert(
+		OptionsScreenScript.original_options_control_id_for_hit_index(OptionsScreenScript.ORIGINAL_OPTIONS_HIT_SFX_TOGGLE)
+			== OptionsScreenScript.CONTROL_SFX_TOGGLE,
+		"options screen maps original hit 129 to the SFX toggle"
+	)
+	_assert(
+		OptionsScreenScript.original_options_control_id_for_hit_index(OptionsScreenScript.ORIGINAL_OPTIONS_HIT_MUSIC_SLIDER)
+			== OptionsScreenScript.CONTROL_MUSIC_SLIDER,
+		"options screen maps original hit 130 to the music slider"
+	)
+	_assert(
+		OptionsScreenScript.original_options_control_id_for_hit_index(OptionsScreenScript.ORIGINAL_OPTIONS_HIT_SFX_SLIDER)
+			== OptionsScreenScript.CONTROL_SFX_SLIDER,
+		"options screen maps original hit 131 to the SFX slider"
+	)
+	_assert(
+		OptionsScreenScript.original_options_hit_index(Vector2(560, 237)) == OptionsScreenScript.ORIGINAL_OPTIONS_HIT_MUSIC_TOGGLE,
+		"options screen decodes the original music-toggle hit index"
+	)
+	_assert(
+		OptionsScreenScript.original_options_hit_index(Vector2(590, 267)) == OptionsScreenScript.ORIGINAL_OPTIONS_HIT_MUSIC_TOGGLE,
+		"options screen keeps the original inclusive music-toggle hit edge"
+	)
+	_assert(
+		OptionsScreenScript.original_options_hit_index(Vector2(560, 297)) == OptionsScreenScript.ORIGINAL_OPTIONS_HIT_SFX_TOGGLE,
+		"options screen decodes the original SFX-toggle hit index"
+	)
+	_assert(
+		OptionsScreenScript.original_options_hit_index(Vector2(370, 233)) == OptionsScreenScript.ORIGINAL_OPTIONS_HIT_MUSIC_SLIDER,
+		"options screen decodes the original music-slider hit index"
+	)
+	_assert(
+		OptionsScreenScript.original_options_hit_index(Vector2(537, 271)) == OptionsScreenScript.ORIGINAL_OPTIONS_HIT_MUSIC_SLIDER,
+		"options screen keeps the original inclusive music-slider hit edge"
+	)
+	_assert(
+		OptionsScreenScript.original_options_hit_index(Vector2(370, 293)) == OptionsScreenScript.ORIGINAL_OPTIONS_HIT_SFX_SLIDER,
+		"options screen decodes the original SFX-slider hit index"
+	)
+	_assert(
+		OptionsScreenScript.original_options_hit_index(Vector2(537, 331)) == OptionsScreenScript.ORIGINAL_OPTIONS_HIT_SFX_SLIDER,
+		"options screen keeps the original inclusive SFX-slider hit edge"
+	)
+	_assert(
+		OptionsScreenScript.original_options_hit_index(Vector2(591, 267)) == OptionsScreenScript.ORIGINAL_OPTIONS_NO_HIT,
+		"options screen rejects points outside the original hit table"
+	)
+	_assert(
 		OptionsVxEffectsScript.source_rect_for_frame(0) == Rect2(Vector2(0, 0), Vector2(40, 40)),
 		"options Vx maps original first animation frame"
 	)
@@ -3658,6 +3719,26 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(
 		options_screen.call("control_hit_rect", OptionsScreenScript.CONTROL_MUSIC_TOGGLE) == Rect2(Vector2(560, 237), Vector2(30, 30)),
 		"options screen keeps original music-toggle hitbox"
+	)
+	_assert(
+		options_screen.call("control_hit_rect", OptionsScreenScript.CONTROL_SFX_SLIDER) == Rect2(Vector2(370, 293), Vector2(167, 38)),
+		"options screen keeps original SFX-slider hitbox"
+	)
+	_assert(
+		options_screen.call("control_hit_rect", OptionsScreenScript.CONTROL_SFX_TOGGLE) == Rect2(Vector2(560, 297), Vector2(30, 30)),
+		"options screen keeps original SFX-toggle hitbox"
+	)
+	_assert(
+		options_screen.call("_control_at_position", Vector2(590, 267)) == OptionsScreenScript.CONTROL_MUSIC_TOGGLE,
+		"options screen routes audio-page edge clicks through the original music-toggle decoder"
+	)
+	_assert(
+		options_screen.call("_control_at_position", Vector2(537, 271)) == OptionsScreenScript.CONTROL_MUSIC_SLIDER,
+		"options screen routes audio-page edge clicks through the original music-slider decoder"
+	)
+	_assert(
+		options_screen.call("_control_at_position", Vector2(537, 331)) == OptionsScreenScript.CONTROL_SFX_SLIDER,
+		"options screen routes audio-page edge clicks through the original SFX-slider decoder"
 	)
 	var options_snapshot: Dictionary = options_screen.call("settings_snapshot")
 	_assert(not bool(options_snapshot["music_enabled"]), "options screen loads music enabled setting")

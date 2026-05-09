@@ -28,6 +28,12 @@ const CONTROL_PAGE_UP := "page_up"
 const CONTROL_PAGE_DOWN := "page_down"
 const CONTROL_BACKWARD := "backward"
 
+const ORIGINAL_OPTIONS_NO_HIT := -1
+const ORIGINAL_OPTIONS_HIT_MUSIC_TOGGLE := 128
+const ORIGINAL_OPTIONS_HIT_SFX_TOGGLE := 129
+const ORIGINAL_OPTIONS_HIT_MUSIC_SLIDER := 130
+const ORIGINAL_OPTIONS_HIT_SFX_SLIDER := 131
+
 const AUDIO_SELECTION_ORDER := [
 	CONTROL_MUSIC_SLIDER,
 	CONTROL_SFX_SLIDER,
@@ -326,6 +332,41 @@ func control_hit_rect(control_id: String) -> Rect2:
 			return Rect2(BACKWARD_POSITION, BACKWARD_SIZE)
 		_:
 			return Rect2(Vector2.ZERO, Vector2.ZERO)
+
+
+static func original_audio_control_ids() -> Array:
+	return [
+		CONTROL_MUSIC_TOGGLE,
+		CONTROL_SFX_TOGGLE,
+		CONTROL_MUSIC_SLIDER,
+		CONTROL_SFX_SLIDER,
+	]
+
+
+static func original_options_control_id_for_hit_index(hit_index: int) -> String:
+	match hit_index:
+		ORIGINAL_OPTIONS_HIT_MUSIC_TOGGLE:
+			return CONTROL_MUSIC_TOGGLE
+		ORIGINAL_OPTIONS_HIT_SFX_TOGGLE:
+			return CONTROL_SFX_TOGGLE
+		ORIGINAL_OPTIONS_HIT_MUSIC_SLIDER:
+			return CONTROL_MUSIC_SLIDER
+		ORIGINAL_OPTIONS_HIT_SFX_SLIDER:
+			return CONTROL_SFX_SLIDER
+		_:
+			return ""
+
+
+static func original_options_hit_index(position: Vector2) -> int:
+	if _rect_has_point_inclusive(MUSIC_TOGGLE_HIT_RECT, position):
+		return ORIGINAL_OPTIONS_HIT_MUSIC_TOGGLE
+	if _rect_has_point_inclusive(SFX_TOGGLE_HIT_RECT, position):
+		return ORIGINAL_OPTIONS_HIT_SFX_TOGGLE
+	if _rect_has_point_inclusive(MUSIC_SLIDER_HIT_RECT, position):
+		return ORIGINAL_OPTIONS_HIT_MUSIC_SLIDER
+	if _rect_has_point_inclusive(SFX_SLIDER_HIT_RECT, position):
+		return ORIGINAL_OPTIONS_HIT_SFX_SLIDER
+	return ORIGINAL_OPTIONS_NO_HIT
 
 
 func slider_handle_rect(control_id: String) -> Rect2:
@@ -1195,8 +1236,14 @@ func _handle_volume_shortcut(key_event: InputEventKey) -> bool:
 
 
 func _control_at_position(position: Vector2) -> String:
+	if _current_page == PAGE_AUDIO:
+		var original_hit_index := original_options_hit_index(position)
+		var original_control_id := original_options_control_id_for_hit_index(original_hit_index)
+		if not original_control_id.is_empty():
+			return original_control_id
+
 	for control_id in _selection_order_for_page(_current_page):
-		if control_hit_rect(String(control_id)).has_point(position):
+		if _rect_has_point_inclusive(control_hit_rect(String(control_id)), position):
 			return String(control_id)
 	return ""
 
@@ -1278,3 +1325,12 @@ func _load_asset_texture(texture_name: String) -> Texture2D:
 	if assets == null or not assets.has_method("load_texture"):
 		return null
 	return assets.call("load_texture", texture_name) as Texture2D
+
+
+static func _rect_has_point_inclusive(rect: Rect2, point: Vector2) -> bool:
+	return (
+		point.x >= rect.position.x
+		and point.y >= rect.position.y
+		and point.x <= rect.position.x + rect.size.x
+		and point.y <= rect.position.y + rect.size.y
+	)
