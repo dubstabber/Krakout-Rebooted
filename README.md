@@ -153,8 +153,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - Qualifying game-over scores now enter the original-backed name-entry slice:
   `BgGetName` background art, the original Enter/Backspace prompt strings,
   `theme3` music context, `Anonymous` fallback names, and submission into the
-  persisted high-score table. Binary-compatible `Krakout.high` import/export
-  and online score posting remain out of scope.
+  persisted high-score table. The profile now imports and mirrors the original
+  binary-compatible 2080-byte `Krakout.high` table with the IDA-backed
+  byte-index XOR encoding, while online score posting remains out of scope.
 - `KrakoutAudio` owns manifest-backed music/SFX playback through a music player
   and small SFX pool. The options screen persists music/SFX enable flags and
   volumes through `KrakoutProfile`.

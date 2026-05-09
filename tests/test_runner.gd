@@ -6,6 +6,7 @@ const ProfileScript := preload("res://src/autoloads/krakout_profile.gd")
 const AudioScript := preload("res://src/autoloads/krakout_audio.gd")
 const AudioCueCatalogScript := preload("res://src/audio/krakout_audio_cue_catalog.gd")
 const LevelDataScript := preload("res://src/data/krakout_level_data.gd")
+const HighScoreFileScript := preload("res://src/data/krakout_high_score_file.gd")
 const LevelGridRendererScript := preload("res://src/render/level_grid_renderer.gd")
 const BrickAtlasMappingScript := preload("res://src/render/brick_atlas_mapping.gd")
 const GameplaySheetCatalogScript := preload("res://src/playfield/krakout_gameplay_sheet_catalog.gd")
@@ -122,6 +123,7 @@ func _run() -> void:
 	_validate_playfield_spec()
 	_validate_project_presentation_settings()
 	_validate_project_input_map()
+	_validate_legacy_high_score_file()
 	_validate_profile_service()
 	_validate_audio_cue_catalog()
 	await _validate_audio_service()
@@ -2382,10 +2384,52 @@ func _validate_project_input_map() -> void:
 	_assert(_action_has_key(GameScreenScript.ACTION_DEBUG_CHEATS, KEY_D), "debug-cheats action binds D")
 
 
+func _validate_legacy_high_score_file() -> void:
+	var original_high_score_path := _project_file_path("extract-krakout-assets/krakout/Krakout.high")
+	_assert(FileAccess.file_exists(original_high_score_path), "original Krakout.high fixture exists")
+	var original_entries: Array = HighScoreFileScript.load_entries(original_high_score_path)
+	_assert(original_entries.is_empty(), "original Krakout.high fixture decodes to the empty default table")
+
+	var encoded_entries := HighScoreFileScript.encode_entries([
+		{"name": "Middle", "score": 900, "level": 4, "episode": "Retro"},
+		{"name": "Top", "score": 1200, "level": 7, "episode": "Default"},
+		{"name": "TieOne", "score": 700, "level": 3, "episode": "Classic"},
+		{"name": "TieTwo", "score": 700, "level": 5, "episode": "Classic"},
+		{"name": "Zero", "score": 0, "level": 2, "episode": "Default"},
+	])
+	_assert(encoded_entries.size() == HighScoreFileScript.FILE_BYTES, "legacy high-score encoder writes exact original file size")
+	_assert(int(encoded_entries[0]) == "T".to_ascii_buffer()[0], "legacy high-score encoder stores first sorted name at record offset 0")
+	_assert(int(encoded_entries[100]) == ("D".to_ascii_buffer()[0] ^ 100), "legacy high-score encoder stores episode at original field offset")
+	_assert(int(encoded_entries[200]) == (7 ^ 200), "legacy high-score encoder stores level at original field offset")
+	_assert(int(encoded_entries[204]) == ((1200 & 0xff) ^ 204), "legacy high-score encoder stores score at original field offset")
+	var decoded_entries: Array = HighScoreFileScript.decode_entries(encoded_entries)
+	_assert(decoded_entries.size() == 4, "legacy high-score decoder skips zero-score rows")
+	_assert(decoded_entries[0]["name"] == "Top", "legacy high-score decoder sorts table by score")
+	_assert(decoded_entries[0]["score"] == 1200, "legacy high-score decoder preserves score")
+	_assert(decoded_entries[0]["level"] == 7, "legacy high-score decoder preserves reached level")
+	_assert(decoded_entries[0]["episode"] == "Default", "legacy high-score decoder preserves episode")
+	_assert(decoded_entries[2]["name"] == "TieOne" and decoded_entries[3]["name"] == "TieTwo", "legacy high-score decoder keeps stable tied-score order")
+
+	var overflow_entries: Array = []
+	for index in range(12):
+		overflow_entries.append({"name": "Player%d" % index, "score": 1000 + index, "level": index + 1, "episode": "Default"})
+	var overflow_decoded: Array = HighScoreFileScript.decode_entries(HighScoreFileScript.encode_entries(overflow_entries))
+	_assert(overflow_decoded.size() == HighScoreFileScript.ENTRY_COUNT, "legacy high-score codec trims to original ten-row table")
+	_assert(overflow_decoded[0]["name"] == "Player11", "legacy high-score codec keeps the highest score after trimming")
+
+	var invalid_path := _test_legacy_high_score_path("invalid")
+	var invalid_file := FileAccess.open(invalid_path, FileAccess.WRITE)
+	if invalid_file != null:
+		invalid_file.store_buffer(PackedByteArray([1, 2, 3]))
+	_assert(HighScoreFileScript.load_entries(invalid_path).is_empty(), "legacy high-score decoder rejects invalid-size files")
+
+
 func _validate_profile_service() -> void:
 	var save_path := _test_profile_path("profile_service")
+	var legacy_path := _test_legacy_high_score_path("profile_service")
 	var profile = ProfileScript.new()
 	profile.set_save_path(save_path, false)
+	profile.set_legacy_high_score_path(legacy_path)
 	_assert(profile.best_score() == 0, "profile defaults high score to zero")
 	_assert(profile.bonus_stack_visible(), "profile defaults bonus stack visible")
 	_assert(profile.ball_tracks_visible(), "profile defaults ball tracks visible")
@@ -2399,6 +2443,11 @@ func _validate_profile_service() -> void:
 	_assert(profile.sfx_volume() == 85, "profile defaults SFX volume")
 	_assert(profile.record_score(885), "profile records a new high score")
 	_assert(profile.best_score() == 885, "profile exposes recorded high score")
+	_assert(FileAccess.file_exists(legacy_path), "profile mirrors recorded scores to legacy Krakout.high")
+	var mirrored_entries: Array = HighScoreFileScript.load_entries(legacy_path)
+	_assert(mirrored_entries.size() == 1, "profile legacy mirror contains materialized best score")
+	_assert(mirrored_entries[0]["name"] == "Anonymous", "profile legacy mirror uses anonymous fallback")
+	_assert(mirrored_entries[0]["score"] == 885, "profile legacy mirror preserves score")
 	var legacy_entries: Array = profile.high_score_entries()
 	_assert(legacy_entries.size() == 1, "profile exposes legacy best score as a table entry")
 	_assert(legacy_entries[0]["name"] == "Anonymous", "profile uses original anonymous fallback for legacy scores")
@@ -2419,7 +2468,9 @@ func _validate_profile_service() -> void:
 	_assert(profile.set_sfx_volume(120), "profile clamps and persists SFX volume setting")
 
 	var reloaded_profile = ProfileScript.new()
-	reloaded_profile.set_save_path(save_path, true)
+	reloaded_profile.set_save_path(save_path, false)
+	reloaded_profile.set_legacy_high_score_path(legacy_path)
+	reloaded_profile.load_profile()
 	_assert(reloaded_profile.best_score() == 885, "profile reloads persisted high score")
 	_assert(not reloaded_profile.bonus_stack_visible(), "profile reloads bonus stack setting")
 	_assert(not reloaded_profile.ball_tracks_visible(), "profile reloads ball tracks setting")
@@ -2434,20 +2485,26 @@ func _validate_profile_service() -> void:
 	_assert(reloaded_profile.set_best_score(1200), "profile can replace high score with a higher value")
 
 	var final_profile = ProfileScript.new()
-	final_profile.set_save_path(save_path, true)
+	final_profile.set_save_path(save_path, false)
+	final_profile.set_legacy_high_score_path(legacy_path)
+	final_profile.load_profile()
 	_assert(final_profile.best_score() == 1200, "profile persists updated high score")
 	_assert(final_profile.background_type() == 7, "profile keeps presentation settings when high score changes")
 	_assert(final_profile.fullscreen_enabled(), "profile keeps fullscreen setting when high score changes")
 	_assert(profile.set_background_type(42), "profile normalizes out-of-range background types")
 	_assert(profile.background_type() == 0, "profile resets out-of-range background types to the original first entry")
 	var normalized_profile = ProfileScript.new()
-	normalized_profile.set_save_path(save_path, true)
+	normalized_profile.set_save_path(save_path, false)
+	normalized_profile.set_legacy_high_score_path(legacy_path)
+	normalized_profile.load_profile()
 	_assert(normalized_profile.background_type() == 0, "profile reload keeps normalized out-of-range background type")
 	_assert(final_profile.music_volume() == 35, "profile keeps audio settings when high score changes")
 
 	var table_path := _test_profile_path("profile_table")
+	var table_legacy_path := _test_legacy_high_score_path("profile_table")
 	var table_profile = ProfileScript.new()
 	table_profile.set_save_path(table_path, false)
+	table_profile.set_legacy_high_score_path(table_legacy_path)
 	_assert(table_profile.submit_high_score(" Ada  ", 900, 4, "Retro"), "profile accepts named high-score entry")
 	_assert(table_profile.submit_high_score("", 800, 2, "Default"), "profile accepts empty high-score name")
 	_assert(table_profile.submit_high_score("TieOne", 700, 3, "Classic"), "profile accepts first tied score")
@@ -2464,10 +2521,52 @@ func _validate_profile_service() -> void:
 	_assert(table_entries.size() == ProfileScript.HIGH_SCORE_TABLE_LIMIT, "profile trims high-score table to original display size")
 	_assert(table_entries[0]["score"] == 1011, "profile keeps highest score after trimming")
 	_assert(not table_profile.would_enter_high_score(1), "profile rejects scores below a full table")
+	_assert(HighScoreFileScript.load_entries(table_legacy_path).size() == ProfileScript.HIGH_SCORE_TABLE_LIMIT, "profile mirrors submitted table to legacy Krakout.high")
 	var reloaded_table_profile = ProfileScript.new()
-	reloaded_table_profile.set_save_path(table_path, true)
+	reloaded_table_profile.set_save_path(table_path, false)
+	reloaded_table_profile.set_legacy_high_score_path(table_legacy_path)
+	reloaded_table_profile.load_profile()
 	_assert(reloaded_table_profile.high_score_entries().size() == ProfileScript.HIGH_SCORE_TABLE_LIMIT, "profile reloads persisted high-score table")
 	_assert(reloaded_table_profile.best_score() == 1011, "profile best score follows table leader")
+
+	var auto_import_path := _test_profile_path("legacy_auto_import")
+	var auto_import_legacy_path := _test_legacy_high_score_path("legacy_auto_import")
+	_assert(HighScoreFileScript.save_entries(auto_import_legacy_path, [
+		{"name": "LegacyTop", "score": 3333, "level": 9, "episode": "Classic"},
+	]), "test can write legacy high-score file")
+	var auto_import_profile = ProfileScript.new()
+	auto_import_profile.set_save_path(auto_import_path, false)
+	auto_import_profile.set_legacy_high_score_path(auto_import_legacy_path)
+	_assert(auto_import_profile.load_profile(), "profile loads when only legacy high-score file exists")
+	var auto_import_entries: Array = auto_import_profile.high_score_entries()
+	_assert(auto_import_entries.size() == 1, "profile imports legacy high-score file when native table is empty")
+	_assert(auto_import_entries[0]["name"] == "LegacyTop", "profile preserves imported legacy name")
+	_assert(auto_import_entries[0]["score"] == 3333, "profile preserves imported legacy score")
+
+	var native_wins_path := _test_profile_path("native_wins")
+	var native_wins_legacy_path := _test_legacy_high_score_path("native_wins")
+	var native_wins_profile = ProfileScript.new()
+	native_wins_profile.set_save_path(native_wins_path, false)
+	native_wins_profile.set_legacy_high_score_path(native_wins_legacy_path)
+	_assert(native_wins_profile.submit_high_score("Native", 500, 2, "Default"), "profile writes native table for legacy precedence test")
+	_assert(HighScoreFileScript.save_entries(native_wins_legacy_path, [
+		{"name": "Legacy", "score": 9999, "level": 10, "episode": "Retro"},
+	]), "test can overwrite legacy high-score file")
+	var native_wins_reloaded = ProfileScript.new()
+	native_wins_reloaded.set_save_path(native_wins_path, false)
+	native_wins_reloaded.set_legacy_high_score_path(native_wins_legacy_path)
+	native_wins_reloaded.load_profile()
+	var native_wins_entries: Array = native_wins_reloaded.high_score_entries()
+	_assert(native_wins_entries[0]["name"] == "Native", "native profile table wins over legacy Krakout.high when both exist")
+
+	var explicit_import_profile = ProfileScript.new()
+	explicit_import_profile.set_save_path(_test_profile_path("explicit_import"), false)
+	explicit_import_profile.set_legacy_high_score_path(_test_legacy_high_score_path("explicit_import"))
+	_assert(explicit_import_profile.import_legacy_high_scores(auto_import_legacy_path, true), "profile explicit legacy import succeeds")
+	_assert(explicit_import_profile.high_score_entries()[0]["name"] == "LegacyTop", "profile explicit legacy import updates table")
+	var explicit_export_path := _test_legacy_high_score_path("explicit_export")
+	_assert(explicit_import_profile.export_legacy_high_scores(explicit_export_path), "profile explicit legacy export succeeds")
+	_assert(HighScoreFileScript.load_entries(explicit_export_path)[0]["score"] == 3333, "profile explicit legacy export round-trips score")
 
 	profile.free()
 	reloaded_profile.free()
@@ -2475,6 +2574,10 @@ func _validate_profile_service() -> void:
 	normalized_profile.free()
 	table_profile.free()
 	reloaded_table_profile.free()
+	auto_import_profile.free()
+	native_wins_profile.free()
+	native_wins_reloaded.free()
+	explicit_import_profile.free()
 
 
 func _validate_audio_cue_catalog() -> void:
@@ -4394,6 +4497,17 @@ func _action_has_mouse_button(action_name: String, button_index: MouseButton) ->
 
 func _test_profile_path(label: String) -> String:
 	return "user://krakout_%s_profile_%d.cfg" % [label, Time.get_ticks_usec()]
+
+
+func _test_legacy_high_score_path(label: String) -> String:
+	return "user://krakout_%s_legacy_%d.high" % [label, Time.get_ticks_usec()]
+
+
+func _project_file_path(relative_path: String) -> String:
+	var project_root := ProjectSettings.globalize_path("res://")
+	if not project_root.ends_with("/"):
+		project_root += "/"
+	return project_root + relative_path
 
 
 func _shutdown_test_audio() -> void:

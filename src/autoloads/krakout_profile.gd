@@ -1,8 +1,10 @@
 extends Node
 
 const PlayfieldRendererScript := preload("res://src/playfield/playfield_renderer.gd")
+const HighScoreFileScript := preload("res://src/data/krakout_high_score_file.gd")
 
 const DEFAULT_SAVE_PATH := "user://krakout_profile.cfg"
+const DEFAULT_LEGACY_HIGH_SCORE_PATH := "user://Krakout.high"
 const SCORES_SECTION := "scores"
 const BEST_SCORE_KEY := "best_score"
 const HIGH_SCORE_ENTRIES_KEY := "high_score_entries"
@@ -32,6 +34,7 @@ const DEFAULT_PLAYER_NAME := "Anonymous"
 const MAX_PLAYER_NAME_LENGTH := 20
 
 @export var save_path := DEFAULT_SAVE_PATH
+@export var legacy_high_score_path := DEFAULT_LEGACY_HIGH_SCORE_PATH
 
 var _best_score := 0
 var _high_score_entries: Array[Dictionary] = []
@@ -247,6 +250,7 @@ func load_profile() -> bool:
 	var config := ConfigFile.new()
 	var error := config.load(save_path)
 	if error == ERR_FILE_NOT_FOUND:
+		_try_import_legacy_high_scores(false)
 		return true
 	if error != OK:
 		push_warning("Unable to load Krakout profile: %s" % save_path)
@@ -266,6 +270,8 @@ func load_profile() -> bool:
 	_sfx_enabled = bool(config.get_value(SETTINGS_SECTION, SFX_ENABLED_KEY, DEFAULT_SFX_ENABLED))
 	_music_volume = clampi(int(config.get_value(SETTINGS_SECTION, MUSIC_VOLUME_KEY, DEFAULT_MUSIC_VOLUME)), 0, 100)
 	_sfx_volume = clampi(int(config.get_value(SETTINGS_SECTION, SFX_VOLUME_KEY, DEFAULT_SFX_VOLUME)), 0, 100)
+	if _high_score_entries.is_empty():
+		_try_import_legacy_high_scores(false)
 	return true
 
 
@@ -288,6 +294,8 @@ func save_profile() -> bool:
 	if error != OK:
 		push_warning("Unable to save Krakout profile: %s" % save_path)
 		return false
+	if not _export_legacy_high_scores(legacy_high_score_path):
+		push_warning("Unable to save legacy Krakout high-score file: %s" % legacy_high_score_path)
 	return true
 
 
@@ -297,6 +305,32 @@ func set_save_path(path: String, load_existing := true) -> void:
 	_reset_profile_state()
 	if load_existing:
 		load_profile()
+	else:
+		_loaded = true
+
+
+func set_legacy_high_score_path(path: String) -> void:
+	legacy_high_score_path = path
+
+
+func import_legacy_high_scores(path: String, replace_existing := false) -> bool:
+	_ensure_loaded()
+	if path.is_empty():
+		return false
+	if not replace_existing and not _high_score_entries.is_empty():
+		return false
+
+	var entries: Array[Dictionary] = HighScoreFileScript.load_entries(path)
+	if entries.is_empty():
+		return false
+
+	_apply_legacy_high_score_entries(entries, replace_existing)
+	return save_profile()
+
+
+func export_legacy_high_scores(path: String) -> bool:
+	_ensure_loaded()
+	return _export_legacy_high_scores(path)
 
 
 func _ensure_loaded() -> void:
@@ -342,6 +376,49 @@ func _entries_from_config(raw_value: Variant) -> Array[Dictionary]:
 	_sort_entries(entries)
 	if entries.size() > HIGH_SCORE_TABLE_LIMIT:
 		entries.resize(HIGH_SCORE_TABLE_LIMIT)
+	return entries
+
+
+func _try_import_legacy_high_scores(replace_existing := false) -> bool:
+	if legacy_high_score_path.is_empty():
+		return false
+	if not FileAccess.file_exists(legacy_high_score_path):
+		return false
+	if not replace_existing and not _high_score_entries.is_empty():
+		return false
+
+	var entries: Array[Dictionary] = HighScoreFileScript.load_entries(legacy_high_score_path)
+	if entries.is_empty():
+		return false
+
+	_apply_legacy_high_score_entries(entries, replace_existing)
+	return true
+
+
+func _apply_legacy_high_score_entries(entries: Array[Dictionary], replace_existing: bool) -> void:
+	if replace_existing:
+		_high_score_entries.clear()
+	for entry: Dictionary in entries:
+		_high_score_entries.append(_high_score_entry(
+			String(entry.get("name", DEFAULT_PLAYER_NAME)),
+			int(entry.get("score", 0)),
+			int(entry.get("level", 1)),
+			String(entry.get("episode", ""))
+		))
+	_sort_and_trim_high_scores()
+	_best_score = maxi(_best_score, _table_best_score())
+
+
+func _export_legacy_high_scores(path: String) -> bool:
+	if path.is_empty():
+		return true
+	return HighScoreFileScript.save_entries(path, _effective_high_score_entries())
+
+
+func _effective_high_score_entries() -> Array[Dictionary]:
+	var entries := _duplicate_entries(_high_score_entries)
+	if entries.is_empty() and _best_score > 0:
+		entries.append(_high_score_entry(DEFAULT_PLAYER_NAME, _best_score, 1, ""))
 	return entries
 
 
