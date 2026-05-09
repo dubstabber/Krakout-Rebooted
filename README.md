@@ -92,9 +92,17 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   region. `sub_4110E0` bonus dispatch was also checked and does not write the
   Snake guard or initialize a Snake slot.
   Offset hits in `sub_415A70`/`sub_415C00` are DirectInput state-buffer traffic,
-  not Snake activation. Normal gameplay spawning is therefore evidence-gated and
-  remains disabled; the current preview is exposed only through tests and the
-  non-original debug-cheats button.
+  not Snake activation. A follow-up level-start audit found the only plausible
+  production initializer candidate: after `sub_419600` resets Snake state,
+  `sub_40E580` can call `sub_41A780` behind the original level-number/RNG gate.
+  In this unpacked executable, however, `sub_41A780` stores `ECX` and immediately
+  jumps to its epilogue, so the candidate initializer is stubbed out. A broader
+  pointer-derived write scan over `+0x0A70..+0x10B4` produced expected raw
+  displacement hits from unrelated ball/projectile/menu object contexts; after
+  filtering to the Snake load/reset/draw/update/truncation family, the audit
+  still found no production write of `+0x0A74 := 1`. Normal gameplay spawning is
+  therefore evidence-gated and remains disabled; the current preview is exposed
+  only through tests and the non-original debug-cheats button.
 - `KrakoutImpactEffectRenderer` draws enemy spawn, timeout, hit, chain,
   brick-clear, bonus-clear, and hard-brick board-impact effects from the
   original `Exploision` vertical-frame columns, with the original 11-frame/50ms
