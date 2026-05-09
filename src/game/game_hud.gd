@@ -47,6 +47,7 @@ var _font_text
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	custom_minimum_size = Vector2(PlayfieldSpecScript.VIEWPORT_SIZE)
 	_ensure_nodes()
 	refresh()

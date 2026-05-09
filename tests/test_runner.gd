@@ -649,8 +649,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.pop_audio_events().is_empty(), "initial ready-ball launch queues no SFX event")
 	_assert(GameSessionScript.PROJECTILE_STEP_X == 7.0, "shooting-paddle projectile uses faster parity-tuned step")
 	_assert(GameSessionScript.PROJECTILE_SIZE == Vector2(30, 13), "shooting-paddle projectile uses smaller parity-tuned hitbox")
-	_assert(GameSessionScript.PROJECTILE_TRAIL_SIZE == Vector2(17, 13), "shooting-paddle projectile trail uses smaller parity-tuned draw size")
-	_assert(GameSessionScript.PROJECTILE_TRAIL_OFFSET == Vector2(26, 0), "shooting-paddle projectile trail stays attached after target-size reduction")
+	_assert(GameSessionScript.PROJECTILE_TRAIL_OFFSET == Vector2(26, 0), "shooting-paddle projectile trail stays attached to the native atlas frame")
 
 	var stationary_ball_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	stationary_ball_session.force_ball(Vector2(300, 200), Vector2.ZERO)
@@ -1665,7 +1664,15 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		"Snake VFX collision rect uses the original 10x10 segment footprint"
 	)
 	_assert(not GameSessionScript.SNAKE_RUNTIME_ACTIVATION_PROVEN, "Snake VFX gameplay activation stays disabled until an original production spawn write is proven")
-	_assert(String(GameSessionScript.SNAKE_IDA_EVIDENCE).find("sub_41B390") != -1, "Snake VFX evidence contract names the original ball/projectile truncation helper")
+	var snake_activation_evidence: Dictionary = GameSessionScript.snake_runtime_activation_evidence()
+	_assert(not bool(snake_activation_evidence.get("proven", true)), "Snake VFX evidence keeps production activation unproven")
+	_assert(String(snake_activation_evidence.get("activation_flag_offset", "")) == "0x0A74", "Snake VFX evidence records the original active-slot offset")
+	_assert(int(snake_activation_evidence.get("slot_count", 0)) == GameSessionScript.MAX_SNAKE_SEGMENTS, "Snake VFX evidence records the original 100-slot pool")
+	_assert(String(snake_activation_evidence.get("reset", "")).find("sub_419600") != -1, "Snake VFX evidence names the original reset helper")
+	_assert(String(snake_activation_evidence.get("update", "")).find("+0x0A74") != -1, "Snake VFX evidence records that update requires a pre-active slot")
+	_assert(String(snake_activation_evidence.get("collision", "")).find("sub_41B390") != -1, "Snake VFX evidence names the original ball/projectile truncation helper")
+	_assert(String(snake_activation_evidence.get("activation", "")).find("No production write") != -1, "Snake VFX evidence records the missing production initializer")
+	_assert(String(GameSessionScript.SNAKE_IDA_EVIDENCE).find("+0x0A74") != -1, "Snake VFX text evidence records the original active-slot offset")
 	var snake_dormant_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	snake_dormant_session._monster_spawn_cooldown = 999.0
 	snake_dormant_session._bee_spawn_delay_remaining = 999.0
@@ -1678,6 +1685,8 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(int(snake_preview_result["count"]) == 8, "debug Snake VFX preview creates a bounded source-backed segment chain")
 	_assert(str(snake_preview_result.get("source", "")) == "debug_only", "debug Snake VFX preview is marked as a non-production activation")
 	_assert(not bool(snake_preview_result.get("runtime_activation_proven", true)), "debug Snake VFX preview reports unresolved production activation evidence")
+	var preview_evidence: Dictionary = snake_preview_result.get("evidence", {})
+	_assert(String(preview_evidence.get("activation_flag_offset", "")) == "0x0A74", "debug Snake VFX preview carries the same runtime activation evidence")
 	var snake_preview_segments: Array = snake_preview_session.visible_snake_segments()
 	if snake_preview_segments.size() == 8:
 		_assert(int(snake_preview_segments[0]["kind"]) == GameSessionScript.SNAKE_KIND_LEFT, "debug Snake VFX preview starts with left-moving body segments")
@@ -2287,8 +2296,8 @@ func _validate_level_grid_renderer_defaults() -> void:
 	double_racket_renderer.free()
 
 	var bullet_renderer: KrakoutBulletRenderer = BulletRendererScript.new()
-	_assert(bullet_renderer.head_target_rect(Vector2(100, 200)) == Rect2(Vector2(100, 200), GameSessionScript.PROJECTILE_SIZE), "bullet renderer draws a smaller rocket head target")
-	_assert(bullet_renderer.trail_target_rect(Vector2(100, 200)) == Rect2(Vector2(126, 200), GameSessionScript.PROJECTILE_TRAIL_SIZE), "bullet renderer draws a smaller rocket trail target")
+	_assert(bullet_renderer.head_target_rect(Vector2(100, 200)) == Rect2(Vector2(100, 200), BulletRendererScript.HEAD_SOURCE_SIZE), "bullet renderer draws the native rocket head frame without compression")
+	_assert(bullet_renderer.trail_target_rect(Vector2(100, 200)) == Rect2(Vector2(126, 200), BulletRendererScript.TRAIL_SOURCE_SIZE), "bullet renderer draws the native rocket trail frame without compression")
 	bullet_renderer.free()
 
 	var monster_renderer = MonsterRendererScript.new()
@@ -2820,6 +2829,7 @@ func _validate_game_hud_presentation() -> void:
 
 	root.add_child(hud)
 	await process_frame
+	_assert(hud.texture_filter == CanvasItem.TEXTURE_FILTER_NEAREST, "game hud keeps atlas HUD textures unfiltered")
 	hud.refresh()
 	_assert(hud.find_child("GameOverTitle", true, false) == null, "game hud no longer creates native game-over title labels")
 	_assert(hud.find_child("GameOverSummary", true, false) == null, "game hud no longer creates native game-over summary labels")

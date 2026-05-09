@@ -120,7 +120,6 @@ const PROJECTILE_FIRE_COOLDOWN_SECONDS := 0.25
 const PROJECTILE_STEP_X := 7.0
 const PROJECTILE_EXPIRE_X := 27.0
 const PROJECTILE_SIZE := Vector2(30, 13)
-const PROJECTILE_TRAIL_SIZE := Vector2(17, 13)
 const PROJECTILE_TRAIL_OFFSET := Vector2(26, 0)
 const PROJECTILE_HEAD_FRAME_COUNT := 5
 const PROJECTILE_TRAIL_FRAME_COUNT := 10
@@ -244,7 +243,7 @@ const SNAKE_TERMINAL_DOWN := 17
 const SNAKE_TERMINAL_LEFT := 18
 const SNAKE_TERMINAL_RIGHT := 19
 const SNAKE_RUNTIME_ACTIVATION_PROVEN := false
-const SNAKE_IDA_EVIDENCE := "IDA anchors: sub_4194C0 load, sub_419650 draw, sub_419600 reset, sub_419B00/sub_41A9A0/sub_41B140/sub_41B2E0 update, sub_41B390 hit truncation; no production active-slot spawn write is proven."
+const SNAKE_IDA_EVIDENCE := "IDA anchors: sub_4194C0 load, sub_419650 draw, sub_419600 clears 100 16-byte slots from +0x0A74, sub_419B00 only updates when +0x0A74 is already active, sub_41A9A0/sub_41B140/sub_41B2E0 step/rewrite existing slots, and sub_41B390 truncates from ball/projectile callers; no production write sets the first active slot."
 const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
 const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
@@ -808,6 +807,21 @@ func debug_clear_bonus_stack() -> int:
 	return removed_count
 
 
+static func snake_runtime_activation_evidence() -> Dictionary:
+	return {
+		"proven": SNAKE_RUNTIME_ACTIVATION_PROVEN,
+		"activation_flag_offset": "0x0A74",
+		"slot_count": MAX_SNAKE_SEGMENTS,
+		"slot_bytes": 16,
+		"load": "sub_4194C0 loads Snake.tga/Snake_a.bmp.",
+		"draw": "sub_419650 draws already-active Snake slots.",
+		"reset": "sub_419600 clears 100 16-byte Snake slots from +0x0A74.",
+		"update": "sub_419B00 reads +0x0A74 and only steps existing active slots through sub_41A9A0/sub_41B140/sub_41B2E0.",
+		"collision": "sub_41B390 truncates existing slots from ball and projectile callers.",
+		"activation": "No production write that sets the first active Snake slot was found.",
+	}
+
+
 func debug_spawn_snake_vfx_preview() -> Dictionary:
 	var preview_segments: Array[Dictionary] = []
 	var origin := Vector2(420, 242)
@@ -824,6 +838,7 @@ func debug_spawn_snake_vfx_preview() -> Dictionary:
 		"count": count,
 		"source": "debug_only",
 		"runtime_activation_proven": SNAKE_RUNTIME_ACTIVATION_PROVEN,
+		"evidence": snake_runtime_activation_evidence(),
 	}
 
 

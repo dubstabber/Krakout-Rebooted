@@ -55,11 +55,11 @@ func _draw_projectile(projectile: Dictionary) -> void:
 
 
 func head_target_rect(position: Vector2) -> Rect2:
-	return Rect2(position, GameSessionScript.PROJECTILE_SIZE)
+	return Rect2(position, HEAD_SOURCE_SIZE)
 
 
 func trail_target_rect(position: Vector2) -> Rect2:
-	return Rect2(position + GameSessionScript.PROJECTILE_TRAIL_OFFSET, GameSessionScript.PROJECTILE_TRAIL_SIZE)
+	return Rect2(position + GameSessionScript.PROJECTILE_TRAIL_OFFSET, TRAIL_SOURCE_SIZE)
 
 
 func _load_asset_texture(texture_name: String) -> Texture2D:

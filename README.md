@@ -44,10 +44,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   stack pointer from the extracted `Bonuses_a`, `Bonuses_aa`, and
   `PointToBonusInStack` sheets.
 - `KrakoutBulletRenderer` draws the one-shot and continuous shooting-paddle
-  projectiles from the extracted `Bullets` sheet, while `KrakoutGameSession`
-  owns the original-backed 10-projectile pool, 250ms fire gate, faster
-  parity-tuned leftward travel, smaller rocket target rectangles, brick-hit
-  routing, and held-button repeat fire through the screen input loop.
+  projectiles from the extracted `Bullets` sheet at native atlas-frame size,
+  while `KrakoutGameSession` owns the original-backed 10-projectile pool,
+  250ms fire gate, faster parity-tuned leftward travel, smaller rocket hitbox,
+  brick-hit routing, and held-button repeat fire through the screen input loop.
 - `Double Paddle` now adds the original secondary racket 20 px left of the
   primary paddle and lets mouse-x deltas slide it within the original horizontal
   bounds. `Magnet Paddle` draws the original 20-frame animated insert behind the
@@ -78,9 +78,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   The current IDA anchors are `sub_4194C0` for texture loading, `sub_419650`
   for drawing, `sub_419600` for reset, `sub_419B00`/`sub_41A9A0`/
   `sub_41B140`/`sub_41B2E0` for updates, and `sub_41B390` for ball/projectile
-  truncation. No production write that activates the first Snake slot has been
-  found, so normal gameplay spawning remains disabled; the current preview is
-  exposed only through tests and the non-original debug-cheats button.
+  truncation. The runtime audit found `sub_419600` clearing the 100-slot buffer
+  from `+0x0A74`, and `sub_419B00` only updating it when that first active slot
+  is already set; no production write that activates that slot has been found.
+  Normal gameplay spawning therefore remains disabled, and the current preview
+  is exposed only through tests and the non-original debug-cheats button.
 - `KrakoutImpactEffectRenderer` draws enemy spawn, timeout, hit, chain,
   brick-clear, bonus-clear, and hard-brick board-impact effects from the
   original `Exploision` vertical-frame columns, with the original 11-frame/50ms
@@ -188,7 +190,7 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   motion, `sub_4110E0` for bonus activation, and
   `sub_403630`/`sub_411B80`/`sub_4121C0` for projectile fire and hit routing.
   Snake remains silent too: its audited load/update/draw/truncation path has no
-  Snake-specific sample route.
+  Snake-specific sample route, and Snake runtime activation remains unproven.
   Extracted `eff06`, `eff20`, and `eff21` are preserved as DAT assets, but the
   unpacked executable does not reference them from its sample-load strings, so
   they remain unwired.
