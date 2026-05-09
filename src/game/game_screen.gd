@@ -13,6 +13,7 @@ const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
 const BulletRendererScript := preload("res://src/render/bullet_renderer.gd")
 const MonsterRendererScript := preload("res://src/render/monster_renderer.gd")
 const BeeRendererScript := preload("res://src/render/bee_renderer.gd")
+const SnakeRendererScript := preload("res://src/render/snake_renderer.gd")
 const ImpactEffectRendererScript := preload("res://src/render/impact_effect_renderer.gd")
 const LevelReadyRollerRendererScript := preload("res://src/render/level_ready_roller_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
@@ -100,6 +101,7 @@ var bonus_renderer
 var bullet_renderer
 var monster_renderer
 var bee_renderer
+var snake_renderer
 var impact_effect_renderer
 var level_ready_roller_renderer
 var hud_renderer
@@ -557,6 +559,11 @@ func _ensure_gameplay_nodes() -> void:
 		bee_renderer.name = "BeeRenderer"
 		add_child(bee_renderer)
 
+	if snake_renderer == null:
+		snake_renderer = SnakeRendererScript.new()
+		snake_renderer.name = "SnakeRenderer"
+		add_child(snake_renderer)
+
 	if impact_effect_renderer == null:
 		impact_effect_renderer = ImpactEffectRendererScript.new()
 		impact_effect_renderer.name = "ImpactEffectRenderer"
@@ -573,6 +580,7 @@ func _ensure_gameplay_nodes() -> void:
 	bullet_renderer.set_session(gameplay_session)
 	monster_renderer.set_session(gameplay_session)
 	bee_renderer.set_session(gameplay_session)
+	snake_renderer.set_session(gameplay_session)
 	impact_effect_renderer.set_session(gameplay_session)
 	level_ready_roller_renderer.set_session(gameplay_session)
 	hud_renderer.set_session(gameplay_session)
@@ -593,6 +601,8 @@ func _refresh_actor_renderers() -> void:
 		monster_renderer.queue_redraw()
 	if bee_renderer != null:
 		bee_renderer.queue_redraw()
+	if snake_renderer != null:
+		snake_renderer.queue_redraw()
 	if impact_effect_renderer != null:
 		impact_effect_renderer.queue_redraw()
 	if level_ready_roller_renderer != null:

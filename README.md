@@ -72,10 +72,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   racket-relative spawn, 3px/call 3-substep speed conversion, ball-hit removal
   without paddle stun, contact stun, original `InfoIcons` stuck-racket countdown,
   `EffBee` stop-on-removal routing, hit SFX, and impact VFX.
-- `Snake.png` is loaded and render-capable through the original asset path, but
-  the current executable evidence does not prove a safe gameplay activation
-  contract; do not spawn or simulate Snake behavior until that path is
-  re-identified from IDA/runtime traces.
+- `Snake.png` has a dormant renderer/test seam matching the original 100-slot
+  10x10 segment draw path and 20-kind source grid. The current executable
+  evidence does not prove a safe gameplay activation contract; do not spawn or
+  simulate Snake behavior until that path is re-identified from IDA/runtime
+  traces.
 - `KrakoutImpactEffectRenderer` draws enemy spawn, timeout, hit, chain,
   brick-clear, bonus-clear, and hard-brick board-impact effects from the
   original `Exploision` vertical-frame columns, with the original 11-frame/50ms

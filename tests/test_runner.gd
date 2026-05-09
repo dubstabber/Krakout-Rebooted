@@ -21,6 +21,7 @@ const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
 const BulletRendererScript := preload("res://src/render/bullet_renderer.gd")
 const MonsterRendererScript := preload("res://src/render/monster_renderer.gd")
 const BeeRendererScript := preload("res://src/render/bee_renderer.gd")
+const SnakeRendererScript := preload("res://src/render/snake_renderer.gd")
 const ImpactEffectRendererScript := preload("res://src/render/impact_effect_renderer.gd")
 const LevelReadyRollerRendererScript := preload("res://src/render/level_ready_roller_renderer.gd")
 const GameHudScript := preload("res://src/game/game_hud.gd")
@@ -453,6 +454,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.active_bonus_indicators().is_empty(), "game session exposes no active status indicators before timed effects exist")
 	_assert(session.active_monster_count() == 0, "game session starts without active monsters")
 	_assert(session.active_bee_count() == 0, "game session starts without active bees")
+	_assert(session.visible_snake_segments().is_empty(), "game session starts without Snake VFX segments")
 	_assert(session.visible_impact_effects().is_empty(), "game session starts without impact effects")
 	_assert(not session.is_racket_stunned(), "game session starts with active racket control")
 	_assert(session.pop_audio_events().is_empty(), "game session starts without queued SFX events")
@@ -1574,6 +1576,32 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	bee_racket_hit_session.update(GameSessionScript.RACKET_STUN_DURATION_SECONDS - 1.0)
 	_assert(bee_racket_hit_session.active_bonus_indicators().is_empty(), "expired bee stun clears status indicator")
 
+	var snake_vfx_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	var snake_inputs: Array[Dictionary] = [
+		{"position": Vector2(10, 20), "kind": 0},
+		{"position": Vector2(30, 40), "kind": 19},
+		{"position": Vector2(50, 60), "kind": 25},
+		{"position": Vector2(70, 80), "kind": -5, "active": false},
+	]
+	_assert(snake_vfx_session.force_snake_vfx_segments_for_test(snake_inputs) == 4, "Snake VFX test seam stores source slots without activating gameplay")
+	var snake_segments: Array = snake_vfx_session.visible_snake_segments()
+	_assert(snake_segments.size() == 3, "Snake VFX visibility filters inactive original slots")
+	if snake_segments.size() == 3:
+		_assert(snake_segments[0]["position"] == Vector2(10, 20), "Snake VFX preserves segment position")
+		_assert(int(snake_segments[0]["kind"]) == 0, "Snake VFX preserves first original kind")
+		_assert(int(snake_segments[1]["kind"]) == 19, "Snake VFX preserves final original kind")
+		_assert(int(snake_segments[2]["kind"]) == GameSessionScript.SNAKE_KIND_COUNT - 1, "Snake VFX clamps out-of-range kinds to the original atlas range")
+	var capped_snake_inputs: Array[Dictionary] = []
+	for snake_index in range(GameSessionScript.MAX_SNAKE_SEGMENTS + 5):
+		capped_snake_inputs.append({"position": Vector2(snake_index, snake_index), "kind": snake_index})
+	_assert(
+		snake_vfx_session.force_snake_vfx_segments_for_test(capped_snake_inputs) == GameSessionScript.MAX_SNAKE_SEGMENTS,
+		"Snake VFX test seam enforces the original 100-slot cap"
+	)
+	_assert(snake_vfx_session.active_snake_segment_count() == GameSessionScript.MAX_SNAKE_SEGMENTS, "Snake VFX active count reflects visible capped slots")
+	snake_vfx_session.reset_round()
+	_assert(snake_vfx_session.visible_snake_segments().is_empty(), "round reset clears dormant Snake VFX segments")
+
 	var bee_expire_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	bee_expire_session.force_bee(Vector2(GameSessionScript.BEE_EXPIRE_X - 1.0, 100))
 	bee_expire_session.update(1.0 / (GameSessionScript.BEE_STEP_X * GameSessionScript.ORIGINAL_ENEMY_UPDATE_HZ))
@@ -2135,6 +2163,12 @@ func _validate_level_grid_renderer_defaults() -> void:
 	_assert(bee_renderer.source_rect_for_bee(0) == Rect2(Vector2(0, 0), Vector2(48, 40)), "bee renderer maps original first bee frame")
 	_assert(bee_renderer.source_rect_for_bee(5) == Rect2(Vector2(0, 200), Vector2(48, 40)), "bee renderer maps original final bee frame")
 	bee_renderer.free()
+	_assert(SnakeRendererScript.source_rect_for_kind(0) == Rect2(Vector2(0, 0), Vector2(10, 10)), "snake renderer maps original kind 0")
+	_assert(SnakeRendererScript.source_rect_for_kind(1) == Rect2(Vector2(0, 10), Vector2(10, 10)), "snake renderer maps original kind 1")
+	_assert(SnakeRendererScript.source_rect_for_kind(4) == Rect2(Vector2(10, 0), Vector2(10, 10)), "snake renderer maps original kind 4")
+	_assert(SnakeRendererScript.source_rect_for_kind(16) == Rect2(Vector2(40, 0), Vector2(10, 10)), "snake renderer maps original kind 16")
+	_assert(SnakeRendererScript.source_rect_for_kind(19) == Rect2(Vector2(40, 30), Vector2(10, 10)), "snake renderer maps original kind 19")
+	_assert(SnakeRendererScript.source_rect_for_kind(25) == Rect2(Vector2(40, 30), Vector2(10, 10)), "snake renderer clamps out-of-range kinds")
 
 	var impact_renderer = ImpactEffectRendererScript.new()
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_SPAWN, 0) == Rect2(Vector2(0, 0), Vector2(32, 32)), "impact renderer maps original monster-spawn effect cell")
@@ -3537,6 +3571,7 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(game.find_child("BulletRenderer", true, false) != null, "game screen creates bullet renderer")
 			_assert(game.find_child("MonsterRenderer", true, false) != null, "game screen creates monster renderer")
 			_assert(game.find_child("BeeRenderer", true, false) != null, "game screen creates bee renderer")
+			_assert(game.find_child("SnakeRenderer", true, false) != null, "game screen creates snake VFX renderer")
 			_assert(game.find_child("ImpactEffectRenderer", true, false) != null, "game screen creates impact effect renderer")
 			_assert(game.find_child("LevelReadyRollerRenderer", true, false) != null, "game screen creates level-ready roller renderer")
 			_assert(game.call("is_bonus_stack_visible") == false, "game screen loads bonus-stack visibility setting")

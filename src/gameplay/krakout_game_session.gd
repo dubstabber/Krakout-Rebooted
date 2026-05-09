@@ -230,6 +230,8 @@ const BEE_BALL_HIT_SCORE := MONSTER_BALL_HIT_SCORE
 const BEE_STUN_SCORE := MONSTER_TYPE9_STUN_SCORE
 const BEE_BALL_COLLISION_RADIUS := 24.0
 const RACKET_STUN_DURATION_SECONDS := 3.0
+const MAX_SNAKE_SEGMENTS := 100
+const SNAKE_KIND_COUNT := 20
 const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
 const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
@@ -381,6 +383,7 @@ var bonus_pointer_frame := 0
 var projectiles: Array[Dictionary] = []
 var monsters: Array[Dictionary] = []
 var bees: Array[Dictionary] = []
+var snake_segments: Array[Dictionary] = []
 var impact_effects: Array[Dictionary] = []
 var back_wall_time_remaining := 0.0
 var level_ready_time_remaining := 0.0
@@ -671,6 +674,14 @@ func visible_bees() -> Array[Dictionary]:
 	for bee: Dictionary in bees:
 		if bool(bee.get("active", false)):
 			visible.append(bee.duplicate())
+	return visible
+
+
+func visible_snake_segments() -> Array[Dictionary]:
+	var visible: Array[Dictionary] = []
+	for segment: Dictionary in snake_segments:
+		if bool(segment.get("active", false)):
+			visible.append(segment.duplicate())
 	return visible
 
 
@@ -1042,6 +1053,10 @@ func active_bee_count() -> int:
 	return visible_bees().size()
 
 
+func active_snake_segment_count() -> int:
+	return visible_snake_segments().size()
+
+
 func current_racket_height() -> float:
 	return RACKET_SEGMENT_PIXEL_STEP * float(racket_segment_count) + RACKET_SEGMENT_MARGIN
 
@@ -1142,6 +1157,26 @@ func force_bee(position: Vector2, frame: int = 0) -> bool:
 	bees.append(_new_bee(position, frame))
 	state = STATE_PLAYING
 	return true
+
+
+func force_snake_vfx_segments_for_test(segments: Array) -> int:
+	snake_segments.clear()
+	for segment in segments:
+		if snake_segments.size() >= MAX_SNAKE_SEGMENTS:
+			break
+		if typeof(segment) != TYPE_DICTIONARY:
+			continue
+		var entry: Dictionary = segment
+		var position := Vector2.ZERO
+		var raw_position = entry.get("position", Vector2.ZERO)
+		if raw_position is Vector2:
+			position = raw_position
+		snake_segments.append({
+			"active": bool(entry.get("active", true)),
+			"position": position,
+			"kind": clampi(int(entry.get("kind", 0)), 0, SNAKE_KIND_COUNT - 1),
+		})
+	return snake_segments.size()
 
 
 func _add_ready_ball() -> void:
@@ -2181,6 +2216,7 @@ func _clear_monster_state() -> void:
 		_queue_audio_event(SFX_EVENT_BEE_STOP)
 	monsters.clear()
 	bees.clear()
+	snake_segments.clear()
 	impact_effects.clear()
 	_monster_spawn_cooldown = MONSTER_SPAWN_INTERVAL_SECONDS
 	_bee_spawn_delay_remaining = BEE_SPAWN_DELAY_MAX_SECONDS
