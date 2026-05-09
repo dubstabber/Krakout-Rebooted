@@ -18,6 +18,7 @@ var _owns_mouse_mode := false
 var _system_cursor_hidden_for_menu := false
 var _fullscreen_enabled := false
 var _last_high_score_highlight_entry: Dictionary = {}
+var _screen_generation := 0
 
 
 func _ready() -> void:
@@ -113,11 +114,11 @@ func _set_screen(screen: Node) -> void:
 	if _current_screen != null:
 		_current_screen.queue_free()
 
-	var is_game_screen := screen is GameScreen
-	_set_original_cursor_active(not is_game_screen)
-
+	_screen_generation += 1
 	_current_screen = screen
 	add_child(screen)
+	_apply_cursor_policy_for_screen(screen)
+	_apply_cursor_policy_after_screen_cleanup(screen, _screen_generation)
 	_raise_cursor_overlay()
 
 
@@ -207,6 +208,29 @@ func _ensure_cursor_overlay() -> void:
 func _raise_cursor_overlay() -> void:
 	_ensure_cursor_overlay()
 	move_child(_cursor_overlay, get_child_count() - 1)
+
+
+func _apply_cursor_policy_for_screen(screen: Node) -> void:
+	if screen is GameScreen:
+		_set_original_cursor_active(false)
+	elif screen is NameEntryScreen:
+		_hide_mouse_cursor_without_overlay()
+	else:
+		_set_original_cursor_active(true)
+
+
+func _apply_cursor_policy_after_screen_cleanup(screen: Node, generation: int) -> void:
+	await get_tree().process_frame
+	if generation != _screen_generation or _current_screen != screen:
+		return
+	_apply_cursor_policy_for_screen(screen)
+
+
+func _hide_mouse_cursor_without_overlay() -> void:
+	_ensure_cursor_overlay()
+	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
+	_system_cursor_hidden_for_menu = true
+	_cursor_overlay.set_cursor_active(false)
 
 
 func _set_original_cursor_active(is_active: bool) -> void:

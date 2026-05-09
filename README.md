@@ -148,9 +148,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   adjust music and SFX volume during gameplay.
 - The non-original debug-cheats action pauses gameplay and opens a stack editor
   for adding, removing, or clearing collected bonus items during testing.
-- `KrakoutApp` hides the system cursor on menu, episode, name-entry, high-score,
-  options, and credits screens and draws the original `Cursor` asset as a shared
-  overlay with the `Welogo` 30-frame animation inset; gameplay now keeps the
+- `KrakoutApp` hides the system cursor on menu, episode, high-score, options,
+  and credits screens and draws the original `Cursor` asset as a shared
+  overlay with the `Welogo` 30-frame animation inset. Name-entry keeps all mouse
+  cursors hidden for the keyboard-only prompt; gameplay now keeps the
   system cursor confined to the original 640x480 viewport by default, releases
   it on `Ctrl+U`, and keeps the original hourglass cursor overlay visible while
   paused.
@@ -181,9 +182,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   episode selection, executable-backed game rules, high score, options,
   executable-backed credits, and exit.
 - Qualifying game-over scores now enter the original-backed name-entry slice:
-  `BgGetName` background art, the original two-layer 48px background scroll,
-  400ms blinking name cursor, Enter/Backspace prompt strings at the recovered
-  y positions, keyboard-only confirmation/editing, `theme3` music context,
+  `BgGetName` background art, the original two-layer 48px background scroll
+  with the first layer vertical and the second diagonal, 400ms blinking name
+  cursor, Enter/Backspace prompt strings at the recovered y positions,
+  keyboard-only confirmation/editing, `theme3` music context,
   `Anonymous` fallback names, and submission into the persisted high-score
   table. IDA anchors are `sub_40B2F0` for `theme3.s3m`, `sub_40B480`/
   `sub_40B4F0` for `BgGetName.tga`, `sub_40BF30` for the background offsets,

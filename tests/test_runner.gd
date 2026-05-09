@@ -3804,12 +3804,20 @@ func _validate_menu_and_game_scenes() -> void:
 		"name entry background maps original second BgGetName tile"
 	)
 	_assert(
-		NameEntryScreenScript.primary_background_target_rect(Vector2.ZERO, 0) == Rect2(Vector2(-48, 0), Vector2(48, 48)),
-		"name entry primary background starts one tile left like the original draw loop"
+		NameEntryScreenScript.primary_background_target_rect(Vector2.ZERO, 0) == Rect2(Vector2(0, -48), Vector2(48, 48)),
+		"name entry primary background starts one tile up like the original draw loop"
 	)
 	_assert(
 		NameEntryScreenScript.secondary_background_target_rect(Vector2.ZERO, 0) == Rect2(Vector2(-48, -48), Vector2(48, 48)),
 		"name entry secondary background starts diagonally offset like the original draw loop"
+	)
+	_assert(
+		NameEntryScreenScript.primary_background_target_rect(Vector2.ZERO, 1) == Rect2(Vector2(0, -47), Vector2(48, 48)),
+		"name entry primary background scrolls vertically by the original one-pixel step"
+	)
+	_assert(
+		NameEntryScreenScript.secondary_background_target_rect(Vector2.ZERO, 3) == Rect2(Vector2(-45, -45), Vector2(48, 48)),
+		"name entry secondary background scrolls diagonally by the original three-pixel step"
 	)
 	name_entry_screen.call("reset_original_state")
 	var background_offsets: Dictionary = name_entry_screen.call("background_offsets")
@@ -4812,7 +4820,7 @@ func _validate_menu_and_game_scenes() -> void:
 					await process_frame
 					var app_name_entry := app.find_child("NameEntryScreen", true, false)
 					_assert(app_name_entry != null, "app routes qualifying game-over score to name entry")
-					_assert_app_original_cursor(app, "app restores the original cursor overlay for name entry")
+					_assert_app_no_mouse_cursor(app, "app hides every mouse cursor for name entry")
 					if _audio != null and _audio.has_method("current_music_context"):
 						_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_NAME_ENTRY, "name entry uses name-entry music context")
 						_assert(String(_audio.call("current_music_name")) == "theme3", "name entry uses original theme3 music")
@@ -4903,7 +4911,7 @@ func _validate_menu_and_game_scenes() -> void:
 				await process_frame
 				var exit_name_entry := app.find_child("NameEntryScreen", true, false)
 				_assert(exit_name_entry != null, "mouse-confirmed leave-board game-over summary routes to name entry")
-				_assert_app_original_cursor(app, "leave-board route restores the original cursor overlay for name entry")
+				_assert_app_no_mouse_cursor(app, "leave-board route hides every mouse cursor for name entry")
 				if _audio != null and _audio.has_method("current_music_context"):
 					_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_NAME_ENTRY, "confirmed leave-board score uses name-entry music context")
 				if exit_name_entry != null:
@@ -5125,6 +5133,8 @@ func _assert_app_original_cursor(app: Node, message: String) -> void:
 	_assert(cursor_overlay.call("cursor_texture_size") == Vector2i(68, 58), "%s uses extracted Cursor texture" % message)
 	_assert(cursor_overlay.call("logo_texture_size") == Vector2i(200, 240), "%s uses extracted Welogo animation sheet" % message)
 	_assert(bool(app.call("is_system_cursor_hidden_for_menu")), "%s hides the system cursor" % message)
+	if DisplayServer.get_name() != "headless":
+		_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_HIDDEN, "%s applies hidden OS cursor mode" % message)
 
 
 func _assert_app_original_cursor_animation(app: Node, message: String) -> void:
@@ -5143,6 +5153,17 @@ func _assert_app_original_cursor_inactive(app: Node, message: String) -> void:
 	if cursor_overlay == null:
 		return
 	_assert(not bool(cursor_overlay.call("is_cursor_active")), "%s is inactive" % message)
+
+
+func _assert_app_no_mouse_cursor(app: Node, message: String) -> void:
+	var cursor_overlay := app.find_child("KrakoutCursorOverlay", true, false)
+	_assert(cursor_overlay != null, "%s overlay exists" % message)
+	if cursor_overlay == null:
+		return
+	_assert(not bool(cursor_overlay.call("is_cursor_active")), "%s disables the original cursor overlay" % message)
+	_assert(bool(app.call("is_system_cursor_hidden_for_menu")), "%s hides the system cursor" % message)
+	if DisplayServer.get_name() != "headless":
+		_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_HIDDEN, "%s applies hidden OS cursor mode" % message)
 
 
 func _payload_events(payloads: Array) -> Array[String]:

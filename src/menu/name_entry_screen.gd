@@ -12,6 +12,8 @@ const BACKGROUND_TILE_SIZE := Vector2(48, 48)
 const BACKGROUND_SCROLL_STEP_SECONDS := 0.03
 const BACKGROUND_PRIMARY_STEP := 1
 const BACKGROUND_SECONDARY_STEP := 3
+const BACKGROUND_REPEAT_WIDTH := 720
+const BACKGROUND_REPEAT_HEIGHT := 528
 const NAME_CURSOR_BLINK_SECONDS := 0.4
 const PROMPT_TEXT := "Enter your name, please:"
 const BACKSPACE_HINT_TEXT := "Use 'Backspace' key for edit."
@@ -58,15 +60,25 @@ func _draw() -> void:
 	if _background_texture == null:
 		return
 
-	var viewport_size := Vector2(PlayfieldSpecScript.VIEWPORT_SIZE)
-	for y in range(0, int(viewport_size.y) + int(BACKGROUND_TILE_SIZE.y) * 2, int(BACKGROUND_TILE_SIZE.y)):
-		for x in range(0, int(viewport_size.x) + int(BACKGROUND_TILE_SIZE.x) * 2, int(BACKGROUND_TILE_SIZE.x)):
-			var tile_origin := Vector2(x, y)
+	_draw_primary_background_layer()
+	_draw_secondary_background_layer()
+
+
+func _draw_primary_background_layer() -> void:
+	for tile_x in range(0, BACKGROUND_REPEAT_WIDTH, int(BACKGROUND_TILE_SIZE.x)):
+		for tile_y in range(0, BACKGROUND_REPEAT_HEIGHT, int(BACKGROUND_TILE_SIZE.y)):
+			var tile_origin := Vector2(tile_x, tile_y)
 			draw_texture_rect_region(
 				_background_texture,
 				primary_background_target_rect(tile_origin, _background_primary_offset),
 				primary_background_source_rect()
 			)
+
+
+func _draw_secondary_background_layer() -> void:
+	for tile_x in range(0, BACKGROUND_REPEAT_WIDTH, int(BACKGROUND_TILE_SIZE.x)):
+		for tile_y in range(0, BACKGROUND_REPEAT_HEIGHT, int(BACKGROUND_TILE_SIZE.y)):
+			var tile_origin := Vector2(tile_x, tile_y)
 			draw_texture_rect_region(
 				_background_texture,
 				secondary_background_target_rect(tile_origin, _background_secondary_offset),
@@ -195,7 +207,7 @@ static func secondary_background_source_rect() -> Rect2:
 
 
 static func primary_background_target_rect(tile_origin: Vector2, offset: int) -> Rect2:
-	return Rect2(tile_origin + Vector2(float(offset - int(BACKGROUND_TILE_SIZE.x)), 0), BACKGROUND_TILE_SIZE)
+	return Rect2(tile_origin + Vector2(0, float(offset - int(BACKGROUND_TILE_SIZE.y))), BACKGROUND_TILE_SIZE)
 
 
 static func secondary_background_target_rect(tile_origin: Vector2, offset: int) -> Rect2:
