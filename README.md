@@ -78,14 +78,17 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   The current IDA anchors are `sub_4194C0` for texture loading, `sub_419650`
   for drawing, `sub_419600` for reset, `sub_419B00`/`sub_41A9A0`/
   `sub_41B140`/`sub_41B2E0` for updates, and `sub_41B390` for ball/projectile
-  truncation. The runtime audit found `sub_419600` clearing the 100-slot buffer
-  from `+0x0A74`, and `sub_419B00` only entering the Snake update block when
-  that guard is already `1`; a direct `+0x0A70..+0x0A8C` write audit found
-  reset/step/terminal rewrites but no production initializer for the guard.
+  truncation. The runtime audit found `sub_419600` clearing `0x190` dwords
+  from `+0x0A74` for the 100-slot buffer, and `sub_40DAF0` calling
+  `sub_419B00` from the main gameplay update path. `sub_419B00` only enters the
+  Snake update block when that guard is already `1`, then advances existing
+  slots behind the original 50ms `timeGetTime` gate; a direct
+  `+0x0A70..+0x0A8C` write audit found reset/read/step/draw/truncation sites
+  but no production initializer for the guard.
   Offset hits in `sub_415A70`/`sub_415C00` are DirectInput state-buffer traffic,
-  not Snake activation. Normal gameplay spawning therefore remains disabled,
-  and the current preview is exposed only through tests and the non-original
-  debug-cheats button.
+  not Snake activation. Normal gameplay spawning is therefore evidence-gated and
+  remains disabled; the current preview is exposed only through tests and the
+  non-original debug-cheats button.
 - `KrakoutImpactEffectRenderer` draws enemy spawn, timeout, hit, chain,
   brick-clear, bonus-clear, and hard-brick board-impact effects from the
   original `Exploision` vertical-frame columns, with the original 11-frame/50ms

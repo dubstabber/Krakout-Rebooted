@@ -243,7 +243,10 @@ const SNAKE_TERMINAL_DOWN := 17
 const SNAKE_TERMINAL_LEFT := 18
 const SNAKE_TERMINAL_RIGHT := 19
 const SNAKE_RUNTIME_ACTIVATION_PROVEN := false
-const SNAKE_IDA_EVIDENCE := "IDA anchors: sub_4194C0 load, sub_419650 draw, sub_419600 clears 100 16-byte slots from +0x0A74, sub_419B00 gates updates on +0x0A74 == 1 before calling sub_41A9A0/sub_41B140/sub_41B2E0, and sub_41B390 truncates from ball/projectile callers; the +0x0A70..+0x0A8C write audit found no production initializer for +0x0A74."
+const SNAKE_ACTIVATION_POLICY := "evidence_gated"
+const SNAKE_SLOT_OFFSET := "0x0A74"
+const SNAKE_DIRECT_WRITE_AUDIT_RANGE := "+0x0A70..+0x0A8C"
+const SNAKE_IDA_EVIDENCE := "IDA anchors: sub_4194C0 load, sub_419650 draw, sub_419600 clears 100 16-byte slots from +0x0A74, sub_40DAF0 calls sub_419B00 from the runtime loop, sub_419B00 gates updates on +0x0A74 == 1 before calling sub_41A9A0/sub_41B140/sub_41B2E0, and sub_41B390 truncates from ball/projectile callers; the +0x0A70..+0x0A8C write audit found reset/read/step/draw/truncation sites but no production initializer for +0x0A74."
 const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
 const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
@@ -810,18 +813,20 @@ func debug_clear_bonus_stack() -> int:
 static func snake_runtime_activation_evidence() -> Dictionary:
 	return {
 		"proven": SNAKE_RUNTIME_ACTIVATION_PROVEN,
-		"activation_flag_offset": "0x0A74",
+		"policy": SNAKE_ACTIVATION_POLICY,
+		"activation_flag_offset": SNAKE_SLOT_OFFSET,
 		"slot_count": MAX_SNAKE_SEGMENTS,
 		"slot_bytes": 16,
 		"load": "sub_4194C0 loads Snake.tga/Snake_a.bmp.",
-		"draw": "sub_419650 draws already-active Snake slots.",
-		"reset": "sub_419600 clears 100 16-byte Snake slots from +0x0A74.",
-		"update": "sub_419B00 reads +0x0A74 and only steps existing active slots through sub_41A9A0/sub_41B140/sub_41B2E0.",
+		"draw": "sub_419650 draws contiguous already-active Snake slots from the 20-kind 10x10 Snake atlas.",
+		"reset": "sub_419600 clears 0x190 dwords from +0x0A74, matching 100 16-byte Snake slots.",
+		"runtime_loop": "sub_40DAF0 calls sub_419B00 from the main gameplay update path.",
+		"update": "sub_419B00 reads +0x0A74 and only steps existing active slots through sub_41A9A0/sub_41B140/sub_41B2E0 after a 50 ms timeGetTime gate.",
 		"update_guard": "sub_419B00 gates the Snake update block on dword +0x0A74 == 1 before calling the movement and terminal-rewrite helpers.",
 		"collision": "sub_41B390 truncates existing slots from ball and projectile callers.",
-		"write_scan": "The direct write scan over +0x0A70..+0x0A8C found reset clears, step rewrites, terminal-kind rewrites, and no production writer of +0x0A74 := 1.",
+		"write_scan": "The direct write scan over %s found reset clears, reads, step rewrites, terminal-kind rewrites, truncation clears, and no production writer of +0x0A74 := 1." % SNAKE_DIRECT_WRITE_AUDIT_RANGE,
 		"input_state_overlap": "Offset hits in sub_415A70/sub_415C00 belong to DirectInput current/previous state buffers and are not Snake activation writes.",
-		"activation": "No production write that sets the +0x0A74 Snake activation guard or first active slot was found.",
+		"activation": "No production write that sets the +0x0A74 Snake activation guard or first active slot was found; normal gameplay spawning stays disabled.",
 	}
 
 
