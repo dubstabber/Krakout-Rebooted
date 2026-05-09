@@ -2576,6 +2576,7 @@ func _validate_game_hud_presentation() -> void:
 	_assert(values["level"] == 1, "game hud defaults display level to one")
 	_assert(values["best_score"] == 0, "game hud defaults high score to zero")
 	_assert(not bool(hud.ready_prompt_layout().get("visible", false)), "game hud hides ready prompt without a session")
+	_assert(not bool(hud.exit_confirmation_layout().get("visible", false)), "game hud hides leave-board confirmation by default")
 
 	var ready_prompt_session = GameSessionScript.new()
 	ready_prompt_session.display_level_number = 7
@@ -2603,11 +2604,37 @@ func _validate_game_hud_presentation() -> void:
 	ready_prompt_session.start_level_ready_sequence(false)
 	ready_prompt_session.launch_ready_ball()
 	_assert(not bool(hud.ready_prompt_layout().get("visible", false)), "game hud hides ready prompt after launch")
+
+	hud.set_exit_confirmation_visible(true)
+	var exit_confirmation_layout: Dictionary = hud.exit_confirmation_layout()
+	_assert(bool(exit_confirmation_layout["visible"]), "game hud exposes leave-board confirmation for bitmap drawing")
+	_assert(exit_confirmation_layout["title_text"] == "Are You sure to leave", "game hud keeps original leave-board first line")
+	_assert(exit_confirmation_layout["summary_text"] == "this board (Y / N)", "game hud keeps original leave-board second line")
+	_assert(exit_confirmation_layout["title_position"] == Vector2(320, 215), "game hud places leave-board first line at original y")
+	_assert(exit_confirmation_layout["summary_position"] == Vector2(320, 240), "game hud places leave-board second line at original y")
+	hud.set_exit_confirmation_visible(false)
+	_assert(not bool(hud.exit_confirmation_layout().get("visible", false)), "game hud hides leave-board confirmation when cleared")
+
+	var game_over_session = GameSessionScript.new()
+	game_over_session.state = GameSessionScript.STATE_GAME_OVER
+	game_over_session.display_level_number = 3
+	game_over_session.score = 45
+	hud.set_session(game_over_session)
+	var game_over_layout: Dictionary = hud.game_over_layout()
+	_assert(bool(game_over_layout["visible"]), "game hud exposes game-over summary for bitmap drawing")
+	_assert(game_over_layout["title_text"] == "Game Over!", "game hud keeps original game-over title")
+	_assert(game_over_layout["summary_text"] == "Your Level #3, and Score 45", "game hud formats original game-over summary")
+	_assert(game_over_layout["hint_text"] == "(Press Mouse Button to enter Menu)", "game hud keeps original game-over hint")
+	_assert(game_over_layout["title_position"] == Vector2(320, 215), "game hud places game-over title at original y")
+	_assert(game_over_layout["summary_position"] == Vector2(320, 240), "game hud places game-over summary at original y")
+	_assert(game_over_layout["hint_position"] == Vector2(320, 428), "game hud places game-over hint at original y")
 	hud.set_session(null)
 
 	root.add_child(hud)
 	await process_frame
 	hud.refresh()
+	_assert(hud.find_child("GameOverTitle", true, false) == null, "game hud no longer creates native game-over title labels")
+	_assert(hud.find_child("GameOverSummary", true, false) == null, "game hud no longer creates native game-over summary labels")
 	var bitmap_status: Dictionary = hud.bitmap_text_status()
 	_assert(bitmap_status["statistic_texture"], "game hud loads original Statistic header strip in tree")
 	_assert(bitmap_status["digit_texture"], "game hud loads original Digits sheet in tree")
@@ -3682,10 +3709,12 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("_input", _action_event(GameScreenScript.ACTION_TERMINATE_GAME))
 			await process_frame
 			_assert(game.call("is_exit_confirmation_visible"), "Escape opens leave-board confirmation while paused")
-			var confirmation_prompt := game.find_child("ExitConfirmationPrompt", true, false) as Label
-			_assert(confirmation_prompt != null and confirmation_prompt.visible, "game screen shows leave-board prompt")
-			if confirmation_prompt != null:
-				_assert(confirmation_prompt.text == "Are You sure to leave\nthis board (Y / N)", "leave-board prompt uses original text")
+			_assert(game.find_child("ExitConfirmationPrompt", true, false) == null, "game screen no longer creates a native leave-board prompt label")
+			if hud != null:
+				var confirmation_layout: Dictionary = hud.call("exit_confirmation_layout")
+				_assert(bool(confirmation_layout["visible"]), "game screen shows leave-board prompt through the bitmap hud")
+				_assert(confirmation_layout["title_text"] == "Are You sure to leave", "leave-board prompt uses original first line")
+				_assert(confirmation_layout["summary_text"] == "this board (Y / N)", "leave-board prompt uses original second line")
 			game.call("_input", _action_event(GameScreenScript.ACTION_PAUSE))
 			await process_frame
 			_assert(game.call("is_game_paused"), "pause toggle is ignored while leave-board confirmation is visible")
@@ -3730,10 +3759,9 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(gameplay.state == GameSessionScript.STATE_GAME_OVER, "confirmed leave-board route enters game-over summary state")
 			if hud != null:
 				hud.call("refresh")
-				var exit_game_over_title := hud.find_child("GameOverTitle", true, false) as Label
-				var exit_game_over_summary := hud.find_child("GameOverSummary", true, false) as Label
-				_assert(exit_game_over_title != null and exit_game_over_title.visible, "confirmed leave-board route shows game-over title before name entry")
-				_assert(exit_game_over_summary != null and exit_game_over_summary.text == "Your Level #%d, and Score %d" % [int(gameplay.display_level_number), int(gameplay.score)], "confirmed leave-board route shows game-over summary before name entry")
+				var exit_game_over_layout: Dictionary = hud.call("game_over_layout")
+				_assert(bool(exit_game_over_layout["visible"]), "confirmed leave-board route shows game-over title before name entry")
+				_assert(exit_game_over_layout["summary_text"] == "Your Level #%d, and Score %d" % [int(gameplay.display_level_number), int(gameplay.score)], "confirmed leave-board route shows game-over summary before name entry")
 			game.call("_input", _action_event(GameScreenScript.ACTION_LAUNCH_BALL))
 			await process_frame
 			_assert(direct_exit_signal_state["confirmed"], "mouse confirms leave-board game-over summary into score confirmation")
@@ -3771,10 +3799,9 @@ func _validate_menu_and_game_scenes() -> void:
 				gameplay.score = 45
 				gameplay.display_level_number = 3
 				hud.call("refresh")
-				var game_over_title := hud.find_child("GameOverTitle", true, false) as Label
-				var game_over_summary := hud.find_child("GameOverSummary", true, false) as Label
-				_assert(game_over_title != null and game_over_title.visible, "game hud shows game over title")
-				_assert(game_over_summary != null and game_over_summary.text == "Your Level #3, and Score 45", "game hud shows game over run summary")
+				var direct_game_over_layout: Dictionary = hud.call("game_over_layout")
+				_assert(bool(direct_game_over_layout["visible"]), "game hud shows game over title")
+				_assert(direct_game_over_layout["summary_text"] == "Your Level #3, and Score 45", "game hud shows game over run summary")
 	game.queue_free()
 	await process_frame
 	_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "leaving the game map restores the system cursor")
@@ -3973,8 +4000,8 @@ func _validate_menu_and_game_scenes() -> void:
 				_assert(app.find_child("GameScreen", true, false) != null, "confirmed leave-board route stays on game-over summary before name entry")
 				var exit_game_hud = exit_game.call("current_hud")
 				if exit_game_hud != null:
-					var exit_game_over_title := exit_game_hud.find_child("GameOverTitle", true, false) as Label
-					_assert(exit_game_over_title != null and exit_game_over_title.visible, "app confirmed leave-board route shows game-over summary before name entry")
+					var exit_game_over_layout: Dictionary = exit_game_hud.call("game_over_layout")
+					_assert(bool(exit_game_over_layout["visible"]), "app confirmed leave-board route shows game-over summary before name entry")
 				exit_game.call("_input", _action_event(GameScreenScript.ACTION_LAUNCH_BALL))
 				await process_frame
 				var exit_name_entry := app.find_child("NameEntryScreen", true, false)

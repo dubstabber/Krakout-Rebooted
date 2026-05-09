@@ -121,9 +121,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   system cursor confined to the original 640x480 viewport by default, releases
   it on `Ctrl+U`, and keeps the original hourglass cursor overlay visible while
   paused.
-- Confirming the Escape leave-board prompt first shows the original Game Over
-  summary, then mouse confirmation reuses the qualifying-score name-entry and
-  persisted high-score table route.
+- The Escape leave-board prompt and Game Over summary render through the
+  original bitmap `Font` path at the IDA-backed y positions, then mouse
+  confirmation reuses the qualifying-score name-entry and persisted high-score
+  table route.
 - Right-side ball misses now wait for the original off-screen x=640 threshold
   instead of ending as soon as the ball passes the racket/back-wall line.
 - The project stretch settings render through the original 640x480 viewport and

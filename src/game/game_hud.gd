@@ -23,11 +23,16 @@ const READY_TEXT_POSITION := Vector2(320, 240)
 const READY_HINT_POSITION := Vector2(320, 428)
 const READY_TEXT := "Get Ready!"
 const READY_HINT_TEXT := "(Press Mouse Button when ready)"
+const OVERLAY_TITLE_POSITION := Vector2(320, 215)
+const OVERLAY_SUMMARY_POSITION := Vector2(320, 240)
+const OVERLAY_HINT_POSITION := Vector2(320, 428)
+const EXIT_CONFIRMATION_TITLE_TEXT := "Are You sure to leave"
+const EXIT_CONFIRMATION_SUMMARY_TEXT := "this board (Y / N)"
+const GAME_OVER_TITLE_TEXT := "Game Over!"
+const GAME_OVER_HINT_TEXT := "(Press Mouse Button to enter Menu)"
 
 var session
-var _game_over_title: Label
-var _game_over_summary: Label
-var _game_over_hint: Label
+var _exit_confirmation_visible := false
 var _score_value := 0
 var _lives_value := 0
 var _level_value := 1
@@ -52,11 +57,17 @@ func set_session(value) -> void:
 	refresh()
 
 
+func set_exit_confirmation_visible(is_visible: bool) -> void:
+	if _exit_confirmation_visible == is_visible:
+		return
+	_exit_confirmation_visible = is_visible
+	queue_redraw()
+
+
 func refresh() -> void:
 	_ensure_nodes()
 	if session == null:
 		_set_status_values(0, 0, 1, 0)
-		_set_game_over_visible(false)
 		return
 
 	_set_status_values(
@@ -65,14 +76,6 @@ func refresh() -> void:
 		int(session.display_level_number),
 		int(session.best_score)
 	)
-
-	var is_game_over := String(session.state) == GAME_OVER_STATE
-	_set_game_over_visible(is_game_over)
-	if is_game_over:
-		_game_over_summary.text = "Your Level #%d, and Score %d" % [
-			int(session.display_level_number),
-			int(session.score),
-		]
 
 
 func status_values() -> Dictionary:
@@ -152,6 +155,37 @@ func ready_prompt_layout() -> Dictionary:
 	}
 
 
+func exit_confirmation_layout() -> Dictionary:
+	if not _exit_confirmation_visible:
+		return {"visible": false}
+
+	return {
+		"visible": true,
+		"title_text": EXIT_CONFIRMATION_TITLE_TEXT,
+		"summary_text": EXIT_CONFIRMATION_SUMMARY_TEXT,
+		"title_position": OVERLAY_TITLE_POSITION,
+		"summary_position": OVERLAY_SUMMARY_POSITION,
+	}
+
+
+func game_over_layout() -> Dictionary:
+	if session == null or String(session.state) != GAME_OVER_STATE:
+		return {"visible": false}
+
+	return {
+		"visible": true,
+		"title_text": GAME_OVER_TITLE_TEXT,
+		"summary_text": "Your Level #%d, and Score %d" % [
+			int(session.display_level_number),
+			int(session.score),
+		],
+		"hint_text": GAME_OVER_HINT_TEXT,
+		"title_position": OVERLAY_TITLE_POSITION,
+		"summary_position": OVERLAY_SUMMARY_POSITION,
+		"hint_position": OVERLAY_HINT_POSITION,
+	}
+
+
 func digit_text_bounds(value: int, anchor: Vector2, alignment: HorizontalAlignment) -> Rect2:
 	return header_value_text_bounds(value, anchor, alignment)
 
@@ -187,30 +221,6 @@ func _ensure_nodes() -> void:
 	_load_hud_textures()
 	_ensure_bitmap_text()
 
-	if _game_over_title != null:
-		return
-
-	_game_over_title = _make_label("GameOverTitle", Vector2(0, 205), Vector2(640, 30), HORIZONTAL_ALIGNMENT_CENTER)
-	_game_over_title.text = "Game Over!"
-	_game_over_title.add_theme_font_size_override("font_size", 20)
-	_game_over_summary = _make_label("GameOverSummary", Vector2(0, 235), Vector2(640, 30), HORIZONTAL_ALIGNMENT_CENTER)
-	_game_over_hint = _make_label("GameOverHint", Vector2(0, 420), Vector2(640, 30), HORIZONTAL_ALIGNMENT_CENTER)
-	_game_over_hint.text = "(Press Mouse Button to enter Menu)"
-
-
-func _make_label(label_name: String, label_position: Vector2, label_size: Vector2, alignment: HorizontalAlignment) -> Label:
-	var label := Label.new()
-	label.name = label_name
-	label.position = label_position
-	label.size = label_size
-	label.horizontal_alignment = alignment
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.add_theme_color_override("font_color", Color.WHITE)
-	label.add_theme_font_size_override("font_size", 16)
-	add_child(label)
-	return label
-
 
 func _set_status_values(score_value: int, lives_value: int, level_value: int, best_score_value: int) -> void:
 	_score_value = score_value
@@ -220,15 +230,12 @@ func _set_status_values(score_value: int, lives_value: int, level_value: int, be
 	queue_redraw()
 
 
-func _set_game_over_visible(is_visible: bool) -> void:
-	_game_over_title.visible = is_visible
-	_game_over_summary.visible = is_visible
-	_game_over_hint.visible = is_visible
-
-
 func _draw() -> void:
 	_draw_status_hud()
+	if _draw_exit_confirmation():
+		return
 	_draw_ready_prompt()
+	_draw_game_over_prompt()
 
 
 func _draw_status_hud() -> void:
@@ -298,6 +305,34 @@ func _draw_ready_prompt() -> void:
 
 	_font_text.draw_text(self, String(layout["level_text"]), layout["level_position"], HORIZONTAL_ALIGNMENT_CENTER)
 	_font_text.draw_text(self, String(layout["ready_text"]), layout["ready_position"], HORIZONTAL_ALIGNMENT_CENTER)
+	_font_text.draw_text(self, String(layout["hint_text"]), layout["hint_position"], HORIZONTAL_ALIGNMENT_CENTER)
+
+
+func _draw_exit_confirmation() -> bool:
+	var layout := exit_confirmation_layout()
+	if not bool(layout.get("visible", false)):
+		return false
+
+	_ensure_font_text()
+	if _font_text == null:
+		return true
+
+	_font_text.draw_text(self, String(layout["title_text"]), layout["title_position"], HORIZONTAL_ALIGNMENT_CENTER)
+	_font_text.draw_text(self, String(layout["summary_text"]), layout["summary_position"], HORIZONTAL_ALIGNMENT_CENTER)
+	return true
+
+
+func _draw_game_over_prompt() -> void:
+	var layout := game_over_layout()
+	if not bool(layout.get("visible", false)):
+		return
+
+	_ensure_font_text()
+	if _font_text == null:
+		return
+
+	_font_text.draw_text(self, String(layout["title_text"]), layout["title_position"], HORIZONTAL_ALIGNMENT_CENTER)
+	_font_text.draw_text(self, String(layout["summary_text"]), layout["summary_position"], HORIZONTAL_ALIGNMENT_CENTER)
 	_font_text.draw_text(self, String(layout["hint_text"]), layout["hint_position"], HORIZONTAL_ALIGNMENT_CENTER)
 
 

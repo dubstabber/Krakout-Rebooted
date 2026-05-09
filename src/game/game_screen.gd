@@ -29,7 +29,6 @@ const ACTION_TERMINATE_GAME := "krakout_terminate_game"
 const ACTION_CYCLE_BACKGROUND := "krakout_cycle_background"
 const ACTION_RELEASE_CURSOR := "krakout_release_cursor"
 const ACTION_DEBUG_CHEATS := "debug_cheats"
-const EXIT_CONFIRMATION_TEXT := "Are You sure to leave\nthis board (Y / N)"
 
 
 class HourglassCursorOverlay:
@@ -113,7 +112,6 @@ var _background_type := 2
 var _paused := false
 var _exit_confirmation_visible := false
 var _hourglass_cursor: HourglassCursorOverlay
-var _exit_confirmation_label: Label
 var _fps_label: Label
 var debug_cheats_overlay
 var _fps_elapsed := 0.0
@@ -727,20 +725,6 @@ func _ensure_overlay_nodes() -> void:
 		_hourglass_cursor.name = "HourglassCursorOverlay"
 		add_child(_hourglass_cursor)
 
-	if _exit_confirmation_label == null:
-		_exit_confirmation_label = Label.new()
-		_exit_confirmation_label.name = "ExitConfirmationPrompt"
-		_exit_confirmation_label.position = Vector2(0, 198)
-		_exit_confirmation_label.size = Vector2(640, 84)
-		_exit_confirmation_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_exit_confirmation_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		_exit_confirmation_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_exit_confirmation_label.add_theme_color_override("font_color", Color.WHITE)
-		_exit_confirmation_label.add_theme_font_size_override("font_size", 22)
-		_exit_confirmation_label.text = EXIT_CONFIRMATION_TEXT
-		_exit_confirmation_label.visible = false
-		add_child(_exit_confirmation_label)
-
 	if _fps_label == null:
 		_fps_label = Label.new()
 		_fps_label.name = "FpsOverlay"
@@ -779,8 +763,9 @@ func _apply_pause_overlay() -> void:
 		if show_hourglass:
 			_hourglass_cursor.set_cursor_position(get_viewport().get_mouse_position())
 		_hourglass_cursor.set_hourglass_visible(show_hourglass)
-	if _exit_confirmation_label != null:
-		_exit_confirmation_label.visible = _exit_confirmation_visible
+	if hud_renderer != null and hud_renderer.has_method("set_exit_confirmation_visible"):
+		hud_renderer.call("set_exit_confirmation_visible", _exit_confirmation_visible)
+		hud_renderer.call("refresh")
 
 
 func _lock_cursor_to_game_map() -> void:
