@@ -648,6 +648,8 @@ func _load_presentation_settings() -> void:
 func _apply_presentation_settings() -> void:
 	if bonus_renderer != null and bonus_renderer.has_method("set_stack_visible"):
 		bonus_renderer.call("set_stack_visible", _bonus_stack_visible)
+	if gameplay_session != null and gameplay_session.has_method("set_ball_tracks_enabled"):
+		gameplay_session.call("set_ball_tracks_enabled", _ball_tracks_visible)
 	if ball_renderer != null and ball_renderer.has_method("set_tracks_visible"):
 		ball_renderer.call("set_tracks_visible", _ball_tracks_visible)
 	if playfield_renderer != null:

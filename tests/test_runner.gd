@@ -418,6 +418,8 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.board_state != null, "game session owns board state")
 	_assert(session.board_state.remaining_required_bricks == 143, "game session preserves required brick count")
 	_assert(session.active_ball_count() == 1, "game session shows a ready ball")
+	_assert(session.are_ball_tracks_enabled(), "game session defaults ball-track VFX to the original enabled state")
+	_assert(session.visible_ball_tracks().is_empty(), "game session starts without spawned ball tracks")
 	_assert(session.ball_rect(session.visible_balls()[0]).size == Vector2(18, 18), "game session defaults to original standard ball size")
 	_assert(
 		is_equal_approx(session.racket_rect().position.x - session.ball_rect(session.visible_balls()[0]).end.x, GameSessionScript.READY_BALL_GAP),
@@ -454,6 +456,61 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(session.visible_impact_effects().is_empty(), "game session starts without impact effects")
 	_assert(not session.is_racket_stunned(), "game session starts with active racket control")
 	_assert(session.pop_audio_events().is_empty(), "game session starts without queued SFX events")
+
+	var track_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	track_session.set_ball_track_rng_seed(1)
+	track_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	track_session.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS)
+	_assert(track_session.visible_ball_tracks().is_empty(), "ball tracks wait for the original strict 30 ms spawn gate")
+	track_session.update(0.001)
+	var tracks: Array[Dictionary] = track_session.visible_ball_tracks()
+	_assert(tracks.size() == 1, "ball tracks spawn after the original 30 ms gate")
+	if not tracks.is_empty():
+		var first_track: Dictionary = tracks[0]
+		_assert(int(first_track["frame"]) == 0, "new ball tracks start on frame zero")
+		_assert(int(first_track["type_id"]) == GameSessionScript.BALL_TYPE_STANDARD, "standard balls spawn standard track particles")
+		var first_track_position: Vector2 = first_track["position"]
+		_assert(
+			first_track_position.x >= 299.0 and first_track_position.x <= 308.0
+				and first_track_position.y >= 199.0 and first_track_position.y <= 208.0,
+			"ball track jitter stays in the original ball-centered footprint"
+		)
+	track_session.call("_advance_ball_track_slots", 0, GameSessionScript.BALL_TRACK_FRAME_SECONDS)
+	tracks = track_session.visible_ball_tracks()
+	_assert(not tracks.is_empty() and int(tracks[0]["frame"]) == 0, "ball tracks wait for the original strict 30 ms frame gate")
+	track_session.call("_advance_ball_track_slots", 0, 0.001)
+	tracks = track_session.visible_ball_tracks()
+	_assert(not tracks.is_empty() and int(tracks[0]["frame"]) == 1, "ball tracks advance one source frame after the frame gate")
+	track_session.call("_advance_ball_track_slots", 0, GameSessionScript.BALL_TRACK_FRAME_SECONDS * GameSessionScript.BALL_TRACK_FRAME_COUNT + 0.001)
+	_assert(track_session.visible_ball_tracks().is_empty(), "ball tracks expire after the original twelve-frame animation")
+
+	var capped_track_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	capped_track_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	for _track_index in range(GameSessionScript.BALL_TRACK_SLOT_COUNT + 5):
+		capped_track_session.call("_spawn_ball_track", 0, capped_track_session.balls[0])
+	_assert(capped_track_session.visible_ball_tracks().size() == GameSessionScript.BALL_TRACK_SLOT_COUNT, "ball tracks keep the original fifty-slot cap per ball")
+
+	var fireball_track_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	fireball_track_session.force_ball(Vector2(300, 200), Vector2.ZERO, GameSessionScript.BALL_SIZE, GameSessionScript.BALL_TYPE_FIREBALL)
+	fireball_track_session.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS + 0.001)
+	var fireball_tracks: Array[Dictionary] = fireball_track_session.visible_ball_tracks()
+	_assert(not fireball_tracks.is_empty() and int(fireball_tracks[0]["type_id"]) == GameSessionScript.BALL_TYPE_FIREBALL, "fireballs spawn fireball-colored track particles")
+
+	var non_stricked_track_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	non_stricked_track_session.force_ball(Vector2(300, 200), Vector2.ZERO, GameSessionScript.BALL_SIZE, GameSessionScript.BALL_TYPE_NON_STRICKED)
+	non_stricked_track_session.update(0.2)
+	_assert(non_stricked_track_session.visible_ball_tracks().is_empty(), "non-stricked balls do not generate visible tracks")
+
+	var disabled_track_session = _game_session_from_level(_make_level_from_rows([[1]]))
+	disabled_track_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	disabled_track_session.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS + 0.001)
+	_assert(not disabled_track_session.visible_ball_tracks().is_empty(), "ball-track toggle test starts with an active particle")
+	disabled_track_session.set_ball_tracks_enabled(false)
+	_assert(not disabled_track_session.are_ball_tracks_enabled(), "ball-track toggle disables session-side generation")
+	_assert(disabled_track_session.visible_ball_tracks().is_empty(), "disabling ball tracks clears existing particles")
+	disabled_track_session.set_ball_tracks_enabled(true)
+	disabled_track_session.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS + 0.001)
+	_assert(not disabled_track_session.visible_ball_tracks().is_empty(), "reenabling ball tracks resumes generation")
 
 	var level_ready_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	level_ready_session.start_level_ready_sequence()
@@ -1863,6 +1920,9 @@ func _validate_level_grid_renderer_defaults() -> void:
 	_assert(BallRendererScript.source_size_for_ball_type(GameSessionScript.BALL_TYPE_FIREBALL, GameSessionScript.BALL_SIZE) == BallRendererScript.FIREBALL_FRAME_SIZE.x, "fireballs use the native Fb footprint instead of the smaller default ball size")
 	_assert(BallRendererScript.visual_rect_for_ball_type(GameSessionScript.BALL_TYPE_FIREBALL, Rect2(Vector2(10, 20), Vector2(18, 18))) == Rect2(Vector2(7, 17), Vector2(24, 24)), "fireballs center the native Fb sprite over the gameplay ball")
 	_assert(BallRendererScript.FIREBALL_EFFECT_MODULATE == Color.WHITE, "fireballs preserve the extracted Fb sheet colors and alpha")
+	_assert(BallRendererScript.BALL_TRACKS_DRAW_OVER_BALLS, "ball tracks are composited over the ball sprite like the original")
+	_assert(BallRendererScript.ball_track_source_rect(GameSessionScript.BALL_TYPE_STANDARD, 0) == Rect2(Vector2(12, 0), Vector2(12, 12)), "standard ball tracks draw from the original Fb second column")
+	_assert(BallRendererScript.ball_track_source_rect(GameSessionScript.BALL_TYPE_FIREBALL, 11) == Rect2(Vector2(0, 132), Vector2(12, 12)), "fireball tracks draw from the original Fb first column and twelfth frame")
 	var hidden_ball_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	hidden_ball_session.start_level_ready_sequence(false)
 	ball_renderer.set_session(hidden_ball_session)
@@ -3290,6 +3350,7 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(game.find_child("LevelReadyRollerRenderer", true, false) != null, "game screen creates level-ready roller renderer")
 			_assert(game.call("is_bonus_stack_visible") == false, "game screen loads bonus-stack visibility setting")
 			_assert(game.call("are_ball_tracks_visible") == false, "game screen loads ball-track visibility setting")
+			_assert(not gameplay.are_ball_tracks_enabled(), "game screen applies loaded ball-track visibility to gameplay generation")
 			_assert(game.call("is_fps_visible"), "game screen loads FPS visibility setting")
 			_assert(game.call("current_background_type") == 7, "game screen loads full-range background type setting")
 			_assert(game.call("is_background_movable") == false, "game screen loads background movable setting")
@@ -3411,6 +3472,9 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_BALL_TRACKS))
 			await process_frame
 			_assert(game.call("are_ball_tracks_visible"), "game screen routes ball-track toggle")
+			_assert(gameplay.are_ball_tracks_enabled(), "ball-track action reenables gameplay track generation")
+			if game_ball_renderer != null:
+				_assert(game_ball_renderer.call("are_tracks_visible"), "ball-track action reenables renderer tracks")
 			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_FPS))
 			await process_frame
 			_assert(not game.call("is_fps_visible"), "game screen routes FPS toggle")

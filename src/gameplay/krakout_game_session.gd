@@ -59,6 +59,10 @@ const READY_BALL_GAP := 2.0
 const ORIGINAL_UPDATE_HZ := 50.0
 # sub_4012D0 gates Balls.tga frame changes on timeGetTime() + 100 ms.
 const BALL_FRAME_SECONDS := 0.1
+const BALL_TRACK_SLOT_COUNT := 50
+const BALL_TRACK_FRAME_COUNT := 12
+const BALL_TRACK_SPAWN_SECONDS := 0.03
+const BALL_TRACK_FRAME_SECONDS := 0.03
 const ORIGINAL_BALL_STEPS_PER_UPDATE := 3.0
 # sub_40DAF0 invokes the original enemy updater three times per gameplay step.
 const ORIGINAL_ENEMY_STEPS_PER_UPDATE := 3.0
@@ -348,6 +352,8 @@ const SFX_EVENT_GAME_OVER := "game_over"
 var board_state
 var state := STATE_READY
 var balls: Array[Dictionary] = []
+var ball_tracks_enabled := true
+var ball_tracks: Array = []
 var racket_y := RACKET_MIN_Y
 var racket_segment_count := RACKET_DEFAULT_SEGMENTS
 var ball_size := BALL_SIZE
@@ -376,6 +382,7 @@ var _ball_animation_rng = RandomScript.new(31415)
 var _bonus_animation_rng = RandomScript.new(31415)
 var _monster_rng = RandomScript.new(31415)
 var _collision_rng = RandomScript.new(31415)
+var _ball_track_rng = RandomScript.new(31415)
 var _bonus_drop_cooldown := BONUS_DROP_GATE_SECONDS
 var _bee_spawn_delay_remaining := BEE_SPAWN_DELAY_MAX_SECONDS
 var _racket_stun_time_remaining := 0.0
@@ -400,6 +407,7 @@ var _level_ready_roller_offset := 0.0
 var _level_ready_roller_frame := 0
 var _level_ready_roller_step_elapsed := 0.0
 var _level_ready_auto_launch_pending := false
+var _ball_track_spawn_elapsed: Array[float] = []
 var _audio_events: Array[String] = []
 
 
@@ -453,6 +461,7 @@ func reset_round() -> void:
 	state = STATE_READY
 	board_changed = false
 	balls.clear()
+	_clear_ball_tracks()
 	falling_bonuses.clear()
 	_clear_monster_state()
 	_clear_timed_bonus_state()
@@ -534,6 +543,7 @@ func update(delta: float) -> void:
 	board_changed = false
 	_update_displayed_score()
 	_update_ball_animation(delta)
+	_update_ball_tracks(delta)
 	_update_level_ready_sequence(delta)
 	_update_bonus_timers(delta)
 	_update_impact_effects(delta)
@@ -599,6 +609,28 @@ func visible_balls() -> Array[Dictionary]:
 	for ball: Dictionary in balls:
 		if bool(ball.get("active", false)):
 			visible.append(ball)
+	return visible
+
+
+func set_ball_tracks_enabled(is_enabled: bool) -> void:
+	ball_tracks_enabled = is_enabled
+	if not ball_tracks_enabled:
+		_clear_ball_tracks()
+
+
+func are_ball_tracks_enabled() -> bool:
+	return ball_tracks_enabled
+
+
+func visible_ball_tracks() -> Array[Dictionary]:
+	var visible: Array[Dictionary] = []
+	if not ball_tracks_enabled:
+		return visible
+
+	for slots in ball_tracks:
+		for track: Dictionary in slots:
+			if bool(track.get("active", false)):
+				visible.append(track.duplicate())
 	return visible
 
 
@@ -970,6 +1002,10 @@ func set_collision_rng_seed(seed_value: int) -> void:
 	_collision_rng.set_seed(seed_value)
 
 
+func set_ball_track_rng_seed(seed_value: int) -> void:
+	_ball_track_rng.set_seed(seed_value)
+
+
 func force_bonus_drop_ready() -> void:
 	_bonus_drop_cooldown = 0.0
 
@@ -1080,6 +1116,7 @@ func force_ball(position: Vector2, velocity: Vector2, size: float = BALL_SIZE, t
 		"speed_hit_count": 0,
 		"magnet_attached": false,
 	}]
+	_clear_ball_tracks()
 	state = STATE_PLAYING
 
 
@@ -1256,6 +1293,124 @@ func _update_ball_animation(delta: float) -> void:
 		ball["frame"] = frame
 		ball["frame_elapsed"] = frame_elapsed
 		balls[index] = ball
+
+
+func _update_ball_tracks(delta: float) -> void:
+	if not ball_tracks_enabled:
+		return
+
+	_ensure_ball_track_slots()
+	for index in range(balls.size()):
+		var ball := balls[index]
+		if not bool(ball.get("active", false)):
+			_clear_ball_track_slots(index)
+			continue
+
+		_advance_ball_track_slots(index, delta)
+		if _ball_type(ball) == BALL_TYPE_NON_STRICKED:
+			_clear_ball_track_slots(index)
+			continue
+
+		_ball_track_spawn_elapsed[index] = float(_ball_track_spawn_elapsed[index]) + delta
+		while float(_ball_track_spawn_elapsed[index]) > BALL_TRACK_SPAWN_SECONDS:
+			_ball_track_spawn_elapsed[index] = float(_ball_track_spawn_elapsed[index]) - BALL_TRACK_SPAWN_SECONDS
+			_spawn_ball_track(index, ball)
+
+
+func _ensure_ball_track_slots() -> void:
+	while ball_tracks.size() > balls.size():
+		ball_tracks.pop_back()
+	while _ball_track_spawn_elapsed.size() > balls.size():
+		_ball_track_spawn_elapsed.pop_back()
+	while ball_tracks.size() < balls.size():
+		ball_tracks.append(_new_ball_track_slots())
+	while _ball_track_spawn_elapsed.size() < balls.size():
+		_ball_track_spawn_elapsed.append(0.0)
+
+
+func _new_ball_track_slots() -> Array[Dictionary]:
+	var slots: Array[Dictionary] = []
+	for _slot_index in range(BALL_TRACK_SLOT_COUNT):
+		slots.append({
+			"active": false,
+			"position": Vector2.ZERO,
+			"frame": 0,
+			"frame_elapsed": 0.0,
+			"type_id": BALL_TYPE_STANDARD,
+		})
+	return slots
+
+
+func _clear_ball_tracks() -> void:
+	ball_tracks.clear()
+	_ball_track_spawn_elapsed.clear()
+
+
+func _clear_ball_track_slots(ball_index: int) -> void:
+	if ball_index < 0 or ball_index >= ball_tracks.size():
+		return
+	for track_index in range(ball_tracks[ball_index].size()):
+		var track: Dictionary = ball_tracks[ball_index][track_index]
+		track["active"] = false
+		track["frame_elapsed"] = 0.0
+		ball_tracks[ball_index][track_index] = track
+	if ball_index < _ball_track_spawn_elapsed.size():
+		_ball_track_spawn_elapsed[ball_index] = 0.0
+
+
+func _advance_ball_track_slots(ball_index: int, delta: float) -> void:
+	if ball_index < 0 or ball_index >= ball_tracks.size():
+		return
+	for track_index in range(ball_tracks[ball_index].size()):
+		var track: Dictionary = ball_tracks[ball_index][track_index]
+		if not bool(track.get("active", false)):
+			continue
+
+		var frame_elapsed := float(track.get("frame_elapsed", 0.0)) + delta
+		var frame := int(track.get("frame", 0))
+		while frame_elapsed > BALL_TRACK_FRAME_SECONDS and bool(track.get("active", false)):
+			frame += 1
+			frame_elapsed -= BALL_TRACK_FRAME_SECONDS
+			if frame >= BALL_TRACK_FRAME_COUNT:
+				track["active"] = false
+				frame_elapsed = 0.0
+		track["frame"] = frame
+		track["frame_elapsed"] = frame_elapsed
+		ball_tracks[ball_index][track_index] = track
+
+
+func _spawn_ball_track(ball_index: int, ball: Dictionary) -> bool:
+	if ball_index < 0:
+		return false
+	_ensure_ball_track_slots()
+	if ball_index >= ball_tracks.size():
+		return false
+
+	for track_index in range(ball_tracks[ball_index].size()):
+		var track: Dictionary = ball_tracks[ball_index][track_index]
+		if bool(track.get("active", false)):
+			continue
+
+		track["active"] = true
+		track["position"] = _ball_track_position(ball)
+		track["frame"] = 0
+		track["frame_elapsed"] = 0.0
+		track["type_id"] = _ball_type(ball)
+		ball_tracks[ball_index][track_index] = track
+		return true
+	return false
+
+
+func _ball_track_position(ball: Dictionary) -> Vector2:
+	var position: Vector2 = ball.get("position", Vector2.ZERO)
+	var ball_pixel_size: int = max(1, int(float(ball.get("size", ball_size))))
+	var half_size: int = max(1, int(float(ball_pixel_size) / 2.0))
+	var random_span: int = max(1, 2 * half_size - 8)
+	var center_x: int = int(position.x) + half_size
+	var center_y: int = int(position.y) + half_size
+	var track_x: int = center_x - _ball_track_rng.next_mod(random_span) + half_size - 10
+	var track_y: int = center_y - _ball_track_rng.next_mod(random_span) + half_size - 10
+	return Vector2(float(track_x), float(track_y))
 
 
 func _update_level_ready_sequence(delta: float) -> void:
@@ -2775,6 +2930,10 @@ func _pop_first_active_ball() -> Dictionary:
 		var ball := balls[index]
 		if bool(ball.get("active", false)):
 			balls.remove_at(index)
+			if index < ball_tracks.size():
+				ball_tracks.remove_at(index)
+			if index < _ball_track_spawn_elapsed.size():
+				_ball_track_spawn_elapsed.remove_at(index)
 			return ball.duplicate()
 	return {}
 
@@ -2829,6 +2988,7 @@ func _handle_round_lost() -> void:
 	if lives_remaining < 0:
 		state = STATE_GAME_OVER
 		balls.clear()
+		_clear_ball_tracks()
 		falling_bonuses.clear()
 		_clear_level_ready_sequence()
 		_clear_timed_bonus_state()

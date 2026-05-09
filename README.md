@@ -85,8 +85,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   tints non-stricked balls, and composes fireballs from a warm-tinted `Balls`
   base plus the extracted native 24px `Fb` overlay, with the session advancing
   the stored ball frame clock at the original 100ms cadence even while a ball is
-  attached to the racket or stationary, and the ready ball sits on the original
-  short 2px paddle gap.
+  attached to the racket or stationary. Ball tracks now use the original
+  50-slot-per-ball `Fb` trail pool, strict 30ms spawn/frame gates, twelve
+  12x12 frames, standard/fireball source columns, over-ball compositing, and no
+  visible non-stricked trails; the ready ball sits on the original short 2px
+  paddle gap.
 - `Back Wall (30 sec)` now uses a timed session effect, reflects missed balls
   at the original right-side wall boundary, syncs the wall visual through the
   playfield renderer, and reports its countdown through the original

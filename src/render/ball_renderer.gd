@@ -7,6 +7,11 @@ const BALL_TYPE_FIREBALL := 1
 const BALL_TYPE_NON_STRICKED := 2
 const FIREBALL_FRAME_COUNT := 6
 const FIREBALL_FRAME_SIZE := Vector2(24, 24)
+const BALL_TRACK_FRAME_COUNT := 12
+const BALL_TRACK_FRAME_SIZE := Vector2(12, 12)
+const BALL_TRACK_FIREBALL_SOURCE_X := 0.0
+const BALL_TRACK_STANDARD_SOURCE_X := 12.0
+const BALL_TRACKS_DRAW_OVER_BALLS := true
 const FIREBALL_BALL_MODULATE := Color(1.0, 0.68, 0.24, 1.0)
 const FIREBALL_EFFECT_MODULATE := Color.WHITE
 const NON_STRICKED_BALL_MODULATE := Color(0.45, 0.85, 1.0, 1.0)
@@ -59,9 +64,17 @@ func are_balls_visible_for_session() -> bool:
 
 
 func _draw() -> void:
-	if ball_texture == null or not are_balls_visible_for_session():
+	if session == null or not are_balls_visible_for_session():
 		return
 
+	_draw_ball_sprites()
+	if tracks_visible:
+		_draw_ball_tracks()
+
+
+func _draw_ball_sprites() -> void:
+	if ball_texture == null:
+		return
 	for ball: Dictionary in session.visible_balls():
 		var ball_size := float(ball.get("size", 18.0))
 		var type_id := int(ball.get("type_id", BALL_TYPE_STANDARD))
@@ -83,6 +96,23 @@ func _draw() -> void:
 			)
 
 
+func _draw_ball_tracks() -> void:
+	if fireball_texture == null or not session.has_method("visible_ball_tracks"):
+		return
+
+	for track: Dictionary in session.call("visible_ball_tracks"):
+		var position: Vector2 = track.get("position", Vector2.ZERO)
+		draw_texture_rect_region(
+			fireball_texture,
+			Rect2(position, BALL_TRACK_FRAME_SIZE),
+			ball_track_source_rect(
+				int(track.get("type_id", BALL_TYPE_STANDARD)),
+				int(track.get("frame", 0))
+			),
+			FIREBALL_EFFECT_MODULATE
+		)
+
+
 func source_rect_for_size(ball_size: float, frame: int = 0) -> Rect2:
 	var source_row := _source_row_for_size(ball_size)
 	var source_size := float(source_row["size"])
@@ -99,6 +129,14 @@ static func fireball_source_rect(frame: int = 0) -> Rect2:
 	return Rect2(
 		Vector2(0, float(posmod(frame, FIREBALL_FRAME_COUNT)) * FIREBALL_FRAME_SIZE.y),
 		FIREBALL_FRAME_SIZE
+	)
+
+
+static func ball_track_source_rect(type_id: int, frame: int = 0) -> Rect2:
+	var source_x := BALL_TRACK_FIREBALL_SOURCE_X if type_id == BALL_TYPE_FIREBALL else BALL_TRACK_STANDARD_SOURCE_X
+	return Rect2(
+		Vector2(source_x, float(posmod(frame, BALL_TRACK_FRAME_COUNT)) * BALL_TRACK_FRAME_SIZE.y),
+		BALL_TRACK_FRAME_SIZE
 	)
 
 
