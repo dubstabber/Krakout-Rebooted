@@ -149,8 +149,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   main-menu selection/activation use `eff02`/`eff01`, while episode-browser
   selection/activation use `eff04`/`eff03`. Options-screen control selection,
   page changes, toggles, and Back reuse the original front-end `eff02`/`eff01`
-  cue pair, with startup focus, unchanged selection, and slider adjustments
-  kept silent.
+  cue pair, and static info screens use the original animated `Backward` art
+  plus `eff01` for Back activation. Startup focus, unchanged selection, and
+  slider adjustments stay silent.
 - The options screen now keeps its Godot-native controls while layering the
   original `Vx` sheet as Music/SFX enabled-state VFX, using the IDA-backed
   10-frame 40x40 strip and static 30x30 marker beside the volume rows.

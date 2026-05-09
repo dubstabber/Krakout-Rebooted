@@ -5,12 +5,15 @@ signal back_requested
 
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 const MenuBitmapLabelScript := preload("res://src/menu/krakout_menu_bitmap_label.gd")
+const StaticMenuBackButtonScript := preload("res://src/menu/static_menu_back_button.gd")
+const AudioCueCatalogScript := preload("res://src/audio/krakout_audio_cue_catalog.gd")
+
+const BACK_BUTTON_POSITION := Vector2(270, 350)
 
 var _background: TextureRect
 var _title_label
 var _body_label
-var _back_button: Button
-var _back_button_label
+var _back_button
 
 
 func _ready() -> void:
@@ -18,11 +21,15 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(PlayfieldSpecScript.VIEWPORT_SIZE)
 	_build_scene()
 	refresh_content()
+	call_deferred("_focus_back_button")
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
-		back_requested.emit()
+		_activate_back()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("ui_accept"):
+		_activate_back()
 		get_viewport().set_input_as_handled()
 
 
@@ -72,24 +79,11 @@ func _build_scene() -> void:
 	)
 	add_child(_body_label)
 
-	_back_button = Button.new()
+	_back_button = StaticMenuBackButtonScript.new()
 	_back_button.name = "BackButton"
-	_back_button.text = ""
-	_back_button.position = Vector2(260, 405)
-	_back_button.size = Vector2(120, 34)
-	_back_button.focus_mode = Control.FOCUS_ALL
-	_back_button.pressed.connect(func() -> void: back_requested.emit())
+	_back_button.position = BACK_BUTTON_POSITION
+	_back_button.activated.connect(_activate_back)
 	add_child(_back_button)
-
-	_back_button_label = _create_bitmap_label(
-		"BackButtonLabel",
-		Vector2.ZERO,
-		_back_button.size,
-		HORIZONTAL_ALIGNMENT_CENTER,
-		VERTICAL_ALIGNMENT_CENTER
-	)
-	_back_button_label.text = "Back"
-	_back_button.add_child(_back_button_label)
 
 
 func _create_bitmap_label(
@@ -110,6 +104,23 @@ func _create_bitmap_label(
 	label.line_spacing = line_spacing
 	label.wrap_enabled = wrap_enabled
 	return label
+
+
+func _focus_back_button() -> void:
+	if _back_button != null and _back_button.has_method("grab_focus"):
+		_back_button.grab_focus()
+
+
+func _activate_back() -> void:
+	_play_frontend_activate_sfx()
+	back_requested.emit()
+
+
+func _play_frontend_activate_sfx() -> void:
+	var audio := get_node_or_null("/root/KrakoutAudio")
+	if audio == null or not audio.has_method("play_sfx_event"):
+		return
+	audio.call("play_sfx_event", AudioCueCatalogScript.SFX_EVENT_FRONTEND_ACTIVATE)
 
 
 func _load_asset_texture(texture_name: String) -> Texture2D:

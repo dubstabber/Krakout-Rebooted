@@ -28,6 +28,7 @@ const GameScreenScript := preload("res://src/game/game_screen.gd")
 const BitmapTextScript := preload("res://src/render/krakout_bitmap_text.gd")
 const MenuBitmapLabelScript := preload("res://src/menu/krakout_menu_bitmap_label.gd")
 const MenuAmbientEffectsScript := preload("res://src/menu/krakout_menu_ambient_effects.gd")
+const StaticMenuBackButtonScript := preload("res://src/menu/static_menu_back_button.gd")
 const OptionsVxEffectsScript := preload("res://src/menu/options_vx_effects.gd")
 const OptionsScreenScript := preload("res://src/menu/options_screen.gd")
 const MainMenuScreenScript := preload("res://src/menu/main_menu_screen.gd")
@@ -2560,6 +2561,14 @@ func _validate_options_vx_effects() -> void:
 		"options screen maps original backward final frame"
 	)
 	_assert(
+		StaticMenuBackButtonScript.source_rect_for_frame(0) == Rect2(Vector2(0, 0), Vector2(100, 100)),
+		"static menu back maps original backward first frame"
+	)
+	_assert(
+		StaticMenuBackButtonScript.source_rect_for_frame(19) == Rect2(Vector2(0, 1900), Vector2(100, 100)),
+		"static menu back maps original backward final frame"
+	)
+	_assert(
 		OptionsScreenScript.page_arrow_source_rect_for_frame(9) == Rect2(Vector2(405, 0), Vector2(45, 45)),
 		"options screen maps original page-arrow final frame"
 	)
@@ -2794,33 +2803,62 @@ func _validate_menu_and_game_scenes() -> void:
 	root.add_child(rules_screen)
 	await process_frame
 	_assert(rules_screen.has_signal("back_requested"), "rules screen exposes back signal")
-	_assert(rules_screen.find_child("BackButton", true, false) != null, "rules screen creates back button")
+	var rules_back_button = rules_screen.find_child("BackButton", true, false)
+	_assert(rules_back_button != null and rules_back_button.get_script() == StaticMenuBackButtonScript, "rules screen creates original Backward art button")
+	_assert(rules_screen.find_children("*", "Button", true, false).is_empty(), "rules screen no longer creates a native back button")
 	_assert(String(rules_screen.call("screen_title")) == "Game Rules", "rules screen exposes title")
 	var rules_title = rules_screen.find_child("TitleLabel", true, false)
 	var rules_body = rules_screen.find_child("BodyLabel", true, false)
-	var rules_back_caption = rules_screen.find_child("BackButtonLabel", true, false)
 	_assert(rules_title != null and rules_title.get_script() == MenuBitmapLabelScript, "rules screen renders title with original bitmap font")
 	_assert(rules_body != null and rules_body.get_script() == MenuBitmapLabelScript, "rules screen renders body copy with original bitmap font")
-	_assert(rules_back_caption != null and rules_back_caption.get_script() == MenuBitmapLabelScript, "rules screen renders back caption with original bitmap font")
+	if _audio != null and _audio.has_method("is_sfx_playing"):
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
+		_assert(not bool(_audio.call("is_sfx_playing", "eff01")), "rules screen startup stays silent for activation cue")
+		var rules_back_signal_state := {"requested": false}
+		rules_screen.back_requested.connect(func() -> void: rules_back_signal_state["requested"] = true)
+		if rules_back_button != null:
+			rules_back_button.call("activate")
+		_assert(bool(rules_back_signal_state["requested"]), "rules screen original Back button emits back request")
+		_assert(bool(_audio.call("is_sfx_playing", "eff01")), "rules screen original Back button plays front-end activation cue")
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
 	rules_screen.queue_free()
 
 	var credits_screen := CreditsScreenScene.instantiate()
 	root.add_child(credits_screen)
 	await process_frame
 	_assert(credits_screen.has_signal("back_requested"), "credits screen exposes back signal")
-	_assert(credits_screen.find_child("BackButton", true, false) != null, "credits screen creates back button")
+	var credits_back_button = credits_screen.find_child("BackButton", true, false)
+	_assert(credits_back_button != null and credits_back_button.get_script() == StaticMenuBackButtonScript, "credits screen creates original Backward art button")
+	_assert(credits_screen.find_children("*", "Button", true, false).is_empty(), "credits screen no longer creates a native back button")
 	_assert(String(credits_screen.call("screen_title")) == "Credits", "credits screen exposes title")
 	var credits_title = credits_screen.find_child("TitleLabel", true, false)
 	var credits_body = credits_screen.find_child("BodyLabel", true, false)
 	_assert(credits_title != null and credits_title.get_script() == MenuBitmapLabelScript, "credits screen renders title with original bitmap font")
 	_assert(credits_body != null and credits_body.get_script() == MenuBitmapLabelScript, "credits screen renders body copy with original bitmap font")
+	if _audio != null and _audio.has_method("is_sfx_playing"):
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
+		var credits_back_signal_state := {"requested": false}
+		credits_screen.back_requested.connect(func() -> void: credits_back_signal_state["requested"] = true)
+		var cancel_event := InputEventAction.new()
+		cancel_event.action = "ui_cancel"
+		cancel_event.pressed = true
+		credits_screen.call("_unhandled_input", cancel_event)
+		_assert(bool(credits_back_signal_state["requested"]), "credits screen Escape emits original Back request")
+		_assert(bool(_audio.call("is_sfx_playing", "eff01")), "credits screen Escape plays front-end activation cue")
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
 	credits_screen.queue_free()
 
 	var high_score_screen := HighScoreScreenScene.instantiate()
 	root.add_child(high_score_screen)
 	await process_frame
 	_assert(high_score_screen.has_signal("back_requested"), "high score screen exposes back signal")
-	_assert(high_score_screen.find_child("BackButton", true, false) != null, "high score screen creates back button")
+	var high_score_back_button = high_score_screen.find_child("BackButton", true, false)
+	_assert(high_score_back_button != null and high_score_back_button.get_script() == StaticMenuBackButtonScript, "high score screen creates original Backward art button")
+	_assert(high_score_screen.find_children("*", "Button", true, false).is_empty(), "high score screen no longer creates a native back button")
 	_assert(int(high_score_screen.call("best_score")) == 321, "high score screen reads persisted high score")
 	var high_score_entries: Array = high_score_screen.call("high_score_entries")
 	_assert(high_score_entries.size() == 1, "high score screen reads profile table entries")
