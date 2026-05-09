@@ -167,12 +167,15 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   complete, and game over. `Destroy One Ball` now maps to `eff24` and reuses
   the shared `Exploision` effect pool at the removed ball position. Hard-brick
   collisions now also expose the original `Exploision` force-break/non-clearing
-  VFX columns. The remaining gameplay SFX gaps are closed as audited silence:
+  VFX columns. The remaining semantic SFX gaps are closed as audited silence:
   initial ball launch, back-wall bounce, generic bonus apply, and generic
-  projectile hit stay named for gameplay flow but intentionally unmapped until
-  runtime evidence proves a distinct cue. Extracted `eff06`, `eff20`, and
-  `eff21` are preserved as DAT assets, but the unpacked executable does not
-  reference them from its sample-load strings, so they remain unwired.
+  projectile hit stay named for gameplay flow but intentionally unmapped. The
+  audit anchors are `sub_40DA00`/`sub_40E580`/`sub_4012D0` for ready and ball
+  motion, `sub_4110E0` for bonus activation, and
+  `sub_403630`/`sub_411B80`/`sub_4121C0` for projectile fire and hit routing.
+  Extracted `eff06`, `eff20`, and `eff21` are preserved as DAT assets, but the
+  unpacked executable does not reference them from its sample-load strings, so
+  they remain unwired.
 
 ## Validation
 

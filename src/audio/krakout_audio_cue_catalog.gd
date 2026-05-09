@@ -115,10 +115,10 @@ const SFX_STOP_EVENT_NAMES := {
 const INTENTIONALLY_SILENT_SFX_EVENTS := {
 	# Audited against executable sample-load/play sites: keep these semantic
 	# events named for gameplay flow, but do not bind a guessed DAT sound.
-	SFX_EVENT_BALL_LAUNCH: "Initial ready-ball launch has no distinct loaded sample beyond level-ready flow.",
-	SFX_EVENT_BACK_WALL_BOUNCE: "Back-wall audit only proved the shared eff05 handle, not a distinct bounce cue.",
-	SFX_EVENT_BONUS_APPLY: "Generic bonus apply is too broad; only proven branch-specific apply cues are mapped.",
-	SFX_EVENT_PROJECTILE_HIT: "Projectile-hit branches already emit proven brick or monster cues where applicable.",
+	SFX_EVENT_BALL_LAUNCH: "IDA sub_40DA00/sub_40E580 play eff05 for ready and round transitions; sub_4012D0 proves no distinct launch sample.",
+	SFX_EVENT_BACK_WALL_BOUNCE: "IDA sub_4012D0 only plays racket/loss samples around ball motion; back-wall reflection has no distinct sample.",
+	SFX_EVENT_BONUS_APPLY: "IDA sub_4110E0 only proves branch-specific add-ball, destroy-ball, and jump-level apply samples.",
+	SFX_EVENT_PROJECTILE_HIT: "IDA sub_403630 proves projectile-fire eff08; sub_411B80/sub_4121C0 route hits through brick or monster cues.",
 }
 const UNUSED_EXTRACTED_SFX_NAMES := [
 	"eff06",

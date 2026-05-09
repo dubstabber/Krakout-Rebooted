@@ -2211,12 +2211,23 @@ func _validate_audio_cue_catalog() -> void:
 		GameSessionScript.SFX_EVENT_BONUS_APPLY,
 		GameSessionScript.SFX_EVENT_PROJECTILE_HIT,
 	]
+	var expected_silent_reason_fragments := {
+		GameSessionScript.SFX_EVENT_BACK_WALL_BOUNCE: "sub_4012D0",
+		GameSessionScript.SFX_EVENT_BALL_LAUNCH: "sub_40DA00/sub_40E580",
+		GameSessionScript.SFX_EVENT_BONUS_APPLY: "sub_4110E0",
+		GameSessionScript.SFX_EVENT_PROJECTILE_HIT: "sub_403630",
+	}
 	_assert(AudioCueCatalogScript.intentionally_silent_sfx_events() == expected_silent_events, "audio cue catalog records the audited silent gameplay SFX events")
-	for event_name: String in expected_silent_events:
-		_assert(AudioCueCatalogScript.has_sfx_event(event_name), "audio cue catalog keeps silent event %s in the semantic event list" % event_name)
-		_assert(AudioCueCatalogScript.sfx_name_for_event(event_name) == "", "audio cue catalog leaves audited silent event %s unmapped" % event_name)
-		_assert(AudioCueCatalogScript.is_sfx_event_intentionally_silent(event_name), "audio cue catalog marks %s as intentionally silent" % event_name)
-		_assert(not AudioCueCatalogScript.silent_sfx_event_reason(event_name).is_empty(), "audio cue catalog explains why %s is silent" % event_name)
+	for silent_event_name: String in expected_silent_events:
+		_assert(AudioCueCatalogScript.has_sfx_event(silent_event_name), "audio cue catalog keeps silent event %s in the semantic event list" % silent_event_name)
+		_assert(AudioCueCatalogScript.sfx_name_for_event(silent_event_name) == "", "audio cue catalog leaves audited silent event %s unmapped" % silent_event_name)
+		_assert(AudioCueCatalogScript.is_sfx_event_intentionally_silent(silent_event_name), "audio cue catalog marks %s as intentionally silent" % silent_event_name)
+		var silent_reason := AudioCueCatalogScript.silent_sfx_event_reason(silent_event_name)
+		_assert(not silent_reason.is_empty(), "audio cue catalog explains why %s is silent" % silent_event_name)
+		_assert(
+			silent_reason.contains(String(expected_silent_reason_fragments[silent_event_name])),
+			"audio cue catalog records IDA evidence for silent event %s" % silent_event_name
+		)
 	_assert(not AudioCueCatalogScript.is_sfx_event_intentionally_silent(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "audio cue catalog does not mark proven mapped cues as silent")
 	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BEE_STOP) == "", "audio cue catalog does not play bee-stop as a new SFX")
 	_assert(AudioCueCatalogScript.sfx_stop_name_for_event(GameSessionScript.SFX_EVENT_BEE_STOP) == "EffBee", "audio cue catalog maps bee-stop to the active EffBee playback")
