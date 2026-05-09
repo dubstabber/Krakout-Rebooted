@@ -243,6 +243,8 @@ const SNAKE_TERMINAL_UP := 16
 const SNAKE_TERMINAL_DOWN := 17
 const SNAKE_TERMINAL_LEFT := 18
 const SNAKE_TERMINAL_RIGHT := 19
+const SNAKE_RUNTIME_ACTIVATION_PROVEN := false
+const SNAKE_IDA_EVIDENCE := "IDA anchors: sub_4194C0 load, sub_419650 draw, sub_419600 reset, sub_419B00/sub_41A9A0/sub_41B140/sub_41B2E0 update, sub_41B390 hit truncation; no production active-slot spawn write is proven."
 const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
 const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
@@ -779,6 +781,8 @@ func debug_spawn_snake_vfx_preview() -> Dictionary:
 	return {
 		"status": "spawned",
 		"count": count,
+		"source": "debug_only",
+		"runtime_activation_proven": SNAKE_RUNTIME_ACTIVATION_PROVEN,
 	}
 
 

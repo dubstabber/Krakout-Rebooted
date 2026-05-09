@@ -1605,11 +1605,20 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		snake_vfx_session.snake_rect({"position": Vector2(33, 44)}) == Rect2(Vector2(33, 44), GameSessionScript.SNAKE_SEGMENT_SIZE),
 		"Snake VFX collision rect uses the original 10x10 segment footprint"
 	)
+	_assert(not GameSessionScript.SNAKE_RUNTIME_ACTIVATION_PROVEN, "Snake VFX gameplay activation stays disabled until an original production spawn write is proven")
+	_assert(String(GameSessionScript.SNAKE_IDA_EVIDENCE).find("sub_41B390") != -1, "Snake VFX evidence contract names the original ball/projectile truncation helper")
+	var snake_dormant_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	snake_dormant_session._monster_spawn_cooldown = 999.0
+	snake_dormant_session._bee_spawn_delay_remaining = 999.0
+	snake_dormant_session.update(GameSessionScript.SNAKE_UPDATE_SECONDS * 4.0)
+	_assert(snake_dormant_session.visible_snake_segments().is_empty(), "normal gameplay update keeps Snake VFX dormant without proven original activation evidence")
 
 	var snake_preview_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	var snake_preview_result: Dictionary = snake_preview_session.debug_spawn_snake_vfx_preview()
 	_assert(snake_preview_result["status"] == "spawned", "debug Snake VFX preview reports a spawned state")
 	_assert(int(snake_preview_result["count"]) == 8, "debug Snake VFX preview creates a bounded source-backed segment chain")
+	_assert(str(snake_preview_result.get("source", "")) == "debug_only", "debug Snake VFX preview is marked as a non-production activation")
+	_assert(not bool(snake_preview_result.get("runtime_activation_proven", true)), "debug Snake VFX preview reports unresolved production activation evidence")
 	var snake_preview_segments: Array = snake_preview_session.visible_snake_segments()
 	if snake_preview_segments.size() == 8:
 		_assert(int(snake_preview_segments[0]["kind"]) == GameSessionScript.SNAKE_KIND_LEFT, "debug Snake VFX preview starts with left-moving body segments")
