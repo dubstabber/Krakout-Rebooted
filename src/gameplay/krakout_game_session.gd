@@ -234,8 +234,10 @@ const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
 const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
 const IMPACT_EFFECT_KIND_EXPLOSION := 2
-const IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK := 3
+const IMPACT_EFFECT_KIND_BRICK_CLEAR := 3
+const IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK := IMPACT_EFFECT_KIND_BRICK_CLEAR
 const IMPACT_EFFECT_KIND_HARD_BRICK_IMPACT := 4
+const IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR := 5
 const IMPACT_EFFECT_KIND_MONSTER_HIT := IMPACT_EFFECT_KIND_EXPLOSION
 const IMPACT_EFFECT_KIND_CHAIN_EXPLOSION := IMPACT_EFFECT_KIND_EXPLOSION
 const CHAIN_EXPLOSION_IMPACT_OFFSET := Vector2(-8, 1)
@@ -1591,6 +1593,8 @@ func _resolve_board_tile_hit(column: int, row: int, tile_id: int, force_break :=
 		did_change_board = bool(regular_hit_result.get("changed", false))
 		score_delta = int(regular_hit_result.get("score", 0))
 		audio_event = String(regular_hit_result.get("audio_event", ""))
+		for effect: Dictionary in regular_hit_result.get("impact_effects", []):
+			impact_effects_to_spawn.append(effect)
 
 	return {
 		"changed": did_change_board,
@@ -1624,30 +1628,45 @@ func _apply_board_hit_result(hit_result: Dictionary) -> void:
 func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictionary:
 	var bonus_result := _try_resolve_bonus_drop(column, row, tile_id)
 	var action := String(bonus_result.get("action", "clear"))
+	var brick_origin := PlayfieldSpecScript.brick_rect(column, row).position
 	if action == "chain":
 		return {
 			"changed": true,
 			"cleared_count": 0,
 			"score": NORMAL_BRICK_SCORE,
 			"audio_event": SFX_EVENT_BRICK_CLEAR,
+			"impact_effects": [{
+				"position": brick_origin,
+				"kind": IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR,
+			}],
 		}
 
 	var cleared_count := 0
 	if board_state.clear_tile(column, row):
 		cleared_count = 1
 
+	var impact_kind := IMPACT_EFFECT_KIND_BRICK_CLEAR
 	if action == "spawn":
 		if _spawn_falling_bonus(
 			int(bonus_result.get("type_id", 0)),
-			PlayfieldSpecScript.brick_rect(column, row).position
+			brick_origin
 		):
+			impact_kind = IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR
 			_queue_audio_event(SFX_EVENT_BONUS_SPAWN)
+
+	var impact_effects: Array[Dictionary] = []
+	if cleared_count > 0:
+		impact_effects.append({
+			"position": brick_origin,
+			"kind": impact_kind,
+		})
 
 	return {
 		"changed": cleared_count > 0,
 		"cleared_count": cleared_count,
 		"score": NORMAL_BRICK_SCORE if cleared_count > 0 else 0,
 		"audio_event": SFX_EVENT_BRICK_CLEAR if cleared_count > 0 else "",
+		"impact_effects": impact_effects,
 	}
 
 

@@ -718,7 +718,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(brick_session.board_state.tile_at(0, 0) == 0, "ball hit clears brick through board state")
 	_assert(brick_session.consume_board_changed(), "brick hit marks board for redraw")
 	_assert(brick_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "normal brick hit awards original score increment")
-	_assert(brick_session.visible_impact_effects().is_empty(), "normal brick clear does not spawn chain impact VFX")
+	var brick_clear_effects: Array = brick_session.visible_impact_effects()
+	_assert(brick_clear_effects.size() == 1, "normal brick clear spawns original clear VFX")
+	if brick_clear_effects.size() == 1:
+		_assert(int(brick_clear_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_BRICK_CLEAR, "normal brick clear uses original clear VFX column")
+		_assert(brick_clear_effects[0]["position"] == PlayfieldSpecScript.brick_rect(0, 0).position, "normal brick clear VFX starts at brick origin")
 	var brick_audio_events: Array[String] = brick_session.pop_audio_events()
 	_assert(brick_audio_events.has(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "brick clear queues IDA-backed SFX event")
 	_assert(brick_audio_events.has(GameSessionScript.SFX_EVENT_LEVEL_COMPLETE), "final brick clear queues level-complete SFX event")
@@ -933,6 +937,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	if spawned_bonuses.size() == 1:
 		_assert(int(spawned_bonuses[0]["type_id"]) == 0, "spawned bonus keeps selected original type")
 		_assert(spawned_bonuses[0]["position"] == PlayfieldSpecScript.GRID_ORIGIN, "spawned bonus starts at source brick position")
+	var bonus_spawn_effects: Array = bonus_spawn_session.visible_impact_effects()
+	_assert(bonus_spawn_effects.size() == 1, "bonus-spawning brick clear creates original bonus-clear VFX")
+	if bonus_spawn_effects.size() == 1:
+		_assert(int(bonus_spawn_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR, "bonus-spawning brick clear uses original bonus-clear VFX column")
+		_assert(bonus_spawn_effects[0]["position"] == PlayfieldSpecScript.brick_rect(0, 0).position, "bonus-spawning brick clear VFX starts at brick origin")
 	_assert(bonus_spawn_session.pop_audio_events().has(GameSessionScript.SFX_EVENT_BONUS_SPAWN), "bonus spawn queues semantic SFX event")
 
 	var moving_bonus_session = _game_session_from_level(_make_level_from_rows([[1]]))
@@ -1062,9 +1071,18 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(chain_selector_session.board_state.tile_at(0, 0) == 68, "random bonus selector can convert a hit brick into a chain tile")
 	_assert(chain_selector_session.board_state.pending_chain_explosion_count() == 1, "converted random chain tile is scheduled")
 	_assert(chain_selector_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "converted chain selector still scores the normal brick hit")
+	var chain_selector_effects: Array = chain_selector_session.visible_impact_effects()
+	_assert(chain_selector_effects.size() == 1, "converted random chain selector creates original bonus-clear VFX")
+	if chain_selector_effects.size() == 1:
+		_assert(int(chain_selector_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR, "converted random chain selector uses original bonus-clear VFX column")
 	chain_selector_session.update(0.031)
 	_assert(chain_selector_session.board_state.tile_at(0, 0) == 0, "converted chain tile clears after delay")
 	_assert(chain_selector_session.score == GameSessionScript.NORMAL_BRICK_SCORE + GameSessionScript.BRICK_SCORE, "converted chain explosion awards chain clear score")
+	var delayed_chain_selector_effects: Array = chain_selector_session.visible_impact_effects()
+	_assert(delayed_chain_selector_effects.size() == 2, "converted chain selector keeps clear VFX and adds delayed chain VFX")
+	if delayed_chain_selector_effects.size() == 2:
+		_assert(int(delayed_chain_selector_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR, "converted chain selector keeps the original clear VFX")
+		_assert(int(delayed_chain_selector_effects[1]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_CHAIN_EXPLOSION, "converted chain selector delayed clear adds chain explosion VFX")
 
 	var inactive_bonus_session = _game_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(inactive_bonus_session, GameSessionScript.BONUS_EXTRA_LIFE)
@@ -2123,8 +2141,10 @@ func _validate_level_grid_renderer_defaults() -> void:
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_TIMEOUT, 10) == Rect2(Vector2(32, 320), Vector2(32, 32)), "impact renderer maps original monster-timeout final frame")
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_HIT, 3) == Rect2(Vector2(64, 96), Vector2(32, 32)), "impact renderer advances original monster-hit vertical frames")
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_CHAIN_EXPLOSION, 3) == Rect2(Vector2(64, 96), Vector2(32, 32)), "impact renderer reuses the original explosion cell for chain board VFX")
-	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK, 2) == Rect2(Vector2(96, 64), Vector2(32, 32)), "impact renderer maps original hard-brick force-break effect column")
-	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_HARD_BRICK_IMPACT, 4) == Rect2(Vector2(128, 128), Vector2(32, 32)), "impact renderer maps original hard-brick impact effect column")
+	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_BRICK_CLEAR, 2) == Rect2(Vector2(96, 64), Vector2(20, 32)), "impact renderer maps original narrow brick-clear effect column")
+	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_HARD_BRICK_IMPACT, 4) == Rect2(Vector2(128, 128), Vector2(20, 32)), "impact renderer maps original narrow hard-brick impact effect column")
+	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR, 0) == Rect2(Vector2(160, 0), Vector2(20, 32)), "impact renderer maps original narrow bonus-clear effect column")
+	_assert(impact_renderer.target_rect_for_effect(Vector2(10, 20), GameSessionScript.IMPACT_EFFECT_KIND_BONUS_BRICK_CLEAR) == Rect2(Vector2(10, 20), Vector2(20, 32)), "impact renderer draws narrow effect columns at original width")
 	impact_renderer.free()
 
 

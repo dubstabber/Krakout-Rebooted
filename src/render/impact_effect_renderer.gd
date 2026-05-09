@@ -2,6 +2,9 @@ extends Node2D
 class_name KrakoutImpactEffectRenderer
 
 const CELL_SIZE := Vector2(32, 32)
+const NARROW_CELL_SIZE := Vector2(20, 32)
+const NARROW_EFFECT_MIN_KIND := 3
+const NARROW_EFFECT_MAX_KIND := 5
 
 var session
 var effect_texture: Texture2D
@@ -21,8 +24,18 @@ func set_session(value) -> void:
 func source_rect_for_effect(kind: int, frame: int = 0) -> Rect2:
 	return Rect2(
 		Vector2(maxi(0, kind) * CELL_SIZE.x, maxi(0, frame) * CELL_SIZE.y),
-		CELL_SIZE
+		size_for_effect(kind)
 	)
+
+
+func target_rect_for_effect(position: Vector2, kind: int) -> Rect2:
+	return Rect2(position, size_for_effect(kind))
+
+
+static func size_for_effect(kind: int) -> Vector2:
+	if kind >= NARROW_EFFECT_MIN_KIND and kind <= NARROW_EFFECT_MAX_KIND:
+		return NARROW_CELL_SIZE
+	return CELL_SIZE
 
 
 func _draw() -> void:
@@ -30,10 +43,11 @@ func _draw() -> void:
 		return
 
 	for effect: Dictionary in session.visible_impact_effects():
+		var kind := int(effect.get("kind", 0))
 		draw_texture_rect_region(
 			effect_texture,
-			Rect2(effect.get("position", Vector2.ZERO), CELL_SIZE),
-			source_rect_for_effect(int(effect.get("kind", 0)), int(effect.get("frame", 0)))
+			target_rect_for_effect(effect.get("position", Vector2.ZERO), kind),
+			source_rect_for_effect(kind, int(effect.get("frame", 0)))
 		)
 
 
