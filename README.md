@@ -121,9 +121,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   `InfoIcons` countdown runs until launch.
 - Gameplay controls now flow through Godot InputMap actions for launching,
   bonus use, pause, the Escape leave-board confirmation, FPS, bonus-stack
-  visibility, ball-track visibility, full original background-type cycling, and
-  a debug-cheats stack editor. Runtime presentation toggles persist through
-  `KrakoutProfile`.
+  visibility, ball-track visibility, full original background-type cycling,
+  moving-background toggling, music/SFX enable toggles, fullscreen toggling, and
+  a debug-cheats stack editor. Runtime presentation and audio toggles persist
+  through `KrakoutProfile`, and the original `+/-` and `Shift +/-` shortcuts
+  adjust music and SFX volume during gameplay.
 - The non-original debug-cheats action pauses gameplay and opens a stack editor
   for adding, removing, or clearing collected bonus items during testing.
 - `KrakoutApp` hides the system cursor on menu, episode, name-entry, high-score,

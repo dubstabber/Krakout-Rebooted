@@ -155,6 +155,18 @@ func is_fullscreen_enabled() -> bool:
 	return _fullscreen_enabled
 
 
+func set_fullscreen_enabled(is_enabled: bool) -> void:
+	var profile := _profile_service()
+	if profile != null and profile.has_method("set_fullscreen_enabled"):
+		profile.call("set_fullscreen_enabled", is_enabled)
+	apply_fullscreen_enabled(is_enabled)
+
+
+func toggle_fullscreen_enabled() -> bool:
+	set_fullscreen_enabled(not _fullscreen_enabled)
+	return _fullscreen_enabled
+
+
 func apply_fullscreen_enabled(is_enabled: bool) -> void:
 	_fullscreen_enabled = is_enabled
 	if DisplayServer.get_name() == "headless":

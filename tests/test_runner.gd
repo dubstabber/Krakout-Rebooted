@@ -2362,9 +2362,13 @@ func _validate_project_input_map() -> void:
 		GameScreenScript.ACTION_TOGGLE_BONUS_STACK,
 		GameScreenScript.ACTION_TOGGLE_BALL_TRACKS,
 		GameScreenScript.ACTION_TOGGLE_FPS,
+		GameScreenScript.ACTION_TOGGLE_MUSIC,
+		GameScreenScript.ACTION_TOGGLE_SFX,
 		GameScreenScript.ACTION_PAUSE,
 		GameScreenScript.ACTION_TERMINATE_GAME,
 		GameScreenScript.ACTION_CYCLE_BACKGROUND,
+		GameScreenScript.ACTION_TOGGLE_BACKGROUND_MOTION,
+		GameScreenScript.ACTION_TOGGLE_FULLSCREEN,
 		GameScreenScript.ACTION_RELEASE_CURSOR,
 		GameScreenScript.ACTION_DEBUG_CHEATS,
 	]
@@ -2377,9 +2381,13 @@ func _validate_project_input_map() -> void:
 	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_BONUS_STACK, KEY_TAB), "bonus-stack action binds Tab")
 	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_BALL_TRACKS, KEY_T, true), "ball-tracks action binds Ctrl+T")
 	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_FPS, KEY_F5), "FPS action binds F5")
+	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_MUSIC, KEY_F7), "music toggle action binds F7")
+	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_SFX, KEY_F8), "SFX toggle action binds F8")
 	_assert(_action_has_key(GameScreenScript.ACTION_PAUSE, KEY_P), "pause action binds P")
 	_assert(_action_has_key(GameScreenScript.ACTION_TERMINATE_GAME, KEY_ESCAPE), "terminate-game action binds Escape")
 	_assert(_action_has_key(GameScreenScript.ACTION_CYCLE_BACKGROUND, KEY_G), "background-cycle action binds G")
+	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_BACKGROUND_MOTION, KEY_G, false, true), "background motion action binds Shift+G")
+	_assert(_action_has_key(GameScreenScript.ACTION_TOGGLE_FULLSCREEN, KEY_ENTER, false, false, true), "fullscreen action binds Alt+Enter")
 	_assert(_action_has_key(GameScreenScript.ACTION_RELEASE_CURSOR, KEY_U, true), "release-cursor action binds Ctrl+U")
 	_assert(_action_has_key(GameScreenScript.ACTION_DEBUG_CHEATS, KEY_D), "debug-cheats action binds D")
 
@@ -3869,6 +3877,14 @@ func _validate_menu_and_game_scenes() -> void:
 		_profile.call("set_fps_visible", true)
 		_profile.call("set_background_movable", false)
 		_profile.call("set_background_type", 7)
+	if _profile != null and _profile.has_method("set_music_enabled"):
+		_profile.call("set_music_enabled", true)
+		_profile.call("set_sfx_enabled", true)
+		_profile.call("set_music_volume", 50)
+		_profile.call("set_sfx_volume", 60)
+		_profile.call("set_fullscreen_enabled", false)
+	if _audio != null and _audio.has_method("apply_profile_settings"):
+		_audio.call("apply_profile_settings")
 
 	var game := GameScreenScene.instantiate()
 	_assert(game.has_signal("game_over_confirmed"), "game screen exposes game-over confirmation signal")
@@ -3994,6 +4010,10 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(game.call("is_debug_cheats_visible"), "debug-cheats action opens the debug stack window")
 			_assert(game.call("is_game_paused"), "debug stack window pauses gameplay")
 			_assert(not bool(game.call("is_system_cursor_hidden")), "debug stack window shows the system cursor for UI controls")
+			game.call("set_music_volume", 70)
+			game.call("_input", _key_event(KEY_MINUS, 45))
+			await process_frame
+			_assert(int(game.call("music_volume")) == 70, "debug cheats modal focus blocks runtime volume shortcuts")
 			var debug_overlay := game.call("current_debug_cheats_overlay") as Control
 			_assert(debug_overlay != null and debug_overlay.visible, "game screen creates the debug cheats overlay")
 			if debug_overlay != null:
@@ -4054,6 +4074,48 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_FPS))
 			await process_frame
 			_assert(not game.call("is_fps_visible"), "game screen routes FPS toggle")
+			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_MUSIC))
+			await process_frame
+			_assert(not bool(game.call("is_music_enabled")), "game screen routes F7 music toggle")
+			if _profile != null and _profile.has_method("music_enabled"):
+				_assert(not bool(_profile.call("music_enabled")), "game screen persists F7 music toggle")
+			if _audio != null and _audio.has_method("music_enabled"):
+				_assert(not bool(_audio.call("music_enabled")), "game screen syncs F7 music toggle to audio")
+			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_MUSIC))
+			await process_frame
+			_assert(bool(game.call("is_music_enabled")), "game screen routes second F7 music toggle")
+			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_SFX))
+			await process_frame
+			_assert(not bool(game.call("is_sfx_enabled")), "game screen routes F8 SFX toggle")
+			if _profile != null and _profile.has_method("sfx_enabled"):
+				_assert(not bool(_profile.call("sfx_enabled")), "game screen persists F8 SFX toggle")
+			if _audio != null and _audio.has_method("sfx_enabled"):
+				_assert(not bool(_audio.call("sfx_enabled")), "game screen syncs F8 SFX toggle to audio")
+			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_SFX))
+			await process_frame
+			_assert(bool(game.call("is_sfx_enabled")), "game screen routes second F8 SFX toggle")
+			game.call("set_music_volume", 50)
+			game.call("_input", _key_event(KEY_KP_ADD))
+			await process_frame
+			_assert(int(game.call("music_volume")) == 51, "game screen routes plus to music volume increase")
+			game.call("_input", _key_event(KEY_MINUS, 45))
+			await process_frame
+			_assert(int(game.call("music_volume")) == 50, "game screen routes minus to music volume decrease")
+			game.call("set_sfx_volume", 60)
+			game.call("_input", _key_event(KEY_EQUAL, 43, true))
+			await process_frame
+			_assert(int(game.call("sfx_volume")) == 61, "game screen routes Shift+plus to SFX volume increase")
+			game.call("_input", _key_event(KEY_MINUS, 95, true))
+			await process_frame
+			_assert(int(game.call("sfx_volume")) == 60, "game screen routes Shift+minus to SFX volume decrease")
+			game.call("set_music_volume", 100)
+			game.call("_input", _key_event(KEY_KP_ADD))
+			await process_frame
+			_assert(int(game.call("music_volume")) == 100, "game screen clamps music volume shortcut at maximum")
+			game.call("set_sfx_volume", 0)
+			game.call("_input", _key_event(KEY_KP_SUBTRACT, 0, true))
+			await process_frame
+			_assert(int(game.call("sfx_volume")) == 0, "game screen clamps SFX volume shortcut at minimum")
 			game.call("_input", _action_event(GameScreenScript.ACTION_RELEASE_CURSOR))
 			await process_frame
 			_assert(bool(game.call("is_cursor_released_from_game_map")), "game screen releases the cursor on Ctrl+U")
@@ -4067,9 +4129,32 @@ func _validate_menu_and_game_scenes() -> void:
 			await process_frame
 			_assert(game.call("current_background_type") == 0, "game screen wraps background-cycle action across all original background types")
 			_assert(playfield.background_type == 0, "background-cycle action updates the playfield with wrapped background type")
+			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_BACKGROUND_MOTION))
+			await process_frame
+			_assert(game.call("is_background_movable"), "game screen routes Shift+G to background motion toggle")
+			_assert(playfield.call("is_background_movable"), "background motion toggle updates the playfield")
+			if _profile != null and _profile.has_method("background_movable"):
+				_assert(bool(_profile.call("background_movable")), "background motion toggle persists to profile")
+			var background_type_before_motion_toggle := int(game.call("current_background_type"))
+			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_BACKGROUND_MOTION))
+			await process_frame
+			_assert(not game.call("is_background_movable"), "game screen routes second Shift+G to disable background motion")
+			_assert(int(game.call("current_background_type")) == background_type_before_motion_toggle, "Shift+G leaves background type unchanged")
+			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_FULLSCREEN))
+			await process_frame
+			if _profile != null and _profile.has_method("fullscreen_enabled"):
+				_assert(bool(_profile.call("fullscreen_enabled")), "game screen routes Alt+Enter to persisted fullscreen toggle")
+			game.call("_input", _action_event(GameScreenScript.ACTION_TOGGLE_FULLSCREEN))
+			await process_frame
+			if _profile != null and _profile.has_method("fullscreen_enabled"):
+				_assert(not bool(_profile.call("fullscreen_enabled")), "game screen routes second Alt+Enter to windowed mode")
 			game.call("_input", _action_event(GameScreenScript.ACTION_PAUSE))
 			await process_frame
 			_assert(game.call("is_game_paused"), "game screen routes pause action")
+			game.call("set_music_volume", 80)
+			game.call("_input", _key_event(KEY_MINUS, 45))
+			await process_frame
+			_assert(int(game.call("music_volume")) == 79, "game screen runtime shortcuts remain active while paused")
 			_assert(bool(game.call("is_system_cursor_hidden")), "pause keeps the system cursor hidden behind the original hourglass")
 			var hourglass_cursor := game.find_child("HourglassCursorOverlay", true, false)
 			_assert(hourglass_cursor != null and bool(hourglass_cursor.call("is_cursor_visible")), "game screen shows original hourglass cursor on pause")
@@ -4094,6 +4179,10 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("_input", _action_event(GameScreenScript.ACTION_TERMINATE_GAME))
 			await process_frame
 			_assert(game.call("is_exit_confirmation_visible"), "Escape opens leave-board confirmation while paused")
+			game.call("set_music_volume", 70)
+			game.call("_input", _key_event(KEY_MINUS, 45))
+			await process_frame
+			_assert(int(game.call("music_volume")) == 70, "leave-board confirmation blocks runtime volume shortcuts")
 			_assert(game.find_child("ExitConfirmationPrompt", true, false) == null, "game screen no longer creates a native leave-board prompt label")
 			if hud != null:
 				var confirmation_layout: Dictionary = hud.call("exit_confirmation_layout")
@@ -4202,6 +4291,12 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert_app_original_cursor(app, "app starts menu screens with the original cursor overlay")
 	_assert_app_original_cursor_animation(app, "app animates the original cursor logo overlay")
 	_assert(not bool(app.call("is_fullscreen_enabled")), "app starts in windowed mode from the persisted profile")
+	_assert(bool(app.call("toggle_fullscreen_enabled")), "app shell exposes persisted fullscreen toggling")
+	if _profile != null and _profile.has_method("fullscreen_enabled"):
+		_assert(bool(_profile.call("fullscreen_enabled")), "app fullscreen toggle persists enabled state")
+	_assert(not bool(app.call("toggle_fullscreen_enabled")), "app shell can toggle fullscreen back to windowed")
+	if _profile != null and _profile.has_method("fullscreen_enabled"):
+		_assert(not bool(_profile.call("fullscreen_enabled")), "app fullscreen toggle persists disabled state")
 
 	var app_menu := app.find_child("MainMenuScreen", true, false)
 	_assert(app_menu != null, "app starts on main menu screen")
@@ -4521,10 +4616,19 @@ func _action_event(action_name: String) -> InputEventAction:
 	return event
 
 
-func _key_event(keycode: Key, unicode := 0) -> InputEventKey:
+func _key_event(
+	keycode: Key,
+	unicode := 0,
+	shift_pressed := false,
+	alt_pressed := false,
+	ctrl_pressed := false
+) -> InputEventKey:
 	var event := InputEventKey.new()
 	event.keycode = keycode
 	event.unicode = unicode
+	event.shift_pressed = shift_pressed
+	event.alt_pressed = alt_pressed
+	event.ctrl_pressed = ctrl_pressed
 	event.pressed = true
 	return event
 
@@ -4536,13 +4640,22 @@ func _mouse_button_event(button_index: MouseButton) -> InputEventMouseButton:
 	return event
 
 
-func _action_has_key(action_name: String, keycode: Key, ctrl_pressed := false) -> bool:
+func _action_has_key(
+	action_name: String,
+	keycode: Key,
+	ctrl_pressed := false,
+	shift_pressed := false,
+	alt_pressed := false
+) -> bool:
 	for event: InputEvent in InputMap.action_get_events(action_name):
 		var key_event := event as InputEventKey
 		if key_event == null:
 			continue
 		var matches_key := key_event.keycode == keycode or key_event.physical_keycode == keycode
-		if matches_key and key_event.ctrl_pressed == ctrl_pressed:
+		if matches_key \
+			and key_event.ctrl_pressed == ctrl_pressed \
+			and key_event.shift_pressed == shift_pressed \
+			and key_event.alt_pressed == alt_pressed:
 			return true
 	return false
 

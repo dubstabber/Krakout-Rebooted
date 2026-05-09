@@ -26,9 +26,13 @@ const ACTION_USE_BONUS := "krakout_use_bonus"
 const ACTION_TOGGLE_BONUS_STACK := "krakout_toggle_bonus_stack"
 const ACTION_TOGGLE_BALL_TRACKS := "krakout_toggle_ball_tracks"
 const ACTION_TOGGLE_FPS := "krakout_toggle_fps"
+const ACTION_TOGGLE_MUSIC := "krakout_toggle_music"
+const ACTION_TOGGLE_SFX := "krakout_toggle_sfx"
 const ACTION_PAUSE := "krakout_pause"
 const ACTION_TERMINATE_GAME := "krakout_terminate_game"
 const ACTION_CYCLE_BACKGROUND := "krakout_cycle_background"
+const ACTION_TOGGLE_BACKGROUND_MOTION := "krakout_toggle_background_motion"
+const ACTION_TOGGLE_FULLSCREEN := "krakout_toggle_fullscreen"
 const ACTION_RELEASE_CURSOR := "krakout_release_cursor"
 const ACTION_DEBUG_CHEATS := "debug_cheats"
 
@@ -212,6 +216,8 @@ func _input(event: InputEvent) -> void:
 	if _exit_confirmation_visible:
 		_handle_exit_confirmation_input(event)
 		get_viewport().set_input_as_handled()
+	elif _handle_runtime_shortcut(event):
+		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed(ACTION_DEBUG_CHEATS):
 		open_debug_cheats()
 		get_viewport().set_input_as_handled()
@@ -226,9 +232,6 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed(ACTION_TOGGLE_BALL_TRACKS):
 		toggle_ball_tracks_visible()
-		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed(ACTION_CYCLE_BACKGROUND):
-		cycle_background_type()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed(ACTION_PAUSE):
 		toggle_pause()
@@ -316,6 +319,62 @@ func _update_held_shooting_paddle() -> void:
 	gameplay_session.fire_shooting_paddle()
 
 
+func _handle_runtime_shortcut(event: InputEvent) -> bool:
+	if _handle_volume_shortcut(event):
+		return true
+	if event.is_action_pressed(ACTION_TOGGLE_MUSIC):
+		toggle_music_enabled()
+		return true
+	if event.is_action_pressed(ACTION_TOGGLE_SFX):
+		toggle_sfx_enabled()
+		return true
+	if event.is_action_pressed(ACTION_TOGGLE_BACKGROUND_MOTION):
+		toggle_background_movable()
+		return true
+	if event.is_action_pressed(ACTION_TOGGLE_FULLSCREEN):
+		toggle_fullscreen_enabled()
+		return true
+	if event.is_action_pressed(ACTION_CYCLE_BACKGROUND):
+		cycle_background_type()
+		return true
+	return false
+
+
+func _handle_volume_shortcut(event: InputEvent) -> bool:
+	var key_event := event as InputEventKey
+	if key_event == null or not key_event.pressed:
+		return false
+
+	var is_increase := false
+	var is_decrease := false
+	match key_event.keycode:
+		KEY_KP_ADD:
+			is_increase = true
+		KEY_KP_SUBTRACT:
+			is_decrease = true
+		KEY_EQUAL:
+			is_increase = key_event.shift_pressed
+		KEY_MINUS:
+			is_decrease = true
+		_:
+			return false
+
+	if not is_increase and not is_decrease:
+		return false
+
+	if key_event.shift_pressed:
+		if is_increase:
+			adjust_sfx_volume(1)
+		elif is_decrease:
+			adjust_sfx_volume(-1)
+	else:
+		if is_increase:
+			adjust_music_volume(1)
+		elif is_decrease:
+			adjust_music_volume(-1)
+	return true
+
+
 func toggle_bonus_stack_visible() -> bool:
 	set_bonus_stack_visible(not _bonus_stack_visible)
 	return _bonus_stack_visible
@@ -367,6 +426,104 @@ func is_fps_visible() -> bool:
 	return _fps_visible
 
 
+func toggle_music_enabled() -> bool:
+	set_music_enabled(not is_music_enabled())
+	return is_music_enabled()
+
+
+func set_music_enabled(is_enabled: bool) -> void:
+	var profile := _profile_service()
+	if profile != null and profile.has_method("set_music_enabled"):
+		profile.call("set_music_enabled", is_enabled)
+	var audio := _audio_service()
+	if audio != null and audio.has_method("set_music_enabled"):
+		audio.call("set_music_enabled", is_enabled)
+
+
+func is_music_enabled() -> bool:
+	var audio := _audio_service()
+	if audio != null and audio.has_method("music_enabled"):
+		return bool(audio.call("music_enabled"))
+	var profile := _profile_service()
+	if profile != null and profile.has_method("music_enabled"):
+		return bool(profile.call("music_enabled"))
+	return true
+
+
+func toggle_sfx_enabled() -> bool:
+	set_sfx_enabled(not is_sfx_enabled())
+	return is_sfx_enabled()
+
+
+func set_sfx_enabled(is_enabled: bool) -> void:
+	var profile := _profile_service()
+	if profile != null and profile.has_method("set_sfx_enabled"):
+		profile.call("set_sfx_enabled", is_enabled)
+	var audio := _audio_service()
+	if audio != null and audio.has_method("set_sfx_enabled"):
+		audio.call("set_sfx_enabled", is_enabled)
+
+
+func is_sfx_enabled() -> bool:
+	var audio := _audio_service()
+	if audio != null and audio.has_method("sfx_enabled"):
+		return bool(audio.call("sfx_enabled"))
+	var profile := _profile_service()
+	if profile != null and profile.has_method("sfx_enabled"):
+		return bool(profile.call("sfx_enabled"))
+	return true
+
+
+func music_volume() -> int:
+	var audio := _audio_service()
+	if audio != null and audio.has_method("music_volume"):
+		return int(audio.call("music_volume"))
+	var profile := _profile_service()
+	if profile != null and profile.has_method("music_volume"):
+		return int(profile.call("music_volume"))
+	return 80
+
+
+func set_music_volume(volume: int) -> void:
+	var normalized_volume := clampi(volume, 0, 100)
+	var profile := _profile_service()
+	if profile != null and profile.has_method("set_music_volume"):
+		profile.call("set_music_volume", normalized_volume)
+	var audio := _audio_service()
+	if audio != null and audio.has_method("set_music_volume"):
+		audio.call("set_music_volume", normalized_volume)
+
+
+func adjust_music_volume(delta: int) -> int:
+	set_music_volume(music_volume() + delta)
+	return music_volume()
+
+
+func sfx_volume() -> int:
+	var audio := _audio_service()
+	if audio != null and audio.has_method("sfx_volume"):
+		return int(audio.call("sfx_volume"))
+	var profile := _profile_service()
+	if profile != null and profile.has_method("sfx_volume"):
+		return int(profile.call("sfx_volume"))
+	return 85
+
+
+func set_sfx_volume(volume: int) -> void:
+	var normalized_volume := clampi(volume, 0, 100)
+	var profile := _profile_service()
+	if profile != null and profile.has_method("set_sfx_volume"):
+		profile.call("set_sfx_volume", normalized_volume)
+	var audio := _audio_service()
+	if audio != null and audio.has_method("set_sfx_volume"):
+		audio.call("set_sfx_volume", normalized_volume)
+
+
+func adjust_sfx_volume(delta: int) -> int:
+	set_sfx_volume(sfx_volume() + delta)
+	return sfx_volume()
+
+
 func cycle_background_type() -> int:
 	var next_type := (_background_type + 1) % PlayfieldRendererScript.BACKGROUND_TYPE_COUNT
 	set_background_type(next_type)
@@ -395,6 +552,30 @@ func set_background_movable(is_movable: bool) -> void:
 
 func is_background_movable() -> bool:
 	return _background_movable
+
+
+func toggle_background_movable() -> bool:
+	set_background_movable(not _background_movable)
+	return _background_movable
+
+
+func toggle_fullscreen_enabled() -> bool:
+	var parent_node := get_parent()
+	if parent_node != null and parent_node.has_method("toggle_fullscreen_enabled"):
+		return bool(parent_node.call("toggle_fullscreen_enabled"))
+
+	var profile := _profile_service()
+	var current_value := false
+	if profile != null and profile.has_method("fullscreen_enabled"):
+		current_value = bool(profile.call("fullscreen_enabled"))
+	var next_value := not current_value
+	if profile != null and profile.has_method("set_fullscreen_enabled"):
+		profile.call("set_fullscreen_enabled", next_value)
+	if DisplayServer.get_name() != "headless":
+		var window := get_window()
+		if window != null:
+			window.mode = Window.MODE_FULLSCREEN if next_value else Window.MODE_WINDOWED
+	return next_value
 
 
 func toggle_pause() -> bool:
@@ -645,6 +826,10 @@ func _record_best_score() -> void:
 
 func _profile_service() -> Node:
 	return get_node_or_null("/root/KrakoutProfile")
+
+
+func _audio_service() -> Node:
+	return get_node_or_null("/root/KrakoutAudio")
 
 
 func _load_presentation_settings() -> void:
