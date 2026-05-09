@@ -4,6 +4,7 @@ class_name KrakoutDebugCheatsOverlay
 signal add_bonus_requested(type_id: int)
 signal remove_stack_entry_requested(index: int)
 signal clear_stack_requested
+signal spawn_snake_vfx_requested
 signal close_requested
 
 const GameSessionScript := preload("res://src/gameplay/krakout_game_session.gd")
@@ -20,6 +21,7 @@ var _stack_list: VBoxContainer
 var _stack_count_label: Label
 var _status_label: Label
 var _clear_button: Button
+var _snake_vfx_button: Button
 
 
 func _ready() -> void:
@@ -154,6 +156,14 @@ func _build_layout() -> void:
 		clear_stack_requested.emit()
 	)
 	footer.add_child(_clear_button)
+
+	_snake_vfx_button = Button.new()
+	_snake_vfx_button.name = "SpawnSnakeVfxButton"
+	_snake_vfx_button.text = "Snake VFX"
+	_snake_vfx_button.pressed.connect(func() -> void:
+		spawn_snake_vfx_requested.emit()
+	)
+	footer.add_child(_snake_vfx_button)
 
 
 func _make_section(title_text: String, width: float, is_catalog: bool) -> PanelContainer:

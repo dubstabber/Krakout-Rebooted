@@ -1601,6 +1601,76 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(snake_vfx_session.active_snake_segment_count() == GameSessionScript.MAX_SNAKE_SEGMENTS, "Snake VFX active count reflects visible capped slots")
 	snake_vfx_session.reset_round()
 	_assert(snake_vfx_session.visible_snake_segments().is_empty(), "round reset clears dormant Snake VFX segments")
+	_assert(
+		snake_vfx_session.snake_rect({"position": Vector2(33, 44)}) == Rect2(Vector2(33, 44), GameSessionScript.SNAKE_SEGMENT_SIZE),
+		"Snake VFX collision rect uses the original 10x10 segment footprint"
+	)
+
+	var snake_preview_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	var snake_preview_result: Dictionary = snake_preview_session.debug_spawn_snake_vfx_preview()
+	_assert(snake_preview_result["status"] == "spawned", "debug Snake VFX preview reports a spawned state")
+	_assert(int(snake_preview_result["count"]) == 8, "debug Snake VFX preview creates a bounded source-backed segment chain")
+	var snake_preview_segments: Array = snake_preview_session.visible_snake_segments()
+	if snake_preview_segments.size() == 8:
+		_assert(int(snake_preview_segments[0]["kind"]) == GameSessionScript.SNAKE_KIND_LEFT, "debug Snake VFX preview starts with left-moving body segments")
+		_assert(int(snake_preview_segments[7]["kind"]) == GameSessionScript.SNAKE_TERMINAL_LEFT, "debug Snake VFX preview ends with the left terminal segment")
+	var snake_clear_result: Dictionary = snake_preview_session.debug_clear_snake_vfx_preview()
+	_assert(snake_clear_result["status"] == "cleared", "debug Snake VFX clear reports a cleared state")
+	_assert(int(snake_clear_result["count"]) == 8, "debug Snake VFX clear reports the removed visible segment count")
+	_assert(snake_preview_session.visible_snake_segments().is_empty(), "debug Snake VFX clear removes preview segments")
+
+	var snake_move_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	snake_move_session.force_snake_vfx_segments_for_test([
+		{"position": Vector2(100, 100), "kind": GameSessionScript.SNAKE_KIND_LEFT},
+		{"position": Vector2(120, 100), "kind": GameSessionScript.SNAKE_KIND_UP},
+		{"position": Vector2(140, 100), "kind": GameSessionScript.SNAKE_TERMINAL_RIGHT},
+	])
+	snake_move_session.update(GameSessionScript.SNAKE_UPDATE_SECONDS)
+	var snake_gate_segments: Array = snake_move_session.visible_snake_segments()
+	if snake_gate_segments.size() == 3:
+		_assert(snake_gate_segments[0]["position"] == Vector2(100, 100), "Snake VFX movement waits for the original strict 50ms gate")
+	snake_move_session.update(0.001)
+	var snake_moved_segments: Array = snake_move_session.visible_snake_segments()
+	if snake_moved_segments.size() == 3:
+		_assert(snake_moved_segments[0]["position"] == Vector2(90, 100), "left Snake VFX body segments step by the original 10 pixels")
+		_assert(snake_moved_segments[1]["position"] == Vector2(120, 90), "up Snake VFX body segments step by the original 10 pixels")
+		_assert(snake_moved_segments[2]["position"] == Vector2(150, 100), "terminal Snake VFX segments keep their encoded movement direction")
+	_assert(snake_move_session.pop_audio_events().is_empty(), "Snake VFX movement stays silent until an original SFX route is proven")
+
+	var snake_ball_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	snake_ball_hit_session.force_snake_vfx_segments_for_test([
+		{"position": Vector2(198, 200), "kind": 4},
+		{"position": Vector2(210, 200), "kind": 5},
+		{"position": Vector2(220, 200), "kind": 6},
+		{"position": Vector2(232, 200), "kind": 7},
+	])
+	snake_ball_hit_session.force_ball(Vector2(220, 200), Vector2.ZERO, GameSessionScript.SNAKE_SEGMENT_SIZE.x)
+	snake_ball_hit_session.update(0.0)
+	var snake_after_ball_hit: Array = snake_ball_hit_session.visible_snake_segments()
+	_assert(snake_after_ball_hit.size() == 2, "ball overlap truncates the Snake VFX chain at the hit segment")
+	if snake_after_ball_hit.size() == 2:
+		_assert(int(snake_after_ball_hit[1]["kind"]) == GameSessionScript.SNAKE_TERMINAL_UP, "Snake VFX truncation rewrites the previous visible segment to the original terminal kind")
+	_assert(snake_ball_hit_session.active_ball_count() == 1, "Snake VFX ball overlap does not consume the ball in this bounded VFX pass")
+	_assert(snake_ball_hit_session.score == 0, "Snake VFX ball overlap does not invent score")
+	_assert(snake_ball_hit_session.pop_audio_events().is_empty(), "Snake VFX ball overlap stays silent without original SFX evidence")
+
+	var snake_projectile_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	snake_projectile_hit_session.force_snake_vfx_segments_for_test([
+		{"position": Vector2(198, 200), "kind": 4},
+		{"position": Vector2(210, 200), "kind": 5},
+		{"position": Vector2(220, 200), "kind": 6},
+		{"position": Vector2(232, 200), "kind": 7},
+	])
+	var snake_projectiles: Array[Dictionary] = [_projectile(GameSessionScript.PROJECTILE_TYPE_CONTINUOUS, Vector2(227, 200))]
+	snake_projectile_hit_session.projectiles = snake_projectiles
+	snake_projectile_hit_session.update(0.0)
+	var snake_after_projectile_hit: Array = snake_projectile_hit_session.visible_snake_segments()
+	_assert(snake_after_projectile_hit.size() == 2, "projectile overlap truncates the Snake VFX chain at the hit segment")
+	if snake_after_projectile_hit.size() == 2:
+		_assert(int(snake_after_projectile_hit[1]["kind"]) == GameSessionScript.SNAKE_TERMINAL_UP, "projectile Snake VFX truncation applies the original terminal rewrite")
+	_assert(snake_projectile_hit_session.active_projectile_count() == 0, "projectile Snake VFX overlap consumes the projectile")
+	_assert(snake_projectile_hit_session.score == 0, "projectile Snake VFX overlap does not invent score")
+	_assert(snake_projectile_hit_session.pop_audio_events().is_empty(), "projectile Snake VFX overlap stays silent without original SFX evidence")
 
 	var bee_expire_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	bee_expire_session.force_bee(Vector2(GameSessionScript.BEE_EXPIRE_X - 1.0, 100))
@@ -3574,6 +3644,12 @@ func _validate_menu_and_game_scenes() -> void:
 			_assert(game.find_child("SnakeRenderer", true, false) != null, "game screen creates snake VFX renderer")
 			_assert(game.find_child("ImpactEffectRenderer", true, false) != null, "game screen creates impact effect renderer")
 			_assert(game.find_child("LevelReadyRollerRenderer", true, false) != null, "game screen creates level-ready roller renderer")
+			var snake_renderer_node := game.find_child("SnakeRenderer", true, false)
+			var monster_renderer_node := game.find_child("MonsterRenderer", true, false)
+			var bee_renderer_node := game.find_child("BeeRenderer", true, false)
+			if snake_renderer_node != null and monster_renderer_node != null and bee_renderer_node != null:
+				_assert(snake_renderer_node.get_index() < monster_renderer_node.get_index(), "game screen draws Snake VFX below registered monsters")
+				_assert(monster_renderer_node.get_index() < bee_renderer_node.get_index(), "game screen keeps Bee hazard draw order above regular monsters")
 			_assert(game.call("is_bonus_stack_visible") == false, "game screen loads bonus-stack visibility setting")
 			_assert(game.call("are_ball_tracks_visible") == false, "game screen loads ball-track visibility setting")
 			_assert(not gameplay.are_ball_tracks_enabled(), "game screen applies loaded ball-track visibility to gameplay generation")
@@ -3679,6 +3755,16 @@ func _validate_menu_and_game_scenes() -> void:
 					debug_clear_button.emit_signal("pressed")
 					await process_frame
 					_assert(gameplay.bonus_stack_entries().is_empty(), "debug cheats clear button empties stack")
+				var debug_snake_button := debug_overlay.find_child("SpawnSnakeVfxButton", true, false) as Button
+				_assert(debug_snake_button != null, "debug cheats overlay exposes Snake VFX preview button")
+				if debug_snake_button != null:
+					gameplay.pop_audio_events()
+					debug_snake_button.emit_signal("pressed")
+					await process_frame
+					_assert(gameplay.active_snake_segment_count() == 8, "debug Snake VFX button spawns the bounded preview chain")
+					_assert(gameplay.pop_audio_events().is_empty(), "debug Snake VFX button stays silent without original SFX evidence")
+					gameplay.debug_clear_snake_vfx_preview()
+					_assert(gameplay.active_snake_segment_count() == 0, "debug Snake VFX clear helper removes preview chain after UI spawn")
 				for full_debug_index in range(GameSessionScript.MAX_STACKED_BONUSES):
 					gameplay.debug_add_bonus_to_stack(full_debug_index % GameSessionScript.BONUS_TYPE_COUNT)
 				debug_overlay.call("refresh")

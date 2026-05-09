@@ -232,6 +232,17 @@ const BEE_BALL_COLLISION_RADIUS := 24.0
 const RACKET_STUN_DURATION_SECONDS := 3.0
 const MAX_SNAKE_SEGMENTS := 100
 const SNAKE_KIND_COUNT := 20
+const SNAKE_SEGMENT_SIZE := Vector2(10, 10)
+const SNAKE_UPDATE_SECONDS := 0.05
+const SNAKE_STEP_PIXELS := 10.0
+const SNAKE_KIND_UP := 0
+const SNAKE_KIND_DOWN := 1
+const SNAKE_KIND_LEFT := 2
+const SNAKE_KIND_RIGHT := 3
+const SNAKE_TERMINAL_UP := 16
+const SNAKE_TERMINAL_DOWN := 17
+const SNAKE_TERMINAL_LEFT := 18
+const SNAKE_TERMINAL_RIGHT := 19
 const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
 const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
@@ -419,6 +430,7 @@ var _level_ready_roller_frame := 0
 var _level_ready_roller_step_elapsed := 0.0
 var _level_ready_auto_launch_pending := false
 var _ball_track_spawn_elapsed: Array[float] = []
+var _snake_update_elapsed := 0.0
 var _audio_events: Array[String] = []
 
 
@@ -577,6 +589,7 @@ func update(delta: float) -> void:
 	if state == STATE_GAME_OVER:
 		return
 
+	_update_snake_segments(delta)
 	_update_monsters(delta)
 	_update_bees(delta)
 
@@ -682,6 +695,8 @@ func visible_snake_segments() -> Array[Dictionary]:
 	for segment: Dictionary in snake_segments:
 		if bool(segment.get("active", false)):
 			visible.append(segment.duplicate())
+		else:
+			break
 	return visible
 
 
@@ -748,6 +763,32 @@ func debug_clear_bonus_stack() -> int:
 	var removed_count := bonus_stack.size()
 	bonus_stack.clear()
 	return removed_count
+
+
+func debug_spawn_snake_vfx_preview() -> Dictionary:
+	var preview_segments: Array[Dictionary] = []
+	var origin := Vector2(420, 242)
+	for index in range(8):
+		preview_segments.append({
+			"active": true,
+			"position": origin + Vector2(float(index) * SNAKE_SEGMENT_SIZE.x, 0.0),
+			"kind": SNAKE_KIND_LEFT,
+		})
+	preview_segments[preview_segments.size() - 1]["kind"] = SNAKE_TERMINAL_LEFT
+	var count := force_snake_vfx_segments_for_test(preview_segments)
+	return {
+		"status": "spawned",
+		"count": count,
+	}
+
+
+func debug_clear_snake_vfx_preview() -> Dictionary:
+	var removed_count := visible_snake_segments().size()
+	_clear_snake_state()
+	return {
+		"status": "cleared",
+		"count": removed_count,
+	}
 
 
 func active_bonus_indicators() -> Array[Dictionary]:
@@ -1097,6 +1138,10 @@ func bee_rect(bee: Dictionary) -> Rect2:
 	return Rect2(bee.get("position", Vector2.ZERO) + BEE_COLLISION_OFFSET, BEE_COLLISION_SIZE)
 
 
+func snake_rect(segment: Dictionary) -> Rect2:
+	return Rect2(segment.get("position", Vector2.ZERO), SNAKE_SEGMENT_SIZE)
+
+
 func first_ball_position() -> Vector2:
 	if balls.is_empty():
 		return Vector2.ZERO
@@ -1160,7 +1205,7 @@ func force_bee(position: Vector2, frame: int = 0) -> bool:
 
 
 func force_snake_vfx_segments_for_test(segments: Array) -> int:
-	snake_segments.clear()
+	_clear_snake_state()
 	for segment in segments:
 		if snake_segments.size() >= MAX_SNAKE_SEGMENTS:
 			break
@@ -1328,6 +1373,7 @@ func _advance_ball(ball: Dictionary, delta: float) -> void:
 			return
 		if _collide_ball_with_bees(ball):
 			return
+	_collide_ball_with_snake(ball)
 	_collide_with_board(ball, previous_position)
 
 
@@ -2158,6 +2204,8 @@ func _update_projectiles(delta: float) -> void:
 			continue
 
 		_advance_projectile(projectile, delta)
+		if bool(projectile.get("active", false)) and _collide_projectile_with_snake(projectile):
+			projectile["active"] = false
 		if bool(projectile.get("active", false)) and _collide_projectile_with_monsters(projectile):
 			projectile["active"] = false
 		if bool(projectile.get("active", false)) and _collide_projectile_with_board(projectile):
@@ -2216,11 +2264,116 @@ func _clear_monster_state() -> void:
 		_queue_audio_event(SFX_EVENT_BEE_STOP)
 	monsters.clear()
 	bees.clear()
-	snake_segments.clear()
+	_clear_snake_state()
 	impact_effects.clear()
 	_monster_spawn_cooldown = MONSTER_SPAWN_INTERVAL_SECONDS
 	_bee_spawn_delay_remaining = BEE_SPAWN_DELAY_MAX_SECONDS
 	_racket_stun_time_remaining = 0.0
+
+
+func _clear_snake_state() -> void:
+	snake_segments.clear()
+	_snake_update_elapsed = 0.0
+
+
+func _update_snake_segments(delta: float) -> void:
+	if delta <= 0.0 or not _has_active_snake_segments():
+		return
+
+	_snake_update_elapsed += delta
+	while _snake_update_elapsed > SNAKE_UPDATE_SECONDS and _has_active_snake_segments():
+		_snake_update_elapsed -= SNAKE_UPDATE_SECONDS
+		_step_snake_segments()
+
+
+func _step_snake_segments() -> void:
+	for index in range(snake_segments.size()):
+		var segment := snake_segments[index]
+		if not bool(segment.get("active", false)):
+			break
+		var position: Vector2 = segment.get("position", Vector2.ZERO)
+		segment["position"] = position + _snake_direction_for_kind(int(segment.get("kind", 0))) * SNAKE_STEP_PIXELS
+		snake_segments[index] = segment
+
+
+func _snake_direction_for_kind(kind: int) -> Vector2:
+	match posmod(kind, 4):
+		SNAKE_KIND_UP:
+			return Vector2(0, -1)
+		SNAKE_KIND_DOWN:
+			return Vector2(0, 1)
+		SNAKE_KIND_LEFT:
+			return Vector2(-1, 0)
+		SNAKE_KIND_RIGHT:
+			return Vector2(1, 0)
+	return Vector2.ZERO
+
+
+func _collide_ball_with_snake(ball: Dictionary) -> bool:
+	return _truncate_snake_at_rect(ball_rect(ball))
+
+
+func _collide_projectile_with_snake(projectile: Dictionary) -> bool:
+	return _truncate_snake_at_rect(projectile_rect(projectile))
+
+
+func _truncate_snake_at_rect(hit_rect: Rect2) -> bool:
+	for index in range(snake_segments.size()):
+		var segment: Dictionary = snake_segments[index]
+		if not bool(segment.get("active", false)):
+			break
+		if snake_rect(segment).intersects(hit_rect):
+			_truncate_snake_at_index(index)
+			return true
+	return false
+
+
+func _truncate_snake_at_index(hit_index: int) -> void:
+	if hit_index < 0 or hit_index >= snake_segments.size():
+		return
+
+	if hit_index > 0:
+		var terminal_source_index := maxi(0, hit_index - 2)
+		var terminal_target_index := hit_index - 1
+		var terminal_source: Dictionary = snake_segments[terminal_source_index]
+		var terminal_target: Dictionary = snake_segments[terminal_target_index]
+		terminal_target["kind"] = _terminal_snake_kind_for_previous_kind(int(terminal_source.get("kind", 0)))
+		snake_segments[terminal_target_index] = terminal_target
+
+	for index in range(hit_index, snake_segments.size()):
+		var segment := snake_segments[index]
+		segment["active"] = false
+		snake_segments[index] = segment
+
+
+func _terminal_snake_kind_for_previous_kind(kind: int) -> int:
+	match clampi(kind, 0, SNAKE_KIND_COUNT - 1):
+		4, 11, 14:
+			return SNAKE_TERMINAL_UP
+		5, 10, 15:
+			return SNAKE_TERMINAL_DOWN
+		6, 8, 13:
+			return SNAKE_TERMINAL_LEFT
+		7, 9, 12:
+			return SNAKE_TERMINAL_RIGHT
+	match posmod(kind, 4):
+		SNAKE_KIND_UP:
+			return SNAKE_TERMINAL_UP
+		SNAKE_KIND_DOWN:
+			return SNAKE_TERMINAL_DOWN
+		SNAKE_KIND_LEFT:
+			return SNAKE_TERMINAL_LEFT
+		SNAKE_KIND_RIGHT:
+			return SNAKE_TERMINAL_RIGHT
+	return SNAKE_TERMINAL_LEFT
+
+
+func _has_active_snake_segments() -> bool:
+	for segment: Dictionary in snake_segments:
+		if bool(segment.get("active", false)):
+			return true
+		break
+	return false
 
 
 func _update_monsters(delta: float) -> void:

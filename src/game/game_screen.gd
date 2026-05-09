@@ -549,6 +549,11 @@ func _ensure_gameplay_nodes() -> void:
 		bullet_renderer.name = "BulletRenderer"
 		add_child(bullet_renderer)
 
+	if snake_renderer == null:
+		snake_renderer = SnakeRendererScript.new()
+		snake_renderer.name = "SnakeRenderer"
+		add_child(snake_renderer)
+
 	if monster_renderer == null:
 		monster_renderer = MonsterRendererScript.new()
 		monster_renderer.name = "MonsterRenderer"
@@ -558,11 +563,6 @@ func _ensure_gameplay_nodes() -> void:
 		bee_renderer = BeeRendererScript.new()
 		bee_renderer.name = "BeeRenderer"
 		add_child(bee_renderer)
-
-	if snake_renderer == null:
-		snake_renderer = SnakeRendererScript.new()
-		snake_renderer.name = "SnakeRenderer"
-		add_child(snake_renderer)
 
 	if impact_effect_renderer == null:
 		impact_effect_renderer = ImpactEffectRendererScript.new()
@@ -754,6 +754,7 @@ func _ensure_overlay_nodes() -> void:
 		debug_cheats_overlay.add_bonus_requested.connect(_on_debug_add_bonus_requested)
 		debug_cheats_overlay.remove_stack_entry_requested.connect(_on_debug_remove_stack_entry_requested)
 		debug_cheats_overlay.clear_stack_requested.connect(_on_debug_clear_stack_requested)
+		debug_cheats_overlay.spawn_snake_vfx_requested.connect(_on_debug_spawn_snake_vfx_requested)
 		debug_cheats_overlay.close_requested.connect(close_debug_cheats)
 		add_child(debug_cheats_overlay)
 
@@ -819,6 +820,14 @@ func _on_debug_clear_stack_requested() -> void:
 		return
 	var removed_count := int(gameplay_session.call("debug_clear_bonus_stack"))
 	_refresh_after_debug_stack_change("Cleared %d item%s" % [removed_count, "" if removed_count == 1 else "s"])
+
+
+func _on_debug_spawn_snake_vfx_requested() -> void:
+	if gameplay_session == null or not gameplay_session.has_method("debug_spawn_snake_vfx_preview"):
+		return
+	var result: Dictionary = gameplay_session.call("debug_spawn_snake_vfx_preview")
+	var count := int(result.get("count", 0))
+	_refresh_after_debug_stack_change("Spawned %d Snake segment%s" % [count, "" if count == 1 else "s"])
 
 
 func _refresh_after_debug_stack_change(status_text: String) -> void:
