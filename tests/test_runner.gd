@@ -2759,6 +2759,23 @@ func _validate_options_vx_effects() -> void:
 		OptionsScreenScript.page_arrow_source_rect_for_frame(9) == Rect2(Vector2(405, 0), Vector2(45, 45)),
 		"options screen maps original page-arrow final frame"
 	)
+	var options_arrow_probe = OptionsScreenScript.new()
+	options_arrow_probe.call("_process", OptionsScreenScript.PAGE_ARROW_FRAME_SECONDS)
+	_assert(
+		int(options_arrow_probe.call("page_arrow_frame")) == 0,
+		"options screen page arrows wait for the strict original 30 ms gate"
+	)
+	options_arrow_probe.call("_process", 0.001)
+	_assert(
+		int(options_arrow_probe.call("page_arrow_frame")) == 1,
+		"options screen page arrows advance once after the original sampled gate"
+	)
+	options_arrow_probe.call("_process", OptionsScreenScript.PAGE_ARROW_FRAME_SECONDS * 3.0)
+	_assert(
+		int(options_arrow_probe.call("page_arrow_frame")) == 2,
+		"options screen page arrows discard overshoot like the original sampled gate"
+	)
+	options_arrow_probe.free()
 	_assert(
 		OptionsScreenScript.original_audio_slider_handle_x_for_volume(0) == 362,
 		"options screen keeps original volume-slider minimum handle x"

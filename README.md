@@ -157,9 +157,11 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   cue pair, and static info screens use the original animated `Backward` art
   plus `eff01` for Back activation. Startup focus, unchanged selection, and
   slider adjustments stay silent.
-- The options screen now keeps its Godot-native controls while layering the
-  original `Vx` sheet as Music/SFX enabled-state VFX, using the IDA-backed
-  10-frame 40x40 strip and static 30x30 marker beside the volume rows.
+- The options screen preserves the expanded Godot settings pages while drawing
+  its controls from the original `SoundSlider`, `Vx`, `Backward`, `Arrowup`,
+  and `Arrowdown` sheets. Music/SFX controls keep the IDA-backed original
+  hitboxes, the `Vx` toggles use the 10-frame 40x40 strip plus static 30x30
+  marker, and Backward/page-arrow animations use strict sampled gates.
 - Gameplay now queues semantic SFX events from the session and drains them
   through `KrakoutAudio` in the Godot scene layer. IDA-backed mappings now cover
   racket bounce, brick clear, hard-brick impact, chain explosion, bonus

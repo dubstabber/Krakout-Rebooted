@@ -162,7 +162,8 @@ var _utility_row_indices: Dictionary = {}
 var _current_page := PAGE_AUDIO
 var _selected_control_id := CONTROL_MUSIC_SLIDER
 var _dragging_control_id := ""
-var _arrow_animation_time := 0.0
+var _page_arrow_frame := 0
+var _page_arrow_elapsed := 0.0
 var _backward_frame := 0
 var _backward_selected_elapsed := 0.0
 var _backward_return_elapsed := 0.0
@@ -188,7 +189,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	_arrow_animation_time += delta
+	_advance_page_arrow_animation(delta)
 	_advance_backward_animation(delta)
 	queue_redraw()
 
@@ -367,7 +368,7 @@ func backward_frame() -> int:
 
 
 func page_arrow_frame() -> int:
-	return int(_arrow_animation_time / PAGE_ARROW_FRAME_SECONDS) % PAGE_ARROW_FRAME_COUNT
+	return _page_arrow_frame
 
 
 func vx_effects():
@@ -1003,6 +1004,16 @@ func _advance_backward_animation(delta: float) -> void:
 			_backward_frame += 1
 			if _backward_frame >= BACKWARD_FRAME_COUNT:
 				_backward_frame = 0
+
+
+func _advance_page_arrow_animation(delta: float) -> void:
+	if delta <= 0.0:
+		return
+
+	_page_arrow_elapsed += delta
+	if _page_arrow_elapsed > PAGE_ARROW_FRAME_SECONDS:
+		_page_arrow_elapsed = 0.0
+		_page_arrow_frame = (_page_arrow_frame + 1) % PAGE_ARROW_FRAME_COUNT
 
 
 func _selection_order_for_page(page_index: int) -> Array:
