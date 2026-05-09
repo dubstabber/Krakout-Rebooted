@@ -1336,6 +1336,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	projectile_expire_session.projectiles = expiring_projectiles
 	projectile_expire_session.update(0.0)
 	_assert(projectile_expire_session.active_projectile_count() == 0, "projectile expires at original left bound")
+	_assert(projectile_expire_session.visible_impact_effects().is_empty(), "projectile expiry does not invent contact VFX")
 
 	_assert(GameSessionScript.monster_frame_count_for_type(0) == 20, "monster trait catalog preserves 20-frame early atlas entries")
 	_assert(GameSessionScript.monster_frame_count_for_type(8) == 10, "monster trait catalog preserves original type 8 frame count")
@@ -1815,6 +1816,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(snake_ball_hit_session.active_ball_count() == 1, "Snake VFX ball overlap does not consume the ball in this bounded VFX pass")
 	_assert(snake_ball_hit_session.score == 0, "Snake VFX ball overlap does not invent score")
 	_assert(snake_ball_hit_session.pop_audio_events().is_empty(), "Snake VFX ball overlap stays silent without original SFX evidence")
+	var snake_ball_hit_effects: Array = snake_ball_hit_session.visible_impact_effects()
+	_assert(snake_ball_hit_effects.size() == 1, "ball Snake VFX overlap spawns original kind-1 contact impact")
+	if snake_ball_hit_effects.size() == 1:
+		_assert(int(snake_ball_hit_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_SNAKE_HIT, "ball Snake VFX contact uses original kind-1 impact column")
+		_assert(snake_ball_hit_effects[0]["position"] == Vector2(220, 200), "ball Snake VFX impact starts at the hit segment position")
 
 	var snake_projectile_hit_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	snake_projectile_hit_session.force_snake_vfx_segments_for_test([
@@ -1833,6 +1839,11 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(snake_projectile_hit_session.active_projectile_count() == 0, "projectile Snake VFX overlap consumes the projectile")
 	_assert(snake_projectile_hit_session.score == 0, "projectile Snake VFX overlap does not invent score")
 	_assert(snake_projectile_hit_session.pop_audio_events().is_empty(), "projectile Snake VFX overlap stays silent without original SFX evidence")
+	var snake_projectile_hit_effects: Array = snake_projectile_hit_session.visible_impact_effects()
+	_assert(snake_projectile_hit_effects.size() == 1, "projectile Snake VFX overlap spawns original kind-1 contact impact")
+	if snake_projectile_hit_effects.size() == 1:
+		_assert(int(snake_projectile_hit_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_SNAKE_HIT, "projectile Snake VFX contact uses original kind-1 impact column")
+		_assert(snake_projectile_hit_effects[0]["position"] == Vector2(220, 200), "projectile Snake VFX impact starts at the hit segment position")
 
 	var bee_expire_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	bee_expire_session.force_bee(Vector2(GameSessionScript.BEE_EXPIRE_X - 1.0, 100))
@@ -2405,6 +2416,7 @@ func _validate_level_grid_renderer_defaults() -> void:
 	var impact_renderer = ImpactEffectRendererScript.new()
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_SPAWN, 0) == Rect2(Vector2(0, 0), Vector2(32, 32)), "impact renderer maps original monster-spawn effect cell")
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_TIMEOUT, 10) == Rect2(Vector2(32, 320), Vector2(32, 32)), "impact renderer maps original monster-timeout final frame")
+	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_SNAKE_HIT, 4) == Rect2(Vector2(32, 128), Vector2(32, 32)), "impact renderer maps original Snake contact kind-1 effect column")
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_MONSTER_HIT, 3) == Rect2(Vector2(64, 96), Vector2(32, 32)), "impact renderer advances original monster-hit vertical frames")
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_CHAIN_EXPLOSION, 3) == Rect2(Vector2(64, 96), Vector2(32, 32)), "impact renderer reuses the original explosion cell for chain board VFX")
 	_assert(impact_renderer.source_rect_for_effect(GameSessionScript.IMPACT_EFFECT_KIND_BRICK_CLEAR, 2) == Rect2(Vector2(96, 64), Vector2(20, 32)), "impact renderer maps original narrow brick-clear effect column")

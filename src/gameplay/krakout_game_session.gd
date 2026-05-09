@@ -255,6 +255,8 @@ const SNAKE_IDA_EVIDENCE := "IDA anchors: sub_4194C0 load, sub_419650 draw, sub_
 const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
 const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
+# sub_419B00 uses the shared kind-1 Exploision column for Snake contact.
+const IMPACT_EFFECT_KIND_SNAKE_HIT := IMPACT_EFFECT_KIND_MONSTER_TIMEOUT
 const IMPACT_EFFECT_KIND_EXPLOSION := 2
 const IMPACT_EFFECT_KIND_BRICK_CLEAR := 3
 const IMPACT_EFFECT_KIND_HARD_BRICK_FORCE_BREAK := IMPACT_EFFECT_KIND_BRICK_CLEAR
@@ -2434,6 +2436,7 @@ func _truncate_snake_at_rect(hit_rect: Rect2) -> bool:
 		if not bool(segment.get("active", false)):
 			break
 		if snake_rect(segment).intersects(hit_rect):
+			_spawn_impact_effect(segment.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_SNAKE_HIT)
 			_truncate_snake_at_index(index)
 			return true
 	return false
