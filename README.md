@@ -170,6 +170,13 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - `KrakoutApp` now starts on a Godot `Control` main menu, routes `Start Game`
   into an episode browser backed by decoded episode metadata, and starts the
   selected episode at its first level.
+- The episode browser follows the original `sub_41BD60` presentation: title and
+  column labels use the recovered y `13`/`60` positions, rows use the original
+  `5..585` by `100..430` mouse bounds, page arrows keep their original
+  coordinates and frame gates, the two `BgEpisode` tiles scroll diagonally with
+  the original strict 30ms one-pixel/three-pixel gates, and the selected episode
+  name uses the original 5px sine-wave bitmap text with a strict
+  40ms/20-degree phase gate.
 - The main menu now routes every original icon into a Godot-native screen:
   episode selection, executable-backed game rules, high score, options,
   executable-backed credits, and exit.

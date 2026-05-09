@@ -6,20 +6,26 @@ signal back_requested
 
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 const MenuBitmapLabelScript := preload("res://src/menu/krakout_menu_bitmap_label.gd")
+const WaveBitmapLabelScript := preload("res://src/menu/krakout_wave_bitmap_label.gd")
 const AudioCueCatalogScript := preload("res://src/audio/krakout_audio_cue_catalog.gd")
 
 const PAGE_SIZE := 10
+const TITLE_Y := 13
 const ROW_START_Y := 100
 const ROW_HEIGHT := 30
 const HEADER_Y := 60
 const PAGE_STATUS_Y := 425
 const PAGE_HELP_Y := 450
+const ROW_HIT_X := 5
+const ROW_HIT_RIGHT_X := 585
+const ROW_HIT_WIDTH := ROW_HIT_RIGHT_X - ROW_HIT_X
+const ROW_HIT_BOTTOM_Y := 430
 const INDEX_X := 5
 const TITLE_X := 55
 const LEVEL_RIGHT_X := 585
 const LEVEL_WIDTH := 50
 const LEVEL_X := LEVEL_RIGHT_X - LEVEL_WIDTH
-const ROW_WIDTH := 580
+const ROW_WIDTH := 640
 const ARROW_FRAME_COUNT := 10
 const ARROW_SELECTED_FRAME_GATE_SECONDS := 0.03
 const ARROW_RETURN_FRAME_GATE_SECONDS := 0.01
@@ -28,6 +34,13 @@ const UP_ARROW_POSITION := Vector2(590, 100)
 const DOWN_ARROW_POSITION := Vector2(590, 350)
 const BG_TILE_SIZE := Vector2(48, 48)
 const BACKGROUND_SCROLL_STEP_SECONDS := 0.03
+const BACKGROUND_PRIMARY_STEP := 1
+const BACKGROUND_SECONDARY_STEP := 3
+const BACKGROUND_REPEAT_WIDTH := 720
+const BACKGROUND_REPEAT_HEIGHT := 528
+const SELECTED_TITLE_WAVE_STEP_SECONDS := 0.04
+const SELECTED_TITLE_WAVE_STEP_DEGREES := 20.0
+const SELECTED_TITLE_WAVE_AMPLITUDE := 5.0
 
 @onready var _header: Control = $Header
 @onready var _rows: Control = $Rows
@@ -57,6 +70,9 @@ var _up_arrow_selected_elapsed := 0.0
 var _up_arrow_return_elapsed := 0.0
 var _down_arrow_selected_elapsed := 0.0
 var _down_arrow_return_elapsed := 0.0
+var _selected_title_wave_label
+var _selected_title_wave_elapsed := 0.0
+var _selected_title_wave_phase_degrees := 0.0
 
 
 func _ready() -> void:
@@ -74,29 +90,25 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_animation_time += delta
-	_background_tick += delta
-	while _background_tick >= BACKGROUND_SCROLL_STEP_SECONDS:
-		_background_tick -= BACKGROUND_SCROLL_STEP_SECONDS
-		_background_offset_primary = (_background_offset_primary + 1) % int(BG_TILE_SIZE.y)
-		_background_offset_secondary = (_background_offset_secondary + 3) % int(BG_TILE_SIZE.x)
-		queue_redraw()
+	advance_background_animation(delta)
 	_advance_arrow_animation(delta)
 	_update_arrow_frames()
+	_advance_selected_title_wave(delta)
 
 
 func _draw() -> void:
 	if _background_texture == null:
 		return
 
-	var viewport_size := Vector2(PlayfieldSpecScript.VIEWPORT_SIZE)
-	var region_primary := Rect2(Vector2.ZERO, BG_TILE_SIZE)
-	var region_secondary := Rect2(Vector2(BG_TILE_SIZE.x, 0), BG_TILE_SIZE)
-	for y in range(-int(BG_TILE_SIZE.y), int(viewport_size.y) + int(BG_TILE_SIZE.y), int(BG_TILE_SIZE.y)):
-		for x in range(-int(BG_TILE_SIZE.x), int(viewport_size.x) + int(BG_TILE_SIZE.x), int(BG_TILE_SIZE.x)):
-			var primary_position := Vector2(x, y + _background_offset_primary)
-			var secondary_position := Vector2(x + _background_offset_secondary, y)
-			draw_texture_rect_region(_background_texture, Rect2(primary_position, BG_TILE_SIZE), region_primary)
-			draw_texture_rect_region(_background_texture, Rect2(secondary_position, BG_TILE_SIZE), region_secondary)
+	_draw_background_layer(primary_background_source_rect(), _background_offset_primary)
+	_draw_background_layer(secondary_background_source_rect(), _background_offset_secondary)
+
+
+func _draw_background_layer(source_rect: Rect2, offset: int) -> void:
+	for tile_x in range(0, BACKGROUND_REPEAT_WIDTH, int(BG_TILE_SIZE.x)):
+		for tile_y in range(0, BACKGROUND_REPEAT_HEIGHT, int(BG_TILE_SIZE.y)):
+			var tile_origin := Vector2(tile_x, tile_y)
+			draw_texture_rect_region(_background_texture, background_target_rect(tile_origin, offset), source_rect)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -154,6 +166,63 @@ func selected_episode_summary() -> Dictionary:
 	return _episodes[_selected_index].duplicate()
 
 
+func selected_title_wave_phase_degrees() -> float:
+	return _selected_title_wave_phase_degrees
+
+
+func reset_selected_title_wave_for_test() -> void:
+	_selected_title_wave_elapsed = 0.0
+	_selected_title_wave_phase_degrees = 0.0
+	_sync_selected_title_wave()
+
+
+func background_offsets() -> Dictionary:
+	return {
+		"primary": _background_offset_primary,
+		"secondary": _background_offset_secondary,
+	}
+
+
+func reset_background_animation_for_test() -> void:
+	_background_offset_primary = 0
+	_background_offset_secondary = 0
+	_background_tick = 0.0
+	queue_redraw()
+
+
+func advance_background_animation(delta: float) -> void:
+	if delta <= 0.0:
+		return
+
+	_background_tick += delta
+	if _background_tick > BACKGROUND_SCROLL_STEP_SECONDS:
+		_background_tick = 0.0
+		_background_offset_primary = (_background_offset_primary + BACKGROUND_PRIMARY_STEP) % int(BG_TILE_SIZE.x)
+		_background_offset_secondary = (_background_offset_secondary + BACKGROUND_SECONDARY_STEP) % int(BG_TILE_SIZE.x)
+		queue_redraw()
+
+
+static func primary_background_target_rect(tile_origin: Vector2, offset: int) -> Rect2:
+	return background_target_rect(tile_origin, offset)
+
+
+static func secondary_background_target_rect(tile_origin: Vector2, offset: int) -> Rect2:
+	return background_target_rect(tile_origin, offset)
+
+
+static func background_target_rect(tile_origin: Vector2, offset: int) -> Rect2:
+	var shifted_offset := float(offset - int(BG_TILE_SIZE.x))
+	return Rect2(tile_origin + Vector2(shifted_offset, shifted_offset), BG_TILE_SIZE)
+
+
+static func primary_background_source_rect() -> Rect2:
+	return Rect2(Vector2.ZERO, BG_TILE_SIZE)
+
+
+static func secondary_background_source_rect() -> Rect2:
+	return Rect2(Vector2(BG_TILE_SIZE.x, 0), BG_TILE_SIZE)
+
+
 func _fit_to_baseline_viewport() -> void:
 	custom_minimum_size = Vector2(PlayfieldSpecScript.VIEWPORT_SIZE)
 
@@ -165,6 +234,7 @@ func _load_assets() -> void:
 
 
 func _configure_static_nodes() -> void:
+	_configure_label(_label("BrowserTitle", "Episode Browser. Select Episode.", Vector2(0, TITLE_Y), Vector2(640, ROW_HEIGHT), HORIZONTAL_ALIGNMENT_CENTER))
 	_configure_label(_label("IndexHeader", "#", Vector2(INDEX_X, HEADER_Y), Vector2(40, ROW_HEIGHT), HORIZONTAL_ALIGNMENT_LEFT))
 	_configure_label(_label("TitleHeader", "Episode name", Vector2(TITLE_X, HEADER_Y), Vector2(420, ROW_HEIGHT), HORIZONTAL_ALIGNMENT_LEFT))
 	_configure_label(_label("LevelHeader", "Lev", Vector2(LEVEL_X, HEADER_Y), Vector2(50, ROW_HEIGHT), HORIZONTAL_ALIGNMENT_RIGHT))
@@ -172,29 +242,23 @@ func _configure_static_nodes() -> void:
 	_up_button.position = UP_ARROW_POSITION
 	_up_button.size = ARROW_BUTTON_SIZE
 	_up_button.custom_minimum_size = ARROW_BUTTON_SIZE
-	_up_button.focus_mode = Control.FOCUS_ALL
-	_up_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_up_button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_up_button.ignore_texture_size = false
 	_up_button.stretch_mode = TextureButton.STRETCH_KEEP
+	_disable_native_button_chrome(_up_button)
 	_up_button.mouse_entered.connect(_set_up_arrow_hovered.bind(true))
 	_up_button.mouse_exited.connect(_set_up_arrow_hovered.bind(false))
-	_up_button.focus_entered.connect(_set_up_arrow_hovered.bind(true))
-	_up_button.focus_exited.connect(_set_up_arrow_hovered.bind(false))
 	_up_button.pressed.connect(_on_up_button_pressed)
 
 	_down_button.position = DOWN_ARROW_POSITION
 	_down_button.size = ARROW_BUTTON_SIZE
 	_down_button.custom_minimum_size = ARROW_BUTTON_SIZE
-	_down_button.focus_mode = Control.FOCUS_ALL
-	_down_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_down_button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_down_button.ignore_texture_size = false
 	_down_button.stretch_mode = TextureButton.STRETCH_KEEP
+	_disable_native_button_chrome(_down_button)
 	_down_button.mouse_entered.connect(_set_down_arrow_hovered.bind(true))
 	_down_button.mouse_exited.connect(_set_down_arrow_hovered.bind(false))
-	_down_button.focus_entered.connect(_set_down_arrow_hovered.bind(true))
-	_down_button.focus_exited.connect(_set_down_arrow_hovered.bind(false))
 	_down_button.pressed.connect(_on_down_button_pressed)
 
 	_configure_label(_page_status)
@@ -207,6 +271,8 @@ func _configure_static_nodes() -> void:
 	_page_help.size = Vector2(640, ROW_HEIGHT)
 	_page_help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_page_help.text = "Use PgUp / PgDn."
+
+	_build_selected_title_wave_overlay()
 
 
 func _label(label_name: String, text: String, label_position: Vector2, label_size: Vector2, alignment: HorizontalAlignment):
@@ -224,6 +290,15 @@ func _label(label_name: String, text: String, label_position: Vector2, label_siz
 
 func _configure_label(label) -> void:
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+
+
+func _disable_native_button_chrome(button: BaseButton) -> void:
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	if button is Button:
+		var empty_style := StyleBoxEmpty.new()
+		for style_name: String in ["normal", "hover", "pressed", "disabled", "focus"]:
+			button.add_theme_stylebox_override(style_name, empty_style)
 
 
 func _load_episodes() -> void:
@@ -254,13 +329,11 @@ func _rebuild_rows() -> void:
 
 		var hit_area := Button.new()
 		hit_area.name = "EpisodeRowButton%d" % (row_offset + 1)
-		hit_area.position = Vector2(0, 0)
-		hit_area.size = Vector2(ROW_WIDTH, ROW_HEIGHT)
+		hit_area.position = Vector2(ROW_HIT_X, 0)
+		hit_area.size = Vector2(ROW_HIT_WIDTH, ROW_HEIGHT)
 		hit_area.flat = true
-		hit_area.focus_mode = Control.FOCUS_ALL
-		hit_area.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		_disable_native_button_chrome(hit_area)
 		hit_area.mouse_entered.connect(_select_episode.bind(episode_index))
-		hit_area.focus_entered.connect(_select_episode.bind(episode_index))
 		hit_area.pressed.connect(_activate_episode.bind(episode_index))
 		row.add_child(hit_area)
 		_row_buttons.append(hit_area)
@@ -362,6 +435,10 @@ static func down_arrow_hit_rect() -> Rect2:
 	return Rect2(DOWN_ARROW_POSITION, ARROW_BUTTON_SIZE)
 
 
+static func episode_row_hit_rect() -> Rect2:
+	return Rect2(Vector2(ROW_HIT_X, ROW_START_Y), Vector2(ROW_HIT_WIDTH, ROW_HIT_BOTTOM_Y - ROW_START_Y))
+
+
 func _set_up_arrow_hovered(is_hovered: bool) -> void:
 	_up_arrow_hovered = is_hovered and _up_button.visible and not _up_button.disabled
 
@@ -442,6 +519,20 @@ func _advance_single_arrow(
 	set_return_elapsed.call(return_elapsed)
 
 
+func _advance_selected_title_wave(delta: float) -> void:
+	if delta <= 0.0:
+		return
+
+	_selected_title_wave_elapsed += delta
+	if _selected_title_wave_elapsed > SELECTED_TITLE_WAVE_STEP_SECONDS:
+		_selected_title_wave_elapsed = 0.0
+		_selected_title_wave_phase_degrees = fposmod(
+			_selected_title_wave_phase_degrees + SELECTED_TITLE_WAVE_STEP_DEGREES,
+			360.0
+		)
+		_sync_selected_title_wave()
+
+
 func _select_episode(episode_index: int) -> void:
 	if episode_index < 0 or episode_index >= _episodes.size():
 		return
@@ -497,11 +588,55 @@ func _focus_selected_row() -> void:
 	var row_offset := _selected_index - _page_index * PAGE_SIZE
 	if row_offset < 0 or row_offset >= _row_buttons.size():
 		return
+	if _row_buttons[row_offset].focus_mode == Control.FOCUS_NONE:
+		return
 	_row_buttons[row_offset].grab_focus()
 
 
 func _update_row_styles() -> void:
-	pass
+	_sync_selected_title_wave()
+
+
+func _build_selected_title_wave_overlay() -> void:
+	if _selected_title_wave_label != null:
+		return
+
+	_selected_title_wave_label = WaveBitmapLabelScript.new()
+	_selected_title_wave_label.name = "SelectedEpisodeTitleWave"
+	_selected_title_wave_label.position = Vector2(TITLE_X, ROW_START_Y - SELECTED_TITLE_WAVE_AMPLITUDE)
+	_selected_title_wave_label.size = Vector2(420, ROW_HEIGHT + SELECTED_TITLE_WAVE_AMPLITUDE * 2.0)
+	_selected_title_wave_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_selected_title_wave_label.wave_amplitude = SELECTED_TITLE_WAVE_AMPLITUDE
+	_selected_title_wave_label.visible = false
+	_selected_title_wave_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_selected_title_wave_label)
+
+
+func _sync_selected_title_wave() -> void:
+	if _selected_title_wave_label == null:
+		return
+
+	var selected_row_offset := _selected_index - _page_index * PAGE_SIZE
+	var show_wave := selected_row_offset >= 0 and selected_row_offset < _row_labels.size()
+	for row_data: Dictionary in _row_labels:
+		var labels: Array = row_data.get("labels", [])
+		if labels.size() < 2:
+			continue
+		var title_label = labels[1]
+		if title_label != null:
+			title_label.visible = not show_wave or int(row_data.get("episode_index", -1)) != _selected_index
+
+	_selected_title_wave_label.visible = show_wave
+	if not show_wave:
+		return
+
+	var selected_summary := _episodes[_selected_index]
+	_selected_title_wave_label.text = String(selected_summary.get("title", ""))
+	_selected_title_wave_label.position = Vector2(
+		TITLE_X,
+		ROW_START_Y + selected_row_offset * ROW_HEIGHT - SELECTED_TITLE_WAVE_AMPLITUDE
+	)
+	_selected_title_wave_label.phase_degrees = _selected_title_wave_phase_degrees
 
 
 func _activate_selected_episode() -> void:

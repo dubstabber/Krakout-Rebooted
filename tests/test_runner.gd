@@ -4141,6 +4141,13 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(
 		episode_up_button != null
 		and episode_down_button != null
+		and episode_up_button.focus_mode == Control.FOCUS_NONE
+		and episode_down_button.focus_mode == Control.FOCUS_NONE,
+		"episode select arrows disable native Godot focus highlights"
+	)
+	_assert(
+		episode_up_button != null
+		and episode_down_button != null
 		and episode_up_button.texture_normal is AtlasTexture
 		and episode_down_button.texture_normal is AtlasTexture
 		and (episode_up_button.texture_normal as AtlasTexture).atlas != (episode_down_button.texture_normal as AtlasTexture).atlas,
@@ -4154,23 +4161,65 @@ func _validate_menu_and_game_scenes() -> void:
 		EpisodeSelectScreenScript.down_arrow_hit_rect() == Rect2(Vector2(590, 350), Vector2(45, 45)),
 		"episode select keeps the original down-arrow hitbox"
 	)
+	episode_select.call("reset_background_animation_for_test")
+	var episode_background_offsets: Dictionary = episode_select.call("background_offsets")
+	_assert(int(episode_background_offsets["primary"]) == 0 and int(episode_background_offsets["secondary"]) == 0, "episode select background starts at original zero offsets")
+	episode_select.call("advance_background_animation", EpisodeSelectScreenScript.BACKGROUND_SCROLL_STEP_SECONDS)
+	episode_background_offsets = episode_select.call("background_offsets")
+	_assert(int(episode_background_offsets["primary"]) == 0 and int(episode_background_offsets["secondary"]) == 0, "episode select background waits for strict original 30 ms gate")
+	episode_select.call("advance_background_animation", 0.001)
+	episode_background_offsets = episode_select.call("background_offsets")
+	_assert(int(episode_background_offsets["primary"]) == 1, "episode select primary background advances by original one-pixel step")
+	_assert(int(episode_background_offsets["secondary"]) == 3, "episode select secondary background advances by original three-pixel step")
+	_assert(EpisodeSelectScreenScript.primary_background_source_rect() == Rect2(Vector2(0, 0), Vector2(48, 48)), "episode select primary background uses the first original BgEpisode tile")
+	_assert(EpisodeSelectScreenScript.secondary_background_source_rect() == Rect2(Vector2(48, 0), Vector2(48, 48)), "episode select secondary background uses the second original BgEpisode tile")
+	_assert(EpisodeSelectScreenScript.primary_background_target_rect(Vector2.ZERO, 1) == Rect2(Vector2(-47, -47), Vector2(48, 48)), "episode select primary background scrolls diagonally like original")
+	_assert(EpisodeSelectScreenScript.secondary_background_target_rect(Vector2.ZERO, 3) == Rect2(Vector2(-45, -45), Vector2(48, 48)), "episode select secondary background scrolls diagonally like original")
+	for _background_wrap_index in range(int(EpisodeSelectScreenScript.BG_TILE_SIZE.x) - 1):
+		episode_select.call("advance_background_animation", EpisodeSelectScreenScript.BACKGROUND_SCROLL_STEP_SECONDS + 0.001)
+	episode_background_offsets = episode_select.call("background_offsets")
+	_assert(int(episode_background_offsets["primary"]) == 0, "episode select primary background wraps at original 48px tile size")
+	_assert(int(episode_background_offsets["secondary"]) == 0, "episode select secondary background wraps at original 48px tile size")
 	var page_status_label = episode_select.find_child("PageStatus", true, false)
+	var browser_title = episode_select.find_child("BrowserTitle", true, false)
 	var title_header = episode_select.find_child("TitleHeader", true, false)
 	var level_header = episode_select.find_child("LevelHeader", true, false)
 	var first_row_title = episode_select.find_child("Title", true, false)
 	_assert(page_status_label != null and page_status_label.get_script() == MenuBitmapLabelScript, "episode select renders page status with the original bitmap font")
+	_assert(browser_title != null and browser_title.get_script() == MenuBitmapLabelScript and String(browser_title.text) == "Episode Browser. Select Episode.", "episode select renders original browser title")
+	if browser_title != null:
+		_assert(browser_title.position == Vector2(0, 13), "episode select places title at original y=13")
 	_assert(title_header != null and title_header.get_script() == MenuBitmapLabelScript, "episode select renders headers with the original bitmap font")
 	_assert(level_header != null and level_header.position == Vector2(535, 60), "episode select keeps the original right-aligned level column clear of the page arrows")
 	_assert(first_row_title != null and first_row_title.get_script() == MenuBitmapLabelScript, "episode select renders row captions with the original bitmap font")
+	var first_row_button_for_hitbox := episode_select.find_child("EpisodeRowButton1", true, false) as Button
+	_assert(EpisodeSelectScreenScript.episode_row_hit_rect() == Rect2(Vector2(5, 100), Vector2(580, 330)), "episode select keeps original mouse row-selection bounds")
+	if first_row_button_for_hitbox != null:
+		_assert(first_row_button_for_hitbox.position == Vector2(5, 0), "episode select row hit area starts at original x=5")
+		_assert(first_row_button_for_hitbox.focus_mode == Control.FOCUS_NONE, "episode select row hit areas disable native Godot focus highlights")
+		_assert(first_row_button_for_hitbox.get_theme_stylebox("focus") is StyleBoxEmpty, "episode select row focus style is visually empty")
 
 	var selected_summary: Dictionary = episode_select.call("selected_episode_summary")
 	_assert(selected_summary.get("slug", "") == "Abstraction", "episode select defaults to first sorted episode")
+	var selected_title_wave = episode_select.find_child("SelectedEpisodeTitleWave", true, false)
+	_assert(selected_title_wave != null and selected_title_wave.get_script() == WaveBitmapLabelScript, "episode select renders selected episode name with original wave bitmap text")
+	if selected_title_wave != null:
+		_assert(String(selected_title_wave.get("text")) == "Abstraction", "episode select selected wave mirrors selected episode title")
+		_assert(selected_title_wave.position == Vector2(55, 95), "episode select selected wave keeps original first-row baseline with 5px amplitude room")
+	_assert(first_row_title == null or not first_row_title.visible, "episode select hides normal title text under selected wave row")
+	episode_select.call("reset_selected_title_wave_for_test")
+	episode_select.call("_process", EpisodeSelectScreenScript.SELECTED_TITLE_WAVE_STEP_SECONDS)
+	_assert(is_equal_approx(float(episode_select.call("selected_title_wave_phase_degrees")), 0.0), "episode select selected title wave waits for original strict 40 ms gate")
+	episode_select.call("_process", 0.001)
+	_assert(is_equal_approx(float(episode_select.call("selected_title_wave_phase_degrees")), 20.0), "episode select selected title wave advances by original 20 degree step")
 	if _audio != null and _audio.has_method("is_sfx_playing"):
 		_assert(not bool(_audio.call("is_sfx_playing", "eff03")), "episode select startup stays silent")
 		_assert(not bool(_audio.call("is_sfx_playing", "eff04")), "episode select initial focus stays silent")
 	if _audio != null and _audio.has_method("stop_all"):
 		_audio.call("stop_all")
 	episode_select.call("_select_episode", 1)
+	if selected_title_wave != null:
+		_assert(String(selected_title_wave.get("text")) == "Alphabet", "episode select selected wave updates when row selection changes")
 	if _audio != null and _audio.has_method("is_sfx_playing"):
 		_assert(bool(_audio.call("is_sfx_playing", "eff04")), "episode select row change plays original hover cue")
 		_audio.call("stop_all")
