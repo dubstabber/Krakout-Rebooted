@@ -37,6 +37,7 @@ const OptionsScreenScript := preload("res://src/menu/options_screen.gd")
 const MainMenuScreenScript := preload("res://src/menu/main_menu_screen.gd")
 const EpisodeSelectScreenScript := preload("res://src/menu/episode_select_screen.gd")
 const CreditsScreenScript := preload("res://src/menu/credits_screen.gd")
+const NameEntryScreenScript := preload("res://src/menu/name_entry_screen.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 const RulesScreenScene := preload("res://scenes/menu/rules_screen.tscn")
@@ -3682,11 +3683,65 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(name_entry_screen.has_signal("score_submitted"), "name entry screen exposes score-submitted signal")
 	_assert(name_entry_screen.has_signal("cancel_requested"), "name entry screen exposes cancel signal")
 	_assert(name_entry_screen.find_child("NameLabel", true, false) != null, "name entry screen creates editable name label")
-	_assert(name_entry_screen.find_child("SubmitButton", true, false) != null, "name entry screen creates submit button")
+	_assert(name_entry_screen.find_child("SubmitButton", true, false) == null, "name entry screen does not invent a visible submit button")
+	_assert(name_entry_screen.find_child("CancelButton", true, false) == null, "name entry screen does not invent a visible cancel button")
+	_assert(name_entry_screen.find_children("*", "Button", true, false).is_empty(), "name entry screen stays keyboard-driven like the original")
 	var entry_name_label = name_entry_screen.find_child("NameLabel", true, false)
-	var submit_caption = name_entry_screen.find_child("SubmitButtonLabel", true, false)
+	var prompt_label = name_entry_screen.find_child("PromptLabel", true, false)
+	var backspace_hint_label = name_entry_screen.find_child("BackspaceHintLabel", true, false)
+	var enter_hint_label = name_entry_screen.find_child("EnterHintLabel", true, false)
 	_assert(entry_name_label != null and entry_name_label.get_script() == MenuBitmapLabelScript, "name entry screen renders editable name with original bitmap font")
-	_assert(submit_caption != null and submit_caption.get_script() == MenuBitmapLabelScript, "name entry screen renders submit caption with original bitmap font")
+	_assert(prompt_label != null and prompt_label.get_script() == MenuBitmapLabelScript, "name entry screen renders prompt with original bitmap font")
+	_assert(backspace_hint_label != null and backspace_hint_label.get_script() == MenuBitmapLabelScript, "name entry screen renders Backspace hint with original bitmap font")
+	_assert(enter_hint_label != null and enter_hint_label.get_script() == MenuBitmapLabelScript, "name entry screen renders Enter hint with original bitmap font")
+	if prompt_label != null and entry_name_label != null and backspace_hint_label != null and enter_hint_label != null:
+		_assert(prompt_label.position == NameEntryScreenScript.PROMPT_POSITION, "name entry prompt uses original y=5 placement")
+		_assert(entry_name_label.position == NameEntryScreenScript.NAME_POSITION, "name entry editable text uses original y=215 placement")
+		_assert(backspace_hint_label.position == NameEntryScreenScript.BACKSPACE_HINT_POSITION, "name entry Backspace hint uses original y=430 placement")
+		_assert(enter_hint_label.position == NameEntryScreenScript.ENTER_HINT_POSITION, "name entry Enter hint uses original y=455 placement")
+		_assert(String(prompt_label.text) == NameEntryScreenScript.PROMPT_TEXT, "name entry keeps original prompt text")
+		_assert(String(backspace_hint_label.text) == NameEntryScreenScript.BACKSPACE_HINT_TEXT, "name entry keeps original Backspace hint")
+		_assert(String(enter_hint_label.text) == NameEntryScreenScript.ENTER_HINT_TEXT, "name entry keeps original Enter hint")
+	_assert(
+		NameEntryScreenScript.primary_background_source_rect() == Rect2(Vector2(0, 0), Vector2(48, 48)),
+		"name entry background maps original first BgGetName tile"
+	)
+	_assert(
+		NameEntryScreenScript.secondary_background_source_rect() == Rect2(Vector2(48, 0), Vector2(48, 48)),
+		"name entry background maps original second BgGetName tile"
+	)
+	_assert(
+		NameEntryScreenScript.primary_background_target_rect(Vector2.ZERO, 0) == Rect2(Vector2(-48, 0), Vector2(48, 48)),
+		"name entry primary background starts one tile left like the original draw loop"
+	)
+	_assert(
+		NameEntryScreenScript.secondary_background_target_rect(Vector2.ZERO, 0) == Rect2(Vector2(-48, -48), Vector2(48, 48)),
+		"name entry secondary background starts diagonally offset like the original draw loop"
+	)
+	name_entry_screen.call("reset_original_state")
+	var background_offsets: Dictionary = name_entry_screen.call("background_offsets")
+	_assert(int(background_offsets["primary"]) == 0 and int(background_offsets["secondary"]) == 0, "name entry background starts at original zero offsets")
+	name_entry_screen.call("advance", NameEntryScreenScript.BACKGROUND_SCROLL_STEP_SECONDS)
+	background_offsets = name_entry_screen.call("background_offsets")
+	_assert(int(background_offsets["primary"]) == 0 and int(background_offsets["secondary"]) == 0, "name entry background waits for strict 30 ms sampled gate")
+	name_entry_screen.call("advance", 0.001)
+	background_offsets = name_entry_screen.call("background_offsets")
+	_assert(int(background_offsets["primary"]) == 1, "name entry primary background advances by original one-pixel step")
+	_assert(int(background_offsets["secondary"]) == 3, "name entry secondary background advances by original three-pixel step")
+	for _background_step in range(47):
+		name_entry_screen.call("advance", NameEntryScreenScript.BACKGROUND_SCROLL_STEP_SECONDS + 0.001)
+	background_offsets = name_entry_screen.call("background_offsets")
+	_assert(int(background_offsets["primary"]) == 0, "name entry primary background wraps at the original 48px tile size")
+	_assert(int(background_offsets["secondary"]) == 0, "name entry secondary background wraps at the original 48px tile size")
+	name_entry_screen.call("reset_original_state")
+	_assert(bool(name_entry_screen.call("name_cursor_visible")), "name entry cursor starts visible")
+	_assert(String(name_entry_screen.call("name_display_text")) == "_", "name entry displays the original visible cursor for empty input")
+	name_entry_screen.call("advance", NameEntryScreenScript.NAME_CURSOR_BLINK_SECONDS)
+	_assert(bool(name_entry_screen.call("name_cursor_visible")), "name entry cursor waits for strict 400 ms blink gate")
+	name_entry_screen.call("advance", 0.001)
+	_assert(not bool(name_entry_screen.call("name_cursor_visible")), "name entry cursor toggles after original sampled blink gate")
+	_assert(String(name_entry_screen.call("name_display_text")) == " ", "name entry hidden cursor uses the original trailing space")
+	_assert(not AudioCueCatalogScript.has_sfx_event("name_entry_submit"), "name entry submit stays silent without an original SFX route")
 	name_entry_screen.call("configure", 456, 7, "Retro", "Retro")
 	name_entry_screen.call("_unhandled_input", _key_event(KEY_A, 65))
 	name_entry_screen.call("_unhandled_input", _key_event(KEY_B, 66))

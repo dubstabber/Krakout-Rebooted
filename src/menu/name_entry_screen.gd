@@ -8,7 +8,20 @@ const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec
 const ProfileScript := preload("res://src/autoloads/krakout_profile.gd")
 const MenuBitmapLabelScript := preload("res://src/menu/krakout_menu_bitmap_label.gd")
 
-const BACKGROUND_TILE_SIZE := Vector2(96, 48)
+const BACKGROUND_TILE_SIZE := Vector2(48, 48)
+const BACKGROUND_SCROLL_STEP_SECONDS := 0.03
+const BACKGROUND_PRIMARY_STEP := 1
+const BACKGROUND_SECONDARY_STEP := 3
+const NAME_CURSOR_BLINK_SECONDS := 0.4
+const PROMPT_TEXT := "Enter your name, please:"
+const BACKSPACE_HINT_TEXT := "Use 'Backspace' key for edit."
+const ENTER_HINT_TEXT := "Use 'Enter' key for confirm."
+const PROMPT_POSITION := Vector2(0, 5)
+const NAME_POSITION := Vector2(5, 215)
+const BACKSPACE_HINT_POSITION := Vector2(0, 430)
+const ENTER_HINT_POSITION := Vector2(0, 455)
+const FULL_WIDTH_LABEL_SIZE := Vector2(640, 28)
+const NAME_LABEL_SIZE := Vector2(630, 28)
 const NAME_MAX_LENGTH := ProfileScript.MAX_PLAYER_NAME_LENGTH
 
 var score := 0
@@ -19,11 +32,14 @@ var episode_title := ""
 var _player_name := ""
 var _background_texture: Texture2D
 var _prompt_label
-var _summary_label
 var _name_label
-var _hint_label
-var _submit_button: Button
-var _cancel_button: Button
+var _backspace_hint_label
+var _enter_hint_label
+var _background_primary_offset := 0
+var _background_secondary_offset := 0
+var _background_elapsed := 0.0
+var _name_cursor_elapsed := 0.0
+var _name_cursor_visible := true
 
 
 func _ready() -> void:
@@ -34,15 +50,28 @@ func _ready() -> void:
 	refresh_content()
 
 
+func _process(delta: float) -> void:
+	advance(delta)
+
+
 func _draw() -> void:
 	if _background_texture == null:
 		return
 
 	var viewport_size := Vector2(PlayfieldSpecScript.VIEWPORT_SIZE)
-	var source_rect := Rect2(Vector2.ZERO, BACKGROUND_TILE_SIZE)
-	for y in range(0, int(viewport_size.y), int(BACKGROUND_TILE_SIZE.y)):
-		for x in range(0, int(viewport_size.x), int(BACKGROUND_TILE_SIZE.x)):
-			draw_texture_rect_region(_background_texture, Rect2(Vector2(x, y), BACKGROUND_TILE_SIZE), source_rect)
+	for y in range(0, int(viewport_size.y) + int(BACKGROUND_TILE_SIZE.y) * 2, int(BACKGROUND_TILE_SIZE.y)):
+		for x in range(0, int(viewport_size.x) + int(BACKGROUND_TILE_SIZE.x) * 2, int(BACKGROUND_TILE_SIZE.x)):
+			var tile_origin := Vector2(x, y)
+			draw_texture_rect_region(
+				_background_texture,
+				primary_background_target_rect(tile_origin, _background_primary_offset),
+				primary_background_source_rect()
+			)
+			draw_texture_rect_region(
+				_background_texture,
+				secondary_background_target_rect(tile_origin, _background_secondary_offset),
+				secondary_background_source_rect()
+			)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -112,61 +141,97 @@ func submit_name() -> void:
 	score_submitted.emit(submitted_player_name(), score, level_number, episode_slug)
 
 
+func advance(delta: float) -> void:
+	if delta <= 0.0:
+		return
+
+	_background_elapsed += delta
+	if _background_elapsed > BACKGROUND_SCROLL_STEP_SECONDS:
+		_background_elapsed = 0.0
+		_background_primary_offset = (_background_primary_offset + BACKGROUND_PRIMARY_STEP) % int(BACKGROUND_TILE_SIZE.x)
+		_background_secondary_offset = (_background_secondary_offset + BACKGROUND_SECONDARY_STEP) % int(BACKGROUND_TILE_SIZE.x)
+		queue_redraw()
+
+	_name_cursor_elapsed += delta
+	if _name_cursor_elapsed > NAME_CURSOR_BLINK_SECONDS:
+		_name_cursor_elapsed = 0.0
+		_name_cursor_visible = not _name_cursor_visible
+		refresh_content()
+
+
+func reset_original_state() -> void:
+	_background_primary_offset = 0
+	_background_secondary_offset = 0
+	_background_elapsed = 0.0
+	_name_cursor_elapsed = 0.0
+	_name_cursor_visible = true
+	refresh_content()
+	queue_redraw()
+
+
+func background_offsets() -> Dictionary:
+	return {
+		"primary": _background_primary_offset,
+		"secondary": _background_secondary_offset,
+	}
+
+
+func name_cursor_visible() -> bool:
+	return _name_cursor_visible
+
+
+func name_display_text() -> String:
+	if _name_label == null:
+		return _visible_name_text()
+	return String(_name_label.text)
+
+
+static func primary_background_source_rect() -> Rect2:
+	return Rect2(Vector2.ZERO, BACKGROUND_TILE_SIZE)
+
+
+static func secondary_background_source_rect() -> Rect2:
+	return Rect2(Vector2(BACKGROUND_TILE_SIZE.x, 0), BACKGROUND_TILE_SIZE)
+
+
+static func primary_background_target_rect(tile_origin: Vector2, offset: int) -> Rect2:
+	return Rect2(tile_origin + Vector2(float(offset - int(BACKGROUND_TILE_SIZE.x)), 0), BACKGROUND_TILE_SIZE)
+
+
+static func secondary_background_target_rect(tile_origin: Vector2, offset: int) -> Rect2:
+	var shifted_offset := float(offset - int(BACKGROUND_TILE_SIZE.x))
+	return Rect2(tile_origin + Vector2(shifted_offset, shifted_offset), BACKGROUND_TILE_SIZE)
+
+
 func refresh_content() -> void:
 	if _prompt_label != null:
-		_prompt_label.text = "Enter your name, please:"
-	if _summary_label != null:
-		_summary_label.text = "Your Level #%d, and Score %d" % [level_number, score]
+		_prompt_label.text = PROMPT_TEXT
 	if _name_label != null:
-		var visible_name := _player_name
-		if visible_name.is_empty():
-			visible_name = "_"
-		else:
-			visible_name += "_"
-		_name_label.text = visible_name
-	if _hint_label != null:
-		_hint_label.text = "Use 'Enter' key for confirm.\nUse 'Backspace' key for edit."
+		_name_label.text = _visible_name_text()
+	if _backspace_hint_label != null:
+		_backspace_hint_label.text = BACKSPACE_HINT_TEXT
+	if _enter_hint_label != null:
+		_enter_hint_label.text = ENTER_HINT_TEXT
 
 
 func _build_scene() -> void:
 	if _prompt_label != null:
 		return
 
-	_summary_label = _make_label("ScoreSummary", Vector2(0, 120), Vector2(640, 28), HORIZONTAL_ALIGNMENT_CENTER, 18)
-	add_child(_summary_label)
-
-	_prompt_label = _make_label("PromptLabel", Vector2(0, 160), Vector2(640, 28), HORIZONTAL_ALIGNMENT_CENTER, 18)
+	_prompt_label = _make_label("PromptLabel", PROMPT_POSITION, FULL_WIDTH_LABEL_SIZE, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_prompt_label)
 
-	_name_label = _make_label("NameLabel", Vector2(170, 205), Vector2(300, 40), HORIZONTAL_ALIGNMENT_CENTER, 24)
+	_name_label = _make_label("NameLabel", NAME_POSITION, NAME_LABEL_SIZE, HORIZONTAL_ALIGNMENT_CENTER)
 	add_child(_name_label)
 
-	_hint_label = _make_label("HintLabel", Vector2(0, 270), Vector2(640, 64), HORIZONTAL_ALIGNMENT_CENTER, 16)
-	_hint_label.line_spacing = 0
-	add_child(_hint_label)
+	_backspace_hint_label = _make_label("BackspaceHintLabel", BACKSPACE_HINT_POSITION, FULL_WIDTH_LABEL_SIZE, HORIZONTAL_ALIGNMENT_CENTER)
+	add_child(_backspace_hint_label)
 
-	_submit_button = Button.new()
-	_submit_button.name = "SubmitButton"
-	_submit_button.text = ""
-	_submit_button.position = Vector2(225, 390)
-	_submit_button.size = Vector2(82, 34)
-	_submit_button.focus_mode = Control.FOCUS_ALL
-	_submit_button.pressed.connect(submit_name)
-	add_child(_submit_button)
-	_submit_button.add_child(_button_label("SubmitButtonLabel", _submit_button.size, "OK"))
-
-	_cancel_button = Button.new()
-	_cancel_button.name = "CancelButton"
-	_cancel_button.text = ""
-	_cancel_button.position = Vector2(333, 390)
-	_cancel_button.size = Vector2(82, 34)
-	_cancel_button.focus_mode = Control.FOCUS_ALL
-	_cancel_button.pressed.connect(func() -> void: cancel_requested.emit())
-	add_child(_cancel_button)
-	_cancel_button.add_child(_button_label("CancelButtonLabel", _cancel_button.size, "Back"))
+	_enter_hint_label = _make_label("EnterHintLabel", ENTER_HINT_POSITION, FULL_WIDTH_LABEL_SIZE, HORIZONTAL_ALIGNMENT_CENTER)
+	add_child(_enter_hint_label)
 
 
-func _make_label(label_name: String, label_position: Vector2, label_size: Vector2, alignment: HorizontalAlignment, _font_size: int):
+func _make_label(label_name: String, label_position: Vector2, label_size: Vector2, alignment: HorizontalAlignment):
 	var label = MenuBitmapLabelScript.new()
 	label.name = label_name
 	label.position = label_position
@@ -176,15 +241,9 @@ func _make_label(label_name: String, label_position: Vector2, label_size: Vector
 	return label
 
 
-func _button_label(label_name: String, label_size: Vector2, text_value: String):
-	var label = MenuBitmapLabelScript.new()
-	label.name = label_name
-	label.position = Vector2.ZERO
-	label.size = label_size
-	label.text = text_value
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	return label
+func _visible_name_text() -> String:
+	var suffix := "_" if _name_cursor_visible else " "
+	return _player_name + suffix
 
 
 func _load_asset_texture(texture_name: String) -> Texture2D:
