@@ -246,7 +246,10 @@ const SNAKE_RUNTIME_ACTIVATION_PROVEN := false
 const SNAKE_ACTIVATION_POLICY := "evidence_gated"
 const SNAKE_SLOT_OFFSET := "0x0A74"
 const SNAKE_DIRECT_WRITE_AUDIT_RANGE := "+0x0A70..+0x0A8C"
-const SNAKE_IDA_EVIDENCE := "IDA anchors: sub_4194C0 load, sub_419650 draw, sub_419600 clears 100 16-byte slots from +0x0A74, sub_40DAF0 calls sub_419B00 from the runtime loop, sub_419B00 gates updates on +0x0A74 == 1 before calling sub_41A9A0/sub_41B140/sub_41B2E0, and sub_41B390 truncates from ball/projectile callers; the +0x0A70..+0x0A8C write audit found reset/read/step/draw/truncation sites but no production initializer for +0x0A74."
+const SNAKE_LEVEL_TAIL_AUDIT_RANGE := "level_tail_bytes[22:50]"
+const SNAKE_LEVEL_TAIL_AUDIT_FINDINGS := "Level-tail audit: Flystone #25 has tail byte 29 == 1; Abstraction #1-14 and Retro #27-30 carry 170 padding in tail bytes 30..49. IDA sub_40FF40 reads all 50 tail bytes into +0x4E8 but only sums indices 0..21 into +0x51C for bonus stock; sub_410CC0 reads/swaps that stock through +0x4E8/+0x51C and does not touch Snake state."
+const SNAKE_BONUS_AUDIT := "Bonus audit: sub_4110E0 covers the 22 original bonus cases and writes ball/racket/board/level state, including board-cell timers under +0x5E8/+0x5F8 for exploding bricks, but no case writes Snake +0x0A74 or initializes a Snake slot."
+const SNAKE_IDA_EVIDENCE := "IDA anchors: sub_4194C0 load, sub_419650 draw, sub_419600 clears 100 16-byte slots from +0x0A74, sub_40DAF0 calls sub_419B00 from the runtime loop, sub_419B00 gates updates on +0x0A74 == 1 before calling sub_41A9A0/sub_41B140/sub_41B2E0, and sub_41B390 truncates from ball/projectile callers; the +0x0A70..+0x0A8C write audit found reset/read/step/draw/truncation sites but no production initializer for +0x0A74. Level-tail anomalies in level_tail_bytes[22:50] and sub_4110E0 bonus cases were rechecked; neither path writes +0x0A74."
 const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
 const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
@@ -826,7 +829,10 @@ static func snake_runtime_activation_evidence() -> Dictionary:
 		"collision": "sub_41B390 truncates existing slots from ball and projectile callers.",
 		"write_scan": "The direct write scan over %s found reset clears, reads, step rewrites, terminal-kind rewrites, truncation clears, and no production writer of +0x0A74 := 1." % SNAKE_DIRECT_WRITE_AUDIT_RANGE,
 		"input_state_overlap": "Offset hits in sub_415A70/sub_415C00 belong to DirectInput current/previous state buffers and are not Snake activation writes.",
-		"activation": "No production write that sets the +0x0A74 Snake activation guard or first active slot was found; normal gameplay spawning stays disabled.",
+		"level_tail_audit_range": SNAKE_LEVEL_TAIL_AUDIT_RANGE,
+		"level_tail_audit": SNAKE_LEVEL_TAIL_AUDIT_FINDINGS,
+		"bonus_activation_audit": SNAKE_BONUS_AUDIT,
+		"activation": "No production write that sets the +0x0A74 Snake activation guard or first active slot was found in direct writes, level-tail handling, or bonus-case dispatch; normal gameplay spawning stays disabled.",
 	}
 
 

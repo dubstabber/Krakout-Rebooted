@@ -1681,16 +1681,46 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(String(snake_activation_evidence.get("write_scan", "")).find(GameSessionScript.SNAKE_DIRECT_WRITE_AUDIT_RANGE) != -1, "Snake VFX evidence records the audited direct-write range")
 	_assert(String(snake_activation_evidence.get("write_scan", "")).find("no production writer") != -1, "Snake VFX evidence records the missing activation writer")
 	_assert(String(snake_activation_evidence.get("input_state_overlap", "")).find("sub_415A70") != -1, "Snake VFX evidence excludes the DirectInput offset overlap")
+	_assert(String(snake_activation_evidence.get("level_tail_audit_range", "")) == GameSessionScript.SNAKE_LEVEL_TAIL_AUDIT_RANGE, "Snake VFX evidence records the audited level-tail range")
+	var snake_tail_audit := String(snake_activation_evidence.get("level_tail_audit", ""))
+	_assert(snake_tail_audit.find("Flystone #25") != -1, "Snake VFX evidence records the suspicious Flystone tail byte")
+	_assert(snake_tail_audit.find("170 padding") != -1, "Snake VFX evidence records the repeated padding tail bytes")
+	_assert(snake_tail_audit.find("sub_40FF40") != -1, "Snake VFX evidence names the original level-tail loader")
+	_assert(snake_tail_audit.find("sub_410CC0") != -1, "Snake VFX evidence names the audited bonus-stock consumer")
+	_assert(snake_tail_audit.find("indices 0..21") != -1, "Snake VFX evidence records that only the first 22 tail bytes feed bonus stock")
+	var snake_bonus_audit := String(snake_activation_evidence.get("bonus_activation_audit", ""))
+	_assert(snake_bonus_audit.find("sub_4110E0") != -1, "Snake VFX evidence names the original bonus dispatcher")
+	_assert(snake_bonus_audit.find("no case writes Snake +0x0A74") != -1, "Snake VFX evidence records that bonus dispatch does not activate Snake")
 	_assert(String(snake_activation_evidence.get("activation", "")).find("No production write") != -1, "Snake VFX evidence records the missing production initializer")
 	_assert(String(snake_activation_evidence.get("activation", "")).find("normal gameplay spawning stays disabled") != -1, "Snake VFX evidence records the evidence-gated gameplay policy")
 	_assert(String(GameSessionScript.SNAKE_IDA_EVIDENCE).find("+0x0A74") != -1, "Snake VFX text evidence records the original active-slot offset")
 	_assert(String(GameSessionScript.SNAKE_IDA_EVIDENCE).find(GameSessionScript.SNAKE_DIRECT_WRITE_AUDIT_RANGE) != -1, "Snake VFX text evidence records the direct-write audit range")
 	_assert(String(GameSessionScript.SNAKE_IDA_EVIDENCE).find("sub_40DAF0") != -1, "Snake VFX text evidence records the gameplay-loop caller")
+	_assert(String(GameSessionScript.SNAKE_IDA_EVIDENCE).find("level_tail_bytes[22:50]") != -1, "Snake VFX text evidence records the level-tail audit")
 	var snake_dormant_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	snake_dormant_session._monster_spawn_cooldown = 999.0
 	snake_dormant_session._bee_spawn_delay_remaining = 999.0
 	snake_dormant_session.update(GameSessionScript.SNAKE_UPDATE_SECONDS * 4.0)
 	_assert(snake_dormant_session.visible_snake_segments().is_empty(), "normal gameplay update keeps Snake VFX dormant without proven original activation evidence")
+	var snake_tail_flag: Array[int] = []
+	for tail_index in range(LevelDataScript.LEVEL_TAIL_SIZE):
+		snake_tail_flag.append(0)
+	snake_tail_flag[29] = 1
+	var snake_tail_flag_session = _playing_session_from_level(_make_level_from_rows([[1]], snake_tail_flag))
+	snake_tail_flag_session._monster_spawn_cooldown = 999.0
+	snake_tail_flag_session._bee_spawn_delay_remaining = 999.0
+	snake_tail_flag_session.update(GameSessionScript.SNAKE_UPDATE_SECONDS * 4.0)
+	_assert(snake_tail_flag_session.visible_snake_segments().is_empty(), "Flystone-style tail byte 29 anomaly does not activate Snake without original write evidence")
+	var snake_tail_padding: Array[int] = []
+	for tail_index in range(LevelDataScript.LEVEL_TAIL_SIZE):
+		snake_tail_padding.append(0)
+	for tail_index in range(30, LevelDataScript.LEVEL_TAIL_SIZE):
+		snake_tail_padding[tail_index] = 170
+	var snake_tail_padding_session = _playing_session_from_level(_make_level_from_rows([[1]], snake_tail_padding))
+	snake_tail_padding_session._monster_spawn_cooldown = 999.0
+	snake_tail_padding_session._bee_spawn_delay_remaining = 999.0
+	snake_tail_padding_session.update(GameSessionScript.SNAKE_UPDATE_SECONDS * 4.0)
+	_assert(snake_tail_padding_session.visible_snake_segments().is_empty(), "170-padded level tails do not activate Snake without original write evidence")
 
 	var snake_preview_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	var snake_preview_result: Dictionary = snake_preview_session.debug_spawn_snake_vfx_preview()

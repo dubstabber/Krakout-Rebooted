@@ -85,6 +85,12 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   slots behind the original 50ms `timeGetTime` gate; a direct
   `+0x0A70..+0x0A8C` write audit found reset/read/step/draw/truncation sites
   but no production initializer for the guard.
+  A follow-up level-tail audit found suspicious nonzero bytes (`Flystone` #25
+  byte 29 and `170` padding in late `Abstraction`/`Retro` tails), but IDA shows
+  `sub_40FF40` only summing tail indices `0..21` into the original bonus-stock
+  total at `+0x51C`, with `sub_410CC0` reading/swapping that same bonus-stock
+  region. `sub_4110E0` bonus dispatch was also checked and does not write the
+  Snake guard or initialize a Snake slot.
   Offset hits in `sub_415A70`/`sub_415C00` are DirectInput state-buffer traffic,
   not Snake activation. Normal gameplay spawning is therefore evidence-gated and
   remains disabled; the current preview is exposed only through tests and the
