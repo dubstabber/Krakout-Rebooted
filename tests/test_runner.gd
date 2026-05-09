@@ -3363,6 +3363,42 @@ func _validate_menu_and_game_scenes() -> void:
 	var rules_body = rules_screen.find_child("BodyLabel", true, false)
 	_assert(rules_title != null and rules_title.get_script() == MenuBitmapLabelScript, "rules screen renders title with original bitmap font")
 	_assert(rules_body != null and rules_body.get_script() == MenuBitmapLabelScript, "rules screen renders body copy with original bitmap font")
+	var rules_lines: Array = rules_screen.call("body_lines")
+	_assert(rules_lines.has("--==| | Game Rules and Keys | |==--"), "rules screen uses original executable heading")
+	_assert(rules_lines.has("-=| Game Overview |=-"), "rules screen includes original game overview section")
+	_assert(rules_lines.has("Control Racket with Mouse and let"), "rules screen includes original overview copy")
+	_assert(rules_lines.has("-=| Keys used in Game |=-"), "rules screen includes original key section")
+	_assert(rules_lines.has("<Ctrl> + <U> - Release cursor."), "rules screen includes original cursor-release key copy")
+	_assert(rules_lines.has("<Space> - Use Bonus."), "rules screen includes original bonus-use key copy")
+	_assert(rules_lines.has("-=| Bonuses |=-"), "rules screen includes original bonuses section")
+	var rules_bonus_names: Array = rules_screen.call("bonus_names")
+	_assert(rules_bonus_names.size() == GameSessionScript.BONUS_TYPE_COUNT, "rules screen lists every original bonus")
+	_assert(String(rules_bonus_names[0]) == "Add standard Ball", "rules screen preserves first executable bonus name")
+	_assert(String(rules_bonus_names[21]) == "Explode all Explodings", "rules screen preserves final executable bonus name")
+	var first_bonus_icon := rules_screen.find_child("BonusIcon0", true, false) as TextureRect
+	var final_bonus_icon := rules_screen.find_child("BonusIcon21", true, false) as TextureRect
+	_assert(first_bonus_icon != null and first_bonus_icon.texture is AtlasTexture, "rules screen draws first original bonus icon from atlas")
+	_assert(final_bonus_icon != null and final_bonus_icon.texture is AtlasTexture, "rules screen draws final original bonus icon from atlas")
+	_assert(float(rules_screen.call("max_scroll_offset")) > 0.0, "rules screen exposes a scroll range for original rules content")
+	var rules_scroll_start := float(rules_screen.call("scroll_offset"))
+	var rules_down_event := InputEventKey.new()
+	rules_down_event.keycode = KEY_DOWN
+	rules_down_event.pressed = true
+	rules_screen.call("_unhandled_input", rules_down_event)
+	_assert(float(rules_screen.call("scroll_offset")) > rules_scroll_start, "rules screen scrolls down with original key navigation")
+	var rules_after_down := float(rules_screen.call("scroll_offset"))
+	var rules_page_down_event := InputEventKey.new()
+	rules_page_down_event.keycode = KEY_PAGEDOWN
+	rules_page_down_event.pressed = true
+	rules_screen.call("_unhandled_input", rules_page_down_event)
+	_assert(float(rules_screen.call("scroll_offset")) > rules_after_down, "rules screen scrolls by page-down key")
+	rules_screen.call("scroll_by", 100000.0)
+	_assert(is_equal_approx(float(rules_screen.call("scroll_offset")), float(rules_screen.call("max_scroll_offset"))), "rules screen clamps scroll at the bottom")
+	var rules_page_up_event := InputEventKey.new()
+	rules_page_up_event.keycode = KEY_PAGEUP
+	rules_page_up_event.pressed = true
+	rules_screen.call("_unhandled_input", rules_page_up_event)
+	_assert(float(rules_screen.call("scroll_offset")) < float(rules_screen.call("max_scroll_offset")), "rules screen scrolls upward with page-up key")
 	if _audio != null and _audio.has_method("is_sfx_playing"):
 		if _audio.has_method("stop_all"):
 			_audio.call("stop_all")
@@ -3389,6 +3425,30 @@ func _validate_menu_and_game_scenes() -> void:
 	var credits_body = credits_screen.find_child("BodyLabel", true, false)
 	_assert(credits_title != null and credits_title.get_script() == MenuBitmapLabelScript, "credits screen renders title with original bitmap font")
 	_assert(credits_body != null and credits_body.get_script() == MenuBitmapLabelScript, "credits screen renders body copy with original bitmap font")
+	var credit_sections: Array = credits_screen.call("credit_sections")
+	_assert(credit_sections.size() == 5, "credits screen exposes original executable credit groups")
+	_assert(String(credit_sections[0]["role"]) == "Main Programmer", "credits screen preserves original programmer role")
+	var programmer_names: Array = credit_sections[0]["names"]
+	_assert(programmer_names.has("Andrey A. Ugolnik"), "credits screen preserves original programmer credit")
+	_assert(String(credit_sections[2]["role"]) == "Levels Designers", "credits screen preserves original level-designer role")
+	var level_designer_names: Array = credit_sections[2]["names"]
+	_assert(level_designer_names.has("Eugene P. Janushkevich"), "credits screen preserves original level-designer credit")
+	_assert(String(credit_sections[4]["role"]) == "Original Music", "credits screen preserves original music role")
+	var music_names: Array = credit_sections[4]["names"]
+	_assert(music_names.has("Konstantin Elgazin"), "credits screen preserves original music credit")
+	var credit_footer_lines: Array = credits_screen.call("credit_footer_lines")
+	_assert(credit_footer_lines.has("(c) 2001-2002 'WE' Group."), "credits screen preserves original copyright line")
+	_assert(credit_footer_lines.has("All Rights Reserved."), "credits screen preserves original rights line")
+	_assert(credit_footer_lines.has("http://www.wegroup.org"), "credits screen preserves original website line")
+	var credit_lines: Array = credits_screen.call("body_lines")
+	_assert(not credit_lines.has("Reimplementation:"), "credits screen no longer shows placeholder reimplementation copy")
+	_assert(float(credits_screen.call("max_scroll_offset")) > 0.0, "credits screen exposes a scroll range for original credit content")
+	var credits_scroll_start := float(credits_screen.call("scroll_offset"))
+	var credits_down_event := InputEventKey.new()
+	credits_down_event.keycode = KEY_DOWN
+	credits_down_event.pressed = true
+	credits_screen.call("_unhandled_input", credits_down_event)
+	_assert(float(credits_screen.call("scroll_offset")) > credits_scroll_start, "credits screen scrolls down with original key navigation")
 	if _audio != null and _audio.has_method("is_sfx_playing"):
 		if _audio.has_method("stop_all"):
 			_audio.call("stop_all")

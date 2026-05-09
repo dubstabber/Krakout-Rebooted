@@ -149,7 +149,8 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   into an episode browser backed by decoded episode metadata, and starts the
   selected episode at its first level.
 - The main menu now routes every original icon into a Godot-native screen:
-  episode selection, game rules, high score, options, credits, and exit.
+  episode selection, executable-backed game rules, high score, options,
+  executable-backed credits, and exit.
 - Qualifying game-over scores now enter the original-backed name-entry slice:
   `BgGetName` background art, the original Enter/Backspace prompt strings,
   `theme3` music context, `Anonymous` fallback names, and submission into the
