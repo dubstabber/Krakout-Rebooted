@@ -147,8 +147,10 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   and name entry uses `theme3`.
 - Front-end interaction cues now route through the same semantic audio layer:
   main-menu selection/activation use `eff02`/`eff01`, while episode-browser
-  selection/activation use `eff04`/`eff03`, with startup focus and page-build
-  paths kept silent.
+  selection/activation use `eff04`/`eff03`. Options-screen control selection,
+  page changes, toggles, and Back reuse the original front-end `eff02`/`eff01`
+  cue pair, with startup focus, unchanged selection, and slider adjustments
+  kept silent.
 - The options screen now keeps its Godot-native controls while layering the
   original `Vx` sheet as Music/SFX enabled-state VFX, using the IDA-backed
   10-frame 40x40 strip and static 30x30 marker beside the volume rows.
@@ -161,11 +163,12 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   complete, and game over. `Destroy One Ball` now maps to `eff24` and reuses
   the shared `Exploision` effect pool at the removed ball position. Hard-brick
   collisions now also expose the original `Exploision` force-break/non-clearing
-  VFX columns; initial ball launch, back-wall bounce, generic unaudited bonus
-  apply, and generic projectile hit remain named but silent. The latest
-  back-wall audit found the relevant branch reuses the `eff05` handle already
-  used for level-ready behavior, so that event remains unmapped until runtime
-  traces prove a distinct bounce contract.
+  VFX columns. The remaining gameplay SFX gaps are closed as audited silence:
+  initial ball launch, back-wall bounce, generic bonus apply, and generic
+  projectile hit stay named for gameplay flow but intentionally unmapped until
+  runtime evidence proves a distinct cue. Extracted `eff06`, `eff20`, and
+  `eff21` are preserved as DAT assets, but the unpacked executable does not
+  reference them from its sample-load strings, so they remain unwired.
 
 ## Validation
 

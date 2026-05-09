@@ -9,6 +9,8 @@ const CONTEXT_CREDITS := "credits"
 const CONTEXT_EPISODE_SELECT := "episode_select"
 const CONTEXT_GAMEPLAY := "gameplay"
 const CONTEXT_NAME_ENTRY := "name_entry"
+const SFX_EVENT_FRONTEND_SELECT := "frontend_select"
+const SFX_EVENT_FRONTEND_ACTIVATE := "frontend_activate"
 const SFX_EVENT_MAIN_MENU_SELECT := "main_menu_select"
 const SFX_EVENT_MAIN_MENU_ACTIVATE := "main_menu_activate"
 const SFX_EVENT_EPISODE_SELECT := "episode_select"
@@ -49,6 +51,8 @@ const MUSIC_CONTEXTS := {
 	CONTEXT_NAME_ENTRY: "theme3",
 }
 const KNOWN_SFX_EVENTS := [
+	SFX_EVENT_FRONTEND_SELECT,
+	SFX_EVENT_FRONTEND_ACTIVATE,
 	SFX_EVENT_MAIN_MENU_SELECT,
 	SFX_EVENT_MAIN_MENU_ACTIVATE,
 	SFX_EVENT_EPISODE_SELECT,
@@ -79,6 +83,8 @@ const KNOWN_SFX_EVENTS := [
 	SFX_EVENT_GAME_OVER,
 ]
 const SFX_EVENT_NAMES := {
+	SFX_EVENT_FRONTEND_SELECT: "eff02",
+	SFX_EVENT_FRONTEND_ACTIVATE: "eff01",
 	SFX_EVENT_MAIN_MENU_SELECT: "eff02",
 	SFX_EVENT_MAIN_MENU_ACTIVATE: "eff01",
 	SFX_EVENT_EPISODE_SELECT: "eff04",
@@ -106,6 +112,19 @@ const SFX_EVENT_NAMES := {
 const SFX_STOP_EVENT_NAMES := {
 	SFX_EVENT_BEE_STOP: "EffBee",
 }
+const INTENTIONALLY_SILENT_SFX_EVENTS := {
+	# Audited against executable sample-load/play sites: keep these semantic
+	# events named for gameplay flow, but do not bind a guessed DAT sound.
+	SFX_EVENT_BALL_LAUNCH: "Initial ready-ball launch has no distinct loaded sample beyond level-ready flow.",
+	SFX_EVENT_BACK_WALL_BOUNCE: "Back-wall audit only proved the shared eff05 handle, not a distinct bounce cue.",
+	SFX_EVENT_BONUS_APPLY: "Generic bonus apply is too broad; only proven branch-specific apply cues are mapped.",
+	SFX_EVENT_PROJECTILE_HIT: "Projectile-hit branches already emit proven brick or monster cues where applicable.",
+}
+const UNUSED_EXTRACTED_SFX_NAMES := [
+	"eff06",
+	"eff20",
+	"eff21",
+]
 
 
 static func music_name_for_context(context_name: String) -> String:
@@ -134,6 +153,29 @@ static func sfx_stop_name_for_event(event_name: String) -> String:
 
 static func is_sfx_stop_event(event_name: String) -> bool:
 	return SFX_STOP_EVENT_NAMES.has(event_name)
+
+
+static func is_sfx_event_intentionally_silent(event_name: String) -> bool:
+	return INTENTIONALLY_SILENT_SFX_EVENTS.has(event_name)
+
+
+static func silent_sfx_event_reason(event_name: String) -> String:
+	return String(INTENTIONALLY_SILENT_SFX_EVENTS.get(event_name, ""))
+
+
+static func intentionally_silent_sfx_events() -> Array[String]:
+	var event_names: Array[String] = []
+	for event_name: String in INTENTIONALLY_SILENT_SFX_EVENTS.keys():
+		event_names.append(event_name)
+	event_names.sort()
+	return event_names
+
+
+static func unused_extracted_sfx_names() -> Array[String]:
+	var sfx_names: Array[String] = []
+	for sfx_name: String in UNUSED_EXTRACTED_SFX_NAMES:
+		sfx_names.append(sfx_name)
+	return sfx_names
 
 
 static func has_sfx_event(event_name: String) -> bool:

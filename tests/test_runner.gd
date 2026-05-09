@@ -2106,11 +2106,15 @@ func _validate_audio_cue_catalog() -> void:
 	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "audio cue catalog recognizes brick-clear gameplay SFX event")
 	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "audio cue catalog recognizes projectile-fire gameplay SFX event")
 	_assert(AudioCueCatalogScript.has_sfx_event(GameSessionScript.SFX_EVENT_BEE_STOP), "audio cue catalog recognizes bee-stop gameplay SFX event")
+	_assert(AudioCueCatalogScript.has_sfx_event(AudioCueCatalogScript.SFX_EVENT_FRONTEND_SELECT), "audio cue catalog recognizes generic front-end selection SFX event")
+	_assert(AudioCueCatalogScript.has_sfx_event(AudioCueCatalogScript.SFX_EVENT_FRONTEND_ACTIVATE), "audio cue catalog recognizes generic front-end activation SFX event")
 	_assert(AudioCueCatalogScript.has_sfx_event(AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_SELECT), "audio cue catalog recognizes main-menu selection SFX event")
 	_assert(AudioCueCatalogScript.has_sfx_event(AudioCueCatalogScript.SFX_EVENT_EPISODE_ACTIVATE), "audio cue catalog recognizes episode activation SFX event")
 	_assert(not AudioCueCatalogScript.has_sfx_event("missing_sfx_event"), "audio cue catalog rejects unknown SFX events")
 
 	var expected_sfx_names := {
+		AudioCueCatalogScript.SFX_EVENT_FRONTEND_SELECT: "eff02",
+		AudioCueCatalogScript.SFX_EVENT_FRONTEND_ACTIVATE: "eff01",
 		AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_SELECT: "eff02",
 		AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_ACTIVATE: "eff01",
 		AudioCueCatalogScript.SFX_EVENT_EPISODE_SELECT: "eff04",
@@ -2140,10 +2144,19 @@ func _validate_audio_cue_catalog() -> void:
 			AudioCueCatalogScript.sfx_name_for_event(event_name) == expected_sfx_names[event_name],
 			"audio cue catalog maps %s to IDA-backed %s" % [event_name, expected_sfx_names[event_name]]
 		)
-	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BACK_WALL_BOUNCE) == "", "audio cue catalog leaves unproven back-wall bounce silent")
-	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BONUS_APPLY) == "", "audio cue catalog leaves generic bonus-apply silent")
-	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_PROJECTILE_HIT) == "", "audio cue catalog leaves generic projectile-hit silent")
-	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BALL_LAUNCH) == "", "audio cue catalog leaves initial ball launch silent")
+	var expected_silent_events := [
+		GameSessionScript.SFX_EVENT_BACK_WALL_BOUNCE,
+		GameSessionScript.SFX_EVENT_BALL_LAUNCH,
+		GameSessionScript.SFX_EVENT_BONUS_APPLY,
+		GameSessionScript.SFX_EVENT_PROJECTILE_HIT,
+	]
+	_assert(AudioCueCatalogScript.intentionally_silent_sfx_events() == expected_silent_events, "audio cue catalog records the audited silent gameplay SFX events")
+	for event_name: String in expected_silent_events:
+		_assert(AudioCueCatalogScript.has_sfx_event(event_name), "audio cue catalog keeps silent event %s in the semantic event list" % event_name)
+		_assert(AudioCueCatalogScript.sfx_name_for_event(event_name) == "", "audio cue catalog leaves audited silent event %s unmapped" % event_name)
+		_assert(AudioCueCatalogScript.is_sfx_event_intentionally_silent(event_name), "audio cue catalog marks %s as intentionally silent" % event_name)
+		_assert(not AudioCueCatalogScript.silent_sfx_event_reason(event_name).is_empty(), "audio cue catalog explains why %s is silent" % event_name)
+	_assert(not AudioCueCatalogScript.is_sfx_event_intentionally_silent(GameSessionScript.SFX_EVENT_BRICK_CLEAR), "audio cue catalog does not mark proven mapped cues as silent")
 	_assert(AudioCueCatalogScript.sfx_name_for_event(GameSessionScript.SFX_EVENT_BEE_STOP) == "", "audio cue catalog does not play bee-stop as a new SFX")
 	_assert(AudioCueCatalogScript.sfx_stop_name_for_event(GameSessionScript.SFX_EVENT_BEE_STOP) == "EffBee", "audio cue catalog maps bee-stop to the active EffBee playback")
 	_assert(AudioCueCatalogScript.is_sfx_stop_event(GameSessionScript.SFX_EVENT_BEE_STOP), "audio cue catalog marks bee-stop as a stop event")
@@ -2161,8 +2174,19 @@ func _validate_audio_cue_catalog() -> void:
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_LEVEL_READY), "audio cue catalog exposes level-ready event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_MONSTER_EXPIRE), "audio cue catalog exposes monster-expire event in known event list")
 	_assert(sfx_events.has(GameSessionScript.SFX_EVENT_GAME_OVER), "audio cue catalog exposes game-over event in known event list")
+	_assert(sfx_events.has(AudioCueCatalogScript.SFX_EVENT_FRONTEND_SELECT), "audio cue catalog exposes generic front-end selection event in known event list")
+	_assert(sfx_events.has(AudioCueCatalogScript.SFX_EVENT_FRONTEND_ACTIVATE), "audio cue catalog exposes generic front-end activation event in known event list")
 	_assert(sfx_events.has(AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_SELECT), "audio cue catalog exposes main-menu selection event in known event list")
 	_assert(sfx_events.has(AudioCueCatalogScript.SFX_EVENT_EPISODE_ACTIVATE), "audio cue catalog exposes episode activation event in known event list")
+	var mapped_sfx_names: Array[String] = []
+	for event_name: String in sfx_events:
+		var mapped_sfx_name := AudioCueCatalogScript.sfx_name_for_event(event_name)
+		if not mapped_sfx_name.is_empty() and not mapped_sfx_names.has(mapped_sfx_name):
+			mapped_sfx_names.append(mapped_sfx_name)
+	var unused_extracted_sfx_names: Array[String] = AudioCueCatalogScript.unused_extracted_sfx_names()
+	_assert(unused_extracted_sfx_names == ["eff06", "eff20", "eff21"], "audio cue catalog records extracted SFX absent from executable sample-load strings")
+	for sfx_name: String in unused_extracted_sfx_names:
+		_assert(not mapped_sfx_names.has(sfx_name), "audio cue catalog does not map unused extracted SFX %s to gameplay" % sfx_name)
 
 
 func _validate_audio_service() -> void:
@@ -2213,6 +2237,8 @@ func _validate_audio_service() -> void:
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY)) == "eff17", "audio service maps add-ball apply SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_DESTROY_BALL_APPLY)) == "eff24", "audio service maps destroy-ball apply SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", GameSessionScript.SFX_EVENT_BONUS_JUMP_LEVEL_APPLY)) == "eff19", "audio service maps jump-level apply SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", AudioCueCatalogScript.SFX_EVENT_FRONTEND_SELECT)) == "eff02", "audio service maps generic front-end selection SFX event")
+	_assert(String(_audio.call("sfx_name_for_event", AudioCueCatalogScript.SFX_EVENT_FRONTEND_ACTIVATE)) == "eff01", "audio service maps generic front-end activation SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_SELECT)) == "eff02", "audio service maps main-menu selection SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_ACTIVATE)) == "eff01", "audio service maps main-menu activation SFX event")
 	_assert(String(_audio.call("sfx_name_for_event", AudioCueCatalogScript.SFX_EVENT_EPISODE_SELECT)) == "eff04", "audio service maps episode-selection SFX event")
@@ -2913,6 +2939,56 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(bool(options_snapshot["fps_visible"]), "options screen loads FPS setting")
 	_assert(not bool(options_snapshot["background_movable"]), "options screen loads background-movable setting")
 	_assert(int(options_snapshot["background_type"]) == 7, "options screen loads full-range background type")
+	if _audio != null and _audio.has_method("is_sfx_playing"):
+		_assert(not bool(_audio.call("is_sfx_playing", "eff01")), "options screen startup stays silent for activation cue")
+		_assert(not bool(_audio.call("is_sfx_playing", "eff02")), "options screen startup stays silent for selection cue")
+		_audio.call("set_sfx_enabled", true)
+		_audio.call("set_sfx_volume", 100)
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
+		options_screen.call("select_control", OptionsScreenScript.CONTROL_MUSIC_SLIDER)
+		_assert(not bool(_audio.call("is_sfx_playing", "eff02")), "options screen does not replay selection cue for unchanged control")
+		options_screen.call("select_control", OptionsScreenScript.CONTROL_SFX_SLIDER)
+		_assert(bool(_audio.call("is_sfx_playing", "eff02")), "options screen selection change plays original front-end hover cue")
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
+		options_screen.call("select_control", OptionsScreenScript.CONTROL_SFX_SLIDER)
+		_assert(not bool(_audio.call("is_sfx_playing", "eff02")), "options screen repeated selection stays silent")
+		options_screen.call("select_control", OptionsScreenScript.CONTROL_PAGE_DOWN)
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
+		_assert(bool(options_screen.call("_activate_control", OptionsScreenScript.CONTROL_PAGE_DOWN)), "options screen accepts page-down activation")
+		_assert(int(options_screen.call("current_page")) == 1, "options screen page-down activation changes page")
+		_assert(bool(_audio.call("is_sfx_playing", "eff01")), "options screen page activation plays original front-end confirm cue")
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
+		options_screen.call("select_control", OptionsScreenScript.CONTROL_FPS_TOGGLE)
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
+		_assert(bool(options_screen.call("_activate_control", OptionsScreenScript.CONTROL_FPS_TOGGLE)), "options screen accepts toggle activation")
+		_assert(bool(_audio.call("is_sfx_playing", "eff01")), "options screen toggle activation plays original front-end confirm cue")
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
+		options_screen.call("go_to_page", 0)
+		var options_back_signal_state := {"requested": false}
+		options_screen.back_requested.connect(func() -> void: options_back_signal_state["requested"] = true)
+		options_screen.call("select_control", OptionsScreenScript.CONTROL_BACKWARD)
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
+		_assert(bool(options_screen.call("_activate_control", OptionsScreenScript.CONTROL_BACKWARD)), "options screen accepts Back activation")
+		_assert(bool(options_back_signal_state["requested"]), "options screen Back activation emits back request")
+		_assert(bool(_audio.call("is_sfx_playing", "eff01")), "options screen Back activation plays original front-end confirm cue")
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
+		_assert(not bool(options_screen.call("_activate_control", OptionsScreenScript.CONTROL_PAGE_UP)), "options screen rejects unavailable page-up activation")
+		_assert(not bool(_audio.call("is_sfx_playing", "eff01")), "options screen failed page activation stays silent")
+		options_screen.call("select_control", OptionsScreenScript.CONTROL_MUSIC_SLIDER)
+		if _audio.has_method("stop_all"):
+			_audio.call("stop_all")
+		options_screen.call("_adjust_selected_control", 1)
+		_assert(not bool(_audio.call("is_sfx_playing", "eff01")), "options screen slider adjustment does not play activation cue")
+		_assert(not bool(_audio.call("is_sfx_playing", "eff02")), "options screen slider adjustment does not play selection cue")
+		options_screen.call("set_music_volume", 25)
 	_assert(
 		options_screen.call("slider_handle_rect", OptionsScreenScript.CONTROL_MUSIC_SLIDER) == Rect2(Vector2(401, 233), Vector2(16, 38)),
 		"options screen places the music slider handle from original volume math"

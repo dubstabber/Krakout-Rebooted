@@ -7,6 +7,7 @@ const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec
 const PlayfieldRendererScript := preload("res://src/playfield/playfield_renderer.gd")
 const OptionsVxEffectsScript := preload("res://src/menu/options_vx_effects.gd")
 const MenuBitmapLabelScript := preload("res://src/menu/krakout_menu_bitmap_label.gd")
+const AudioCueCatalogScript := preload("res://src/audio/krakout_audio_cue_catalog.gd")
 
 const PAGE_AUDIO := 0
 const PAGE_PRESENTATION := 1
@@ -194,6 +195,7 @@ func _process(delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
+		_play_frontend_activate_sfx()
 		back_requested.emit()
 		get_viewport().set_input_as_handled()
 		return
@@ -208,10 +210,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	match key_event.keycode:
 		KEY_PAGEUP:
-			go_to_page(_current_page - 1)
+			_activate_page_change(_current_page - 1)
 			get_viewport().set_input_as_handled()
 		KEY_PAGEDOWN:
-			go_to_page(_current_page + 1)
+			_activate_page_change(_current_page + 1)
 			get_viewport().set_input_as_handled()
 		KEY_UP:
 			_select_relative(-1)
@@ -380,23 +382,28 @@ func page_three_vx_effects():
 	return _page_three_vx_effects
 
 
-func go_to_page(page_index: int) -> void:
+func go_to_page(page_index: int) -> bool:
 	var clamped_page := clampi(page_index, 0, PAGE_COUNT - 1)
 	if clamped_page == _current_page:
-		return
+		return false
 
 	_current_page = clamped_page
 	_dragging_control_id = ""
 	_selected_control_id = _default_selection_for_page(_current_page)
 	_sync_page_visibility()
 	queue_redraw()
+	return true
 
 
-func select_control(control_id: String) -> void:
+func select_control(control_id: String) -> bool:
 	if not _selection_order_for_page(_current_page).has(control_id):
-		return
+		return false
+	if _selected_control_id == control_id:
+		return false
 	_selected_control_id = control_id
 	_update_label_highlights()
+	_play_frontend_select_sfx()
+	return true
 
 
 func set_music_enabled(is_enabled: bool) -> void:
@@ -1027,7 +1034,7 @@ func _select_relative(offset: int) -> void:
 	select_control(String(selection_order[next_index]))
 
 
-func _adjust_selected_control(direction: int) -> void:
+func _adjust_selected_control(direction: int) -> bool:
 	match _selected_control_id:
 		CONTROL_MUSIC_SLIDER:
 			set_music_volume(_music_volume + direction)
@@ -1036,43 +1043,113 @@ func _adjust_selected_control(direction: int) -> void:
 		CONTROL_BACKGROUND_TYPE_SLIDER:
 			set_background_type(_background_type + direction)
 		CONTROL_MUSIC_TOGGLE:
+			var previous_music_enabled := _music_enabled
+			if previous_music_enabled != (direction > 0):
+				_play_frontend_activate_sfx()
 			set_music_enabled(direction > 0)
+			return previous_music_enabled != _music_enabled
 		CONTROL_SFX_TOGGLE:
+			var previous_sfx_enabled := _sfx_enabled
+			if previous_sfx_enabled != (direction > 0):
+				_play_frontend_activate_sfx()
 			set_sfx_enabled(direction > 0)
+			return previous_sfx_enabled != _sfx_enabled
 		CONTROL_FULLSCREEN_TOGGLE:
+			var previous_fullscreen_enabled := _fullscreen_enabled
+			if previous_fullscreen_enabled != (direction > 0):
+				_play_frontend_activate_sfx()
 			set_fullscreen_enabled(direction > 0)
+			return previous_fullscreen_enabled != _fullscreen_enabled
 		CONTROL_FPS_TOGGLE:
+			var previous_fps_visible := _fps_visible
+			if previous_fps_visible != (direction > 0):
+				_play_frontend_activate_sfx()
 			set_fps_visible(direction > 0)
+			return previous_fps_visible != _fps_visible
 		CONTROL_BACKGROUND_MOVABLE_TOGGLE:
+			var previous_background_movable := _background_movable
+			if previous_background_movable != (direction > 0):
+				_play_frontend_activate_sfx()
 			set_background_movable(direction > 0)
+			return previous_background_movable != _background_movable
 		CONTROL_BONUS_STACK_TOGGLE:
+			var previous_bonus_stack_visible := _bonus_stack_visible
+			if previous_bonus_stack_visible != (direction > 0):
+				_play_frontend_activate_sfx()
 			set_bonus_stack_visible(direction > 0)
+			return previous_bonus_stack_visible != _bonus_stack_visible
 		CONTROL_BALL_TRACKS_TOGGLE:
+			var previous_ball_tracks_visible := _ball_tracks_visible
+			if previous_ball_tracks_visible != (direction > 0):
+				_play_frontend_activate_sfx()
 			set_ball_tracks_visible(direction > 0)
+			return previous_ball_tracks_visible != _ball_tracks_visible
+	return false
 
 
-func _activate_control(control_id: String) -> void:
+func _activate_control(control_id: String) -> bool:
+	if not _selection_order_for_page(_current_page).has(control_id):
+		return false
 	match control_id:
 		CONTROL_MUSIC_TOGGLE:
+			_play_frontend_activate_sfx()
 			set_music_enabled(not _music_enabled)
+			return true
 		CONTROL_SFX_TOGGLE:
+			_play_frontend_activate_sfx()
 			set_sfx_enabled(not _sfx_enabled)
+			return true
 		CONTROL_FULLSCREEN_TOGGLE:
+			_play_frontend_activate_sfx()
 			set_fullscreen_enabled(not _fullscreen_enabled)
+			return true
 		CONTROL_FPS_TOGGLE:
+			_play_frontend_activate_sfx()
 			set_fps_visible(not _fps_visible)
+			return true
 		CONTROL_BACKGROUND_MOVABLE_TOGGLE:
+			_play_frontend_activate_sfx()
 			set_background_movable(not _background_movable)
+			return true
 		CONTROL_BONUS_STACK_TOGGLE:
+			_play_frontend_activate_sfx()
 			set_bonus_stack_visible(not _bonus_stack_visible)
+			return true
 		CONTROL_BALL_TRACKS_TOGGLE:
+			_play_frontend_activate_sfx()
 			set_ball_tracks_visible(not _ball_tracks_visible)
+			return true
 		CONTROL_PAGE_UP:
-			go_to_page(_current_page - 1)
+			return _activate_page_change(_current_page - 1)
 		CONTROL_PAGE_DOWN:
-			go_to_page(_current_page + 1)
+			return _activate_page_change(_current_page + 1)
 		CONTROL_BACKWARD:
+			_play_frontend_activate_sfx()
 			back_requested.emit()
+			return true
+	return false
+
+
+func _activate_page_change(page_index: int) -> bool:
+	if not go_to_page(page_index):
+		return false
+	_play_frontend_activate_sfx()
+	return true
+
+
+func _play_frontend_select_sfx() -> void:
+	_play_sfx_event(AudioCueCatalogScript.SFX_EVENT_FRONTEND_SELECT)
+
+
+func _play_frontend_activate_sfx() -> void:
+	_play_sfx_event(AudioCueCatalogScript.SFX_EVENT_FRONTEND_ACTIVATE)
+
+
+func _play_sfx_event(event_name: String) -> void:
+	var audio := _audio_service()
+	if audio == null or not audio.has_method("play_sfx_event"):
+		return
+	audio.call("play_sfx_event", event_name)
 
 
 func _handle_volume_shortcut(key_event: InputEventKey) -> bool:
