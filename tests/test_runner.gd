@@ -3239,22 +3239,52 @@ func _validate_options_vx_effects() -> void:
 		"options screen maps original page-arrow final frame"
 	)
 	var options_arrow_probe = OptionsScreenScript.new()
+	options_arrow_probe.call("_set_hovered_control", OptionsScreenScript.CONTROL_PAGE_DOWN)
 	options_arrow_probe.call("_process", OptionsScreenScript.PAGE_ARROW_FRAME_SECONDS)
 	_assert(
-		int(options_arrow_probe.call("page_arrow_frame")) == 0,
-		"options screen page arrows wait for the strict original 30 ms gate"
+		int(options_arrow_probe.call("page_down_arrow_frame")) == 0,
+		"options screen hovered page arrow waits for the strict original 30 ms gate"
 	)
 	options_arrow_probe.call("_process", 0.001)
 	_assert(
-		int(options_arrow_probe.call("page_arrow_frame")) == 1,
-		"options screen page arrows advance once after the original sampled gate"
+		int(options_arrow_probe.call("page_down_arrow_frame")) == 1,
+		"options screen hovered page arrow advances once after the original sampled gate"
 	)
-	options_arrow_probe.call("_process", OptionsScreenScript.PAGE_ARROW_FRAME_SECONDS * 3.0)
 	_assert(
-		int(options_arrow_probe.call("page_arrow_frame")) == 2,
-		"options screen page arrows discard overshoot like the original sampled gate"
+		int(options_arrow_probe.call("page_up_arrow_frame")) == 0,
+		"options screen non-hovered page arrow stays on its idle frame"
+	)
+	options_arrow_probe.call("_set_hovered_control", "")
+	_assert(
+		int(options_arrow_probe.call("page_down_arrow_frame")) == 1,
+		"options screen page arrow keeps its current frame when hover leaves"
+	)
+	options_arrow_probe.call("_process", OptionsScreenScript.PAGE_ARROW_RETURN_FRAME_SECONDS + 0.001)
+	_assert(
+		int(options_arrow_probe.call("page_down_arrow_frame")) == 2,
+		"options screen page arrow continues its cycle after hover leaves"
+	)
+	for _options_arrow_finish_step in range(OptionsScreenScript.PAGE_ARROW_FRAME_COUNT - 2):
+		options_arrow_probe.call("_process", OptionsScreenScript.PAGE_ARROW_RETURN_FRAME_SECONDS + 0.001)
+	_assert(
+		int(options_arrow_probe.call("page_down_arrow_frame")) == 0,
+		"options screen page arrow stops after finishing its unhovered cycle"
 	)
 	options_arrow_probe.free()
+	var static_back_probe = StaticMenuBackButtonScript.new()
+	static_back_probe.call("_set_hovered", true)
+	static_back_probe.call("advance", StaticMenuBackButtonScript.SELECTED_FRAME_GATE_SECONDS)
+	_assert(int(static_back_probe.call("current_frame")) == 0, "static back button waits for the strict original hover gate")
+	static_back_probe.call("advance", 0.001)
+	_assert(int(static_back_probe.call("current_frame")) == 1, "static back button advances while hovered")
+	static_back_probe.call("_set_hovered", false)
+	_assert(int(static_back_probe.call("current_frame")) == 1, "static back button keeps its current frame when hover leaves")
+	static_back_probe.call("advance", StaticMenuBackButtonScript.RETURN_FRAME_GATE_SECONDS + 0.001)
+	_assert(int(static_back_probe.call("current_frame")) == 2, "static back button continues its cycle after hover leaves")
+	for _static_back_finish_step in range(StaticMenuBackButtonScript.FRAME_COUNT - 2):
+		static_back_probe.call("advance", StaticMenuBackButtonScript.RETURN_FRAME_GATE_SECONDS + 0.001)
+	_assert(int(static_back_probe.call("current_frame")) == 0, "static back button stops after finishing its unhovered cycle")
+	static_back_probe.free()
 	_assert(
 		OptionsScreenScript.original_audio_slider_handle_x_for_volume(0) == 362,
 		"options screen keeps original volume-slider minimum handle x"
@@ -3475,29 +3505,38 @@ func _validate_menu_and_game_scenes() -> void:
 		_assert(not bool(_audio.call("is_sfx_playing", "eff01")), "main menu startup stays silent")
 		_assert(not bool(_audio.call("is_sfx_playing", "eff02")), "main menu deferred focus stays silent")
 
-	var start_button := menu.find_child("StartGameButton", true, false) as TextureButton
-	_assert(start_button != null, "main menu creates start game button")
-	if start_button != null:
-		menu.call("reset_menu_button_animation")
-		_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu selected icon animation resets to first frame")
-		menu.call("_process", MainMenuScreenScript.ICON_SELECTED_FRAME_GATE_SECONDS)
-		_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu selected icon waits for original strict 20 ms gate")
-		menu.call("_process", 0.001)
-		_assert(int(menu.call("menu_item_frame", "start")) == 1, "main menu selected icon advances once after original sampled gate")
-		if _audio != null and _audio.has_method("stop_all") and _audio.has_method("is_sfx_playing"):
-			_audio.call("stop_all")
-		menu.call("_select_menu_item", "rules")
-		if _audio != null and _audio.has_method("is_sfx_playing"):
-			_assert(bool(_audio.call("is_sfx_playing", "eff02")), "main menu selection change plays original hover cue")
-			_audio.call("stop_all")
+		var start_button := menu.find_child("StartGameButton", true, false) as TextureButton
+		_assert(start_button != null, "main menu creates start game button")
+		if start_button != null:
+			menu.call("reset_menu_button_animation")
+			_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu icon animation resets to first frame")
+			menu.call("_process", MainMenuScreenScript.ICON_SELECTED_FRAME_GATE_SECONDS + 0.001)
+			_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu selected icon does not animate without hover")
+			start_button.emit_signal("mouse_entered")
+			menu.call("_process", MainMenuScreenScript.ICON_SELECTED_FRAME_GATE_SECONDS)
+			_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu hovered icon waits for original strict 20 ms gate")
+			menu.call("_process", 0.001)
+			_assert(int(menu.call("menu_item_frame", "start")) == 1, "main menu hovered icon advances once after original sampled gate")
+			start_button.emit_signal("mouse_exited")
+			_assert(int(menu.call("menu_item_frame", "start")) == 1, "main menu icon keeps its current frame when hover leaves")
+			menu.call("_process", MainMenuScreenScript.ICON_RETURN_FRAME_GATE_SECONDS + 0.001)
+			_assert(int(menu.call("menu_item_frame", "start")) == 2, "main menu icon continues its cycle after hover leaves")
+			for _main_menu_finish_step in range(MainMenuScreenScript.ICON_FRAME_COUNT - 2):
+				menu.call("_process", MainMenuScreenScript.ICON_RETURN_FRAME_GATE_SECONDS + 0.001)
+			_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu icon stops after finishing its unhovered cycle")
+			if _audio != null and _audio.has_method("stop_all") and _audio.has_method("is_sfx_playing"):
+				_audio.call("stop_all")
 			menu.call("_select_menu_item", "rules")
-			_assert(not bool(_audio.call("is_sfx_playing", "eff02")), "main menu does not replay hover cue when selection is unchanged")
-		menu.call("_process", MainMenuScreenScript.ICON_RETURN_FRAME_GATE_SECONDS + 0.001)
-		_assert(int(menu.call("menu_item_frame", "start")) == 2, "main menu old selected icon returns with original 5 ms catch-up gate")
-		_assert(int(menu.call("menu_item_frame", "rules")) == 0, "main menu newly selected icon does not advance on the 5 ms return gate")
-		if selected_caption != null:
-			menu.call("_select_menu_item", "rules")
-			_assert(String(selected_caption.get("text")) == "Game Rules", "main menu updates bitmap caption text when selection changes")
+			if _audio != null and _audio.has_method("is_sfx_playing"):
+				_assert(bool(_audio.call("is_sfx_playing", "eff02")), "main menu selection change plays original hover cue")
+				_audio.call("stop_all")
+				menu.call("_select_menu_item", "rules")
+				_assert(not bool(_audio.call("is_sfx_playing", "eff02")), "main menu does not replay hover cue when selection is unchanged")
+			menu.call("_process", MainMenuScreenScript.ICON_SELECTED_FRAME_GATE_SECONDS + 0.001)
+			_assert(int(menu.call("menu_item_frame", "rules")) == 0, "main menu newly selected icon stays idle without hover")
+			if selected_caption != null:
+				menu.call("_select_menu_item", "rules")
+				_assert(String(selected_caption.get("text")) == "Game Rules", "main menu updates bitmap caption text when selection changes")
 
 		var signal_state := {"did_request_start": false}
 		menu.start_game_requested.connect(func() -> void: signal_state["did_request_start"] = true)
@@ -4054,16 +4093,20 @@ func _validate_menu_and_game_scenes() -> void:
 			int(options_vx_effects.current_frame(OptionsVxEffectsScript.ROW_MUSIC)) == OptionsVxEffectsScript.DISABLED_TARGET_FRAME - 1,
 			"options screen advances music Vx toward enabled state"
 		)
-	options_screen.call("select_control", OptionsScreenScript.CONTROL_BACKWARD)
-	options_screen.call("_process", OptionsScreenScript.BACKWARD_SELECTED_FRAME_GATE_SECONDS)
-	_assert(int(options_screen.call("backward_frame")) == 0, "options screen backward button waits for the strict 20 ms selected gate")
-	options_screen.call("_process", 0.001)
-	_assert(int(options_screen.call("backward_frame")) == 1, "options screen backward button advances after the original selected gate")
-	options_screen.call("select_control", OptionsScreenScript.CONTROL_MUSIC_SLIDER)
-	options_screen.call("_process", OptionsScreenScript.BACKWARD_RETURN_FRAME_GATE_SECONDS)
-	_assert(int(options_screen.call("backward_frame")) == 1, "options screen backward button waits for the strict 5 ms return gate")
-	options_screen.call("_process", 0.001)
-	_assert(int(options_screen.call("backward_frame")) == 2, "options screen backward button returns through the original catch-up animation")
+		options_screen.call("select_control", OptionsScreenScript.CONTROL_BACKWARD)
+		options_screen.call("_set_hovered_control", OptionsScreenScript.CONTROL_BACKWARD)
+		options_screen.call("_process", OptionsScreenScript.BACKWARD_SELECTED_FRAME_GATE_SECONDS)
+		_assert(int(options_screen.call("backward_frame")) == 0, "options screen backward button waits for the strict 20 ms hover gate")
+		options_screen.call("_process", 0.001)
+		_assert(int(options_screen.call("backward_frame")) == 1, "options screen backward button advances after the original hover gate")
+		options_screen.call("select_control", OptionsScreenScript.CONTROL_MUSIC_SLIDER)
+		options_screen.call("_set_hovered_control", "")
+		_assert(int(options_screen.call("backward_frame")) == 1, "options screen backward button keeps its current frame when hover leaves")
+		options_screen.call("_process", OptionsScreenScript.BACKWARD_RETURN_FRAME_GATE_SECONDS + 0.001)
+		_assert(int(options_screen.call("backward_frame")) == 2, "options screen backward button continues its cycle after hover leaves")
+		for _options_back_finish_step in range(OptionsScreenScript.BACKWARD_FRAME_COUNT - 2):
+			options_screen.call("_process", OptionsScreenScript.BACKWARD_RETURN_FRAME_GATE_SECONDS + 0.001)
+		_assert(int(options_screen.call("backward_frame")) == 0, "options screen backward button stops after finishing its unhovered cycle")
 	options_screen.call("go_to_page", 1)
 	_assert(int(options_screen.call("current_page")) == 1, "options screen switches to the presentation page")
 	_assert(
@@ -4240,10 +4283,12 @@ func _validate_menu_and_game_scenes() -> void:
 	episode_select.call("_process", 0.001)
 	_assert(int(episode_select.call("down_arrow_frame")) == 1, "episode select down arrow advances after the original hover gate")
 	episode_select.call("_set_down_arrow_hovered", false)
-	episode_select.call("_process", EpisodeSelectScreenScript.ARROW_RETURN_FRAME_GATE_SECONDS)
-	_assert(int(episode_select.call("down_arrow_frame")) == 1, "episode select down arrow waits for the strict original 10 ms return gate")
-	episode_select.call("_process", 0.001)
-	_assert(int(episode_select.call("down_arrow_frame")) == 2, "episode select down arrow returns through the original catch-up animation")
+	_assert(int(episode_select.call("down_arrow_frame")) == 1, "episode select down arrow keeps its current frame when hover leaves")
+	episode_select.call("_process", EpisodeSelectScreenScript.ARROW_RETURN_FRAME_GATE_SECONDS + 0.001)
+	_assert(int(episode_select.call("down_arrow_frame")) == 2, "episode select down arrow continues its cycle after hover leaves")
+	for _episode_arrow_finish_step in range(EpisodeSelectScreenScript.ARROW_FRAME_COUNT - 2):
+		episode_select.call("_process", EpisodeSelectScreenScript.ARROW_RETURN_FRAME_GATE_SECONDS + 0.001)
+	_assert(int(episode_select.call("down_arrow_frame")) == 0, "episode select down arrow stops after finishing its unhovered cycle")
 
 	var down_button := episode_select.find_child("DownButton", true, false) as TextureButton
 	if down_button != null:

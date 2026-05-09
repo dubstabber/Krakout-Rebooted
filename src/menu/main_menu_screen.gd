@@ -67,6 +67,7 @@ const MENU_ITEM_SPECS: Array[Dictionary] = [
 
 var _icons_texture: Texture2D
 var _selected_item_id := "start"
+var _hovered_item_id := ""
 var _icon_frames: Dictionary = {}
 var _selected_icon_frame_elapsed := 0.0
 var _return_icon_frame_elapsed := 0.0
@@ -133,7 +134,8 @@ func _build_menu_items() -> void:
 		button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		button.ignore_texture_size = false
 		button.stretch_mode = TextureButton.STRETCH_KEEP
-		button.mouse_entered.connect(_select_menu_item.bind(item_id))
+		button.mouse_entered.connect(_set_hovered_menu_item.bind(item_id, true))
+		button.mouse_exited.connect(_set_hovered_menu_item.bind(item_id, false))
 		button.focus_entered.connect(_select_menu_item.bind(item_id))
 		button.pressed.connect(_activate_menu_item.bind(item_id))
 		_menu_items.add_child(button)
@@ -151,6 +153,21 @@ func _select_menu_item(item_id: String) -> void:
 	_selected_item_id = item_id
 	_play_sfx_event(AudioCueCatalogScript.SFX_EVENT_MAIN_MENU_SELECT)
 	_update_selected_caption()
+	_update_menu_button_frames()
+
+
+func _set_hovered_menu_item(item_id: String, is_hovered: bool) -> void:
+	if not _buttons_by_id.has(item_id):
+		return
+	if is_hovered:
+		_hovered_item_id = item_id
+		_selected_icon_frame_elapsed = 0.0
+		_select_menu_item(item_id)
+	else:
+		if _hovered_item_id != item_id:
+			return
+		_hovered_item_id = ""
+		_selected_icon_frame_elapsed = 0.0
 	_update_menu_button_frames()
 
 
@@ -195,21 +212,25 @@ func _advance_menu_button_animation(delta: float) -> void:
 	if delta <= 0.0:
 		return
 
+	if not _hovered_item_id.is_empty() and _icon_frames.has(_hovered_item_id):
+		_selected_icon_frame_elapsed += delta
+		if _selected_icon_frame_elapsed > ICON_SELECTED_FRAME_GATE_SECONDS:
+			_icon_frames[_hovered_item_id] = int(_icon_frames.get(_hovered_item_id, 0)) + 1
+			_selected_icon_frame_elapsed = 0.0
+	else:
+		_selected_icon_frame_elapsed = 0.0
+
 	_return_icon_frame_elapsed += delta
 	if _return_icon_frame_elapsed > ICON_RETURN_FRAME_GATE_SECONDS:
 		for item_id: String in _icon_frames.keys():
-			if item_id == _selected_item_id:
+			if item_id == _hovered_item_id:
 				continue
 
 			var return_frame: int = int(_icon_frames[item_id])
-			if return_frame > 0 and return_frame < ICON_FRAME_COUNT:
-				_icon_frames[item_id] = return_frame + 1
+			if return_frame > 0:
+				return_frame += 1
+				_icon_frames[item_id] = 0 if return_frame >= ICON_FRAME_COUNT else return_frame
 		_return_icon_frame_elapsed = 0.0
-
-	_selected_icon_frame_elapsed += delta
-	if _selected_icon_frame_elapsed > ICON_SELECTED_FRAME_GATE_SECONDS:
-		_icon_frames[_selected_item_id] = int(_icon_frames.get(_selected_item_id, 0)) + 1
-		_selected_icon_frame_elapsed = 0.0
 
 	for item_id: String in _icon_frames.keys():
 		if int(_icon_frames[item_id]) >= ICON_FRAME_COUNT:
@@ -243,6 +264,7 @@ func menu_item_frame(item_id: String) -> int:
 func reset_menu_button_animation() -> void:
 	_selected_icon_frame_elapsed = 0.0
 	_return_icon_frame_elapsed = 0.0
+	_hovered_item_id = ""
 	for spec: Dictionary in MENU_ITEM_SPECS:
 		_icon_frames[String(spec["id"])] = 0
 	_update_menu_button_frames()

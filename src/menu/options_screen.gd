@@ -134,6 +134,7 @@ const BACKWARD_SELECTED_FRAME_GATE_SECONDS := 0.02
 const BACKWARD_RETURN_FRAME_GATE_SECONDS := 0.005
 const PAGE_ARROW_FRAME_COUNT := 10
 const PAGE_ARROW_FRAME_SECONDS := 0.03
+const PAGE_ARROW_RETURN_FRAME_SECONDS := 0.01
 const PAGE_ARROW_SIZE := Vector2(45, 45)
 const PAGE_UP_POSITION := Vector2(590, 100)
 const PAGE_DOWN_POSITION := Vector2(590, 350)
@@ -167,9 +168,14 @@ var _utility_row_indices: Dictionary = {}
 
 var _current_page := PAGE_AUDIO
 var _selected_control_id := CONTROL_MUSIC_SLIDER
+var _hovered_control_id := ""
 var _dragging_control_id := ""
-var _page_arrow_frame := 0
-var _page_arrow_elapsed := 0.0
+var _page_up_arrow_frame := 0
+var _page_down_arrow_frame := 0
+var _page_up_arrow_elapsed := 0.0
+var _page_down_arrow_elapsed := 0.0
+var _page_up_arrow_return_elapsed := 0.0
+var _page_down_arrow_return_elapsed := 0.0
 var _backward_frame := 0
 var _backward_selected_elapsed := 0.0
 var _backward_return_elapsed := 0.0
@@ -190,6 +196,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	custom_minimum_size = Vector2(PlayfieldSpecScript.VIEWPORT_SIZE)
+	mouse_exited.connect(_set_hovered_control.bind(""))
 	_build_scene()
 	_load_settings()
 
@@ -248,6 +255,7 @@ func _gui_input(event: InputEvent) -> void:
 			return
 
 		var hovered_control_id := _control_at_position(mouse_motion.position)
+		_set_hovered_control(hovered_control_id)
 		if not hovered_control_id.is_empty():
 			select_control(hovered_control_id)
 		return
@@ -258,6 +266,7 @@ func _gui_input(event: InputEvent) -> void:
 
 	if mouse_button.pressed:
 		var control_id := _control_at_position(mouse_button.position)
+		_set_hovered_control(control_id)
 		if control_id.is_empty():
 			return
 		select_control(control_id)
@@ -409,7 +418,15 @@ func backward_frame() -> int:
 
 
 func page_arrow_frame() -> int:
-	return _page_arrow_frame
+	return max(_page_up_arrow_frame, _page_down_arrow_frame)
+
+
+func page_up_arrow_frame() -> int:
+	return _page_up_arrow_frame
+
+
+func page_down_arrow_frame() -> int:
+	return _page_down_arrow_frame
 
 
 func vx_effects():
@@ -431,6 +448,7 @@ func go_to_page(page_index: int) -> bool:
 
 	_current_page = clamped_page
 	_dragging_control_id = ""
+	_set_hovered_control("")
 	_selected_control_id = _default_selection_for_page(_current_page)
 	_sync_page_visibility()
 	queue_redraw()
@@ -446,6 +464,29 @@ func select_control(control_id: String) -> bool:
 	_update_label_highlights()
 	_play_frontend_select_sfx()
 	return true
+
+
+func _set_hovered_control(control_id: String) -> void:
+	var normalized_control_id := control_id
+	if not normalized_control_id.is_empty() and not _selection_order_for_page(_current_page).has(normalized_control_id):
+		normalized_control_id = ""
+	if _hovered_control_id == normalized_control_id:
+		return
+
+	_reset_hover_animation_for_control(_hovered_control_id)
+	_hovered_control_id = normalized_control_id
+	_reset_hover_animation_for_control(_hovered_control_id)
+	queue_redraw()
+
+
+func _reset_hover_animation_for_control(control_id: String) -> void:
+	match control_id:
+		CONTROL_BACKWARD:
+			_backward_selected_elapsed = 0.0
+		CONTROL_PAGE_UP:
+			_page_up_arrow_elapsed = 0.0
+		CONTROL_PAGE_DOWN:
+			_page_down_arrow_elapsed = 0.0
 
 
 func set_music_enabled(is_enabled: bool) -> void:
@@ -597,15 +638,14 @@ func _draw_backward_button() -> void:
 
 
 func _draw_visible_page_arrows() -> void:
-	var frame := page_arrow_frame()
 	match _current_page:
 		PAGE_AUDIO:
-			_draw_page_arrow(_arrow_down_texture, PAGE_DOWN_POSITION, frame)
+			_draw_page_arrow(_arrow_down_texture, PAGE_DOWN_POSITION, _page_down_arrow_frame)
 		PAGE_PRESENTATION:
-			_draw_page_arrow(_arrow_up_texture, PAGE_UP_POSITION, frame)
-			_draw_page_arrow(_arrow_down_texture, PAGE_DOWN_POSITION, frame)
+			_draw_page_arrow(_arrow_up_texture, PAGE_UP_POSITION, _page_up_arrow_frame)
+			_draw_page_arrow(_arrow_down_texture, PAGE_DOWN_POSITION, _page_down_arrow_frame)
 		PAGE_UTILITY:
-			_draw_page_arrow(_arrow_up_texture, PAGE_UP_POSITION, frame)
+			_draw_page_arrow(_arrow_up_texture, PAGE_UP_POSITION, _page_up_arrow_frame)
 
 
 func _draw_page_arrow(texture: Texture2D, position: Vector2, frame: int) -> void:
@@ -1028,33 +1068,65 @@ func _advance_backward_animation(delta: float) -> void:
 	if delta <= 0.0:
 		return
 
-	if _selected_control_id == CONTROL_BACKWARD:
+	if _hovered_control_id == CONTROL_BACKWARD:
 		_backward_return_elapsed = 0.0
 		_backward_selected_elapsed += delta
 		if _backward_selected_elapsed > BACKWARD_SELECTED_FRAME_GATE_SECONDS:
 			_backward_selected_elapsed = 0.0
 			_backward_frame = (_backward_frame + 1) % BACKWARD_FRAME_COUNT
-	else:
-		_backward_selected_elapsed = 0.0
-		if _backward_frame == 0:
-			_backward_return_elapsed = 0.0
-			return
-		_backward_return_elapsed += delta
-		if _backward_return_elapsed > BACKWARD_RETURN_FRAME_GATE_SECONDS:
-			_backward_return_elapsed = 0.0
-			_backward_frame += 1
-			if _backward_frame >= BACKWARD_FRAME_COUNT:
-				_backward_frame = 0
+		return
+
+	_backward_selected_elapsed = 0.0
+	if _backward_frame == 0:
+		_backward_return_elapsed = 0.0
+		return
+	_backward_return_elapsed += delta
+	if _backward_return_elapsed > BACKWARD_RETURN_FRAME_GATE_SECONDS:
+		_backward_return_elapsed = 0.0
+		_backward_frame += 1
+		if _backward_frame >= BACKWARD_FRAME_COUNT:
+			_backward_frame = 0
 
 
 func _advance_page_arrow_animation(delta: float) -> void:
 	if delta <= 0.0:
 		return
 
-	_page_arrow_elapsed += delta
-	if _page_arrow_elapsed > PAGE_ARROW_FRAME_SECONDS:
-		_page_arrow_elapsed = 0.0
-		_page_arrow_frame = (_page_arrow_frame + 1) % PAGE_ARROW_FRAME_COUNT
+	if _hovered_control_id == CONTROL_PAGE_UP:
+		_page_up_arrow_return_elapsed = 0.0
+		_page_up_arrow_elapsed += delta
+		if _page_up_arrow_elapsed > PAGE_ARROW_FRAME_SECONDS:
+			_page_up_arrow_elapsed = 0.0
+			_page_up_arrow_frame = (_page_up_arrow_frame + 1) % PAGE_ARROW_FRAME_COUNT
+	else:
+		_page_up_arrow_elapsed = 0.0
+		if _page_up_arrow_frame == 0:
+			_page_up_arrow_return_elapsed = 0.0
+		else:
+			_page_up_arrow_return_elapsed += delta
+			if _page_up_arrow_return_elapsed > PAGE_ARROW_RETURN_FRAME_SECONDS:
+				_page_up_arrow_return_elapsed = 0.0
+				_page_up_arrow_frame += 1
+				if _page_up_arrow_frame >= PAGE_ARROW_FRAME_COUNT:
+					_page_up_arrow_frame = 0
+
+	if _hovered_control_id == CONTROL_PAGE_DOWN:
+		_page_down_arrow_return_elapsed = 0.0
+		_page_down_arrow_elapsed += delta
+		if _page_down_arrow_elapsed > PAGE_ARROW_FRAME_SECONDS:
+			_page_down_arrow_elapsed = 0.0
+			_page_down_arrow_frame = (_page_down_arrow_frame + 1) % PAGE_ARROW_FRAME_COUNT
+	else:
+		_page_down_arrow_elapsed = 0.0
+		if _page_down_arrow_frame == 0:
+			_page_down_arrow_return_elapsed = 0.0
+		else:
+			_page_down_arrow_return_elapsed += delta
+			if _page_down_arrow_return_elapsed > PAGE_ARROW_RETURN_FRAME_SECONDS:
+				_page_down_arrow_return_elapsed = 0.0
+				_page_down_arrow_frame += 1
+				if _page_down_arrow_frame >= PAGE_ARROW_FRAME_COUNT:
+					_page_down_arrow_frame = 0
 
 
 func _selection_order_for_page(page_index: int) -> Array:

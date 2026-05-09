@@ -441,10 +441,14 @@ static func episode_row_hit_rect() -> Rect2:
 
 func _set_up_arrow_hovered(is_hovered: bool) -> void:
 	_up_arrow_hovered = is_hovered and _up_button.visible and not _up_button.disabled
+	if not _up_arrow_hovered:
+		_up_arrow_selected_elapsed = 0.0
 
 
 func _set_down_arrow_hovered(is_hovered: bool) -> void:
 	_down_arrow_hovered = is_hovered and _down_button.visible and not _down_button.disabled
+	if not _down_arrow_hovered:
+		_down_arrow_selected_elapsed = 0.0
 
 
 func _advance_arrow_animation(delta: float) -> void:
@@ -514,8 +518,8 @@ func _advance_single_arrow(
 	var return_elapsed := float(get_return_elapsed.call()) + delta
 	if return_elapsed > ARROW_RETURN_FRAME_GATE_SECONDS:
 		return_elapsed = 0.0
-		frame = (frame + 1) % ARROW_FRAME_COUNT
-		set_frame.call(frame)
+		frame += 1
+		set_frame.call(0 if frame >= ARROW_FRAME_COUNT else frame)
 	set_return_elapsed.call(return_elapsed)
 
 

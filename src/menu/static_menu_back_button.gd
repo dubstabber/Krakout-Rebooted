@@ -14,7 +14,6 @@ var _selected_elapsed := 0.0
 var _return_elapsed := 0.0
 var _is_selected := false
 var _is_hovered := false
-var _has_focus := false
 
 
 func _ready() -> void:
@@ -26,8 +25,6 @@ func _ready() -> void:
 	_backward_texture = _load_asset_texture("Backward")
 	mouse_entered.connect(_set_hovered.bind(true))
 	mouse_exited.connect(_set_hovered.bind(false))
-	focus_entered.connect(_set_focus_state.bind(true))
-	focus_exited.connect(_set_focus_state.bind(false))
 
 
 func _process(delta: float) -> void:
@@ -100,13 +97,10 @@ func _set_hovered(is_hovered: bool) -> void:
 	_sync_selected_state()
 
 
-func _set_focus_state(has_focus: bool) -> void:
-	_has_focus = has_focus
-	_sync_selected_state()
-
-
 func _sync_selected_state() -> void:
-	_is_selected = _is_hovered or _has_focus
+	_is_selected = _is_hovered
+	if not _is_selected:
+		_selected_elapsed = 0.0
 
 
 func _load_asset_texture(texture_name: String) -> Texture2D:

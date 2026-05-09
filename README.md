@@ -174,13 +174,14 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
 - The episode browser follows the original `sub_41BD60` presentation: title and
   column labels use the recovered y `13`/`60` positions, rows use the original
   `5..585` by `100..430` mouse bounds, page arrows keep their original
-  coordinates and frame gates, the two `BgEpisode` tiles scroll diagonally with
-  the original strict 30ms one-pixel/three-pixel gates, and the selected episode
-  name uses the original 5px sine-wave bitmap text with a strict
+  coordinates and hover-only frame gates, the two `BgEpisode` tiles scroll
+  diagonally with the original strict 30ms one-pixel/three-pixel gates, and the
+  selected episode name uses the original 5px sine-wave bitmap text with a strict
   40ms/20-degree phase gate.
 - The main menu now routes every original icon into a Godot-native screen:
   episode selection, executable-backed game rules, high score, options,
-  executable-backed credits, and exit.
+  executable-backed credits, and exit. Icon buttons animate only while hovered
+  and finish their current cycle before stopping when hover leaves.
 - Qualifying game-over scores now enter the original-backed name-entry slice:
   `BgGetName` background art, the original two-layer 48px background scroll
   with the first layer vertical and the second diagonal, 400ms blinking name
@@ -219,8 +220,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   selection/activation use `eff04`/`eff03`. Options-screen control selection,
   page changes, toggles, and Back reuse the original front-end `eff02`/`eff01`
   cue pair, and static info screens use the original animated `Backward` art
-  plus `eff01` for Back activation. Startup focus, unchanged selection, and
-  slider adjustments stay silent.
+  plus `eff01` for Back activation; unhovered buttons finish their current
+  cycle before stopping. Startup focus, unchanged selection, and slider
+  adjustments stay silent.
 - The credits screen now follows the original menu VFX path from `sub_417D60`:
   the credit rows auto-roll from y `480`, move one pixel per 50 Hz front-end
   tick, wrap below `-1260`, keep the executable-backed row offsets, and place
@@ -229,7 +231,7 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   using the executable's four hit indices (`128..131`) for Music/SFX toggles
   and volume sliders. Those controls draw from the original `SoundSlider`,
   `Vx`, and `Backward` sheets, keep the IDA-backed inclusive hitboxes, and use
-  strict sampled animation gates. Pages 2-3 remain Godot-only extension pages
+  strict hover-started sampled animation gates. Pages 2-3 remain Godot-only extension pages
   for presentation/gameplay toggles, separated by the original-style page-arrow
   flow.
 - Gameplay now queues semantic SFX events from the session and drains them
