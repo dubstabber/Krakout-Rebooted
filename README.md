@@ -80,7 +80,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   hard-brick board-impact effects from the original `Exploision` 32x32
   vertical-frame columns, with the original 11-frame/50ms cadence, the
   original hard-brick force-break/non-clearing columns, and the original
-  chain-impact brick-cell offset.
+  chain-impact brick-cell offset. Fireballs now also spawn the original
+  wall-impact `Exploision` flash on left/top/bottom wall hits and active
+  back-wall bounces.
 - `KrakoutBallRenderer` draws standard balls from the extracted `Balls` atlas,
   tints non-stricked balls, and composes fireballs from a warm-tinted `Balls`
   base plus the extracted native 24px `Fb` overlay, with the session advancing

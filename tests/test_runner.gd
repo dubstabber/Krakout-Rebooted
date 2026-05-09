@@ -735,6 +735,122 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(hard_session.score == 0, "ordinary hard-brick hit awards no score")
 	_assert(hard_session.state == GameSessionScript.STATE_PLAYING, "hard-brick hit does not complete while required bricks remain")
 
+	var wall_vfx_level := _make_level_from_rows([[], [], [], [], [], [], [], [], [], [], [], [], [1]])
+	var fireball_left_wall_session = _playing_session_from_level(wall_vfx_level)
+	fireball_left_wall_session.force_ball(
+		Vector2(GameSessionScript.BALL_LEFT_X - 1.0, 200.0),
+		Vector2(-80, 0),
+		GameSessionScript.BALL_SIZE,
+		GameSessionScript.BALL_TYPE_FIREBALL
+	)
+	fireball_left_wall_session.update(0.0)
+	var left_wall_effects: Array = fireball_left_wall_session.visible_impact_effects()
+	_assert(left_wall_effects.size() == 1, "fireball left-wall hit spawns original explosion VFX")
+	if left_wall_effects.size() == 1:
+		_assert(int(left_wall_effects[0]["kind"]) == GameSessionScript.IMPACT_EFFECT_KIND_EXPLOSION, "fireball left-wall VFX uses the shared original explosion kind")
+		_assert(
+			left_wall_effects[0]["position"] == Vector2(
+				GameSessionScript.BALL_LEFT_X,
+				200.0 + GameSessionScript.BALL_SIZE * 0.5
+			) + GameSessionScript.FIREBALL_WALL_IMPACT_OFFSET,
+			"fireball left-wall VFX uses the original wall-impact offset"
+		)
+
+	var fireball_corner_wall_session = _playing_session_from_level(wall_vfx_level)
+	fireball_corner_wall_session.force_ball(
+		Vector2(GameSessionScript.BALL_LEFT_X - 1.0, GameSessionScript.BALL_TOP_Y - 1.0),
+		Vector2(-80, -80),
+		GameSessionScript.BALL_SIZE,
+		GameSessionScript.BALL_TYPE_FIREBALL
+	)
+	fireball_corner_wall_session.update(0.0)
+	var corner_wall_effects: Array = fireball_corner_wall_session.visible_impact_effects()
+	_assert(corner_wall_effects.size() == 1, "fireball corner wall hit spawns only one wall VFX")
+	if corner_wall_effects.size() == 1:
+		_assert(
+			corner_wall_effects[0]["position"] == Vector2(
+				GameSessionScript.BALL_LEFT_X,
+				GameSessionScript.BALL_TOP_Y + GameSessionScript.BALL_SIZE * 0.5
+			) + GameSessionScript.FIREBALL_WALL_IMPACT_OFFSET,
+			"fireball corner wall VFX prioritizes the original left-wall position"
+		)
+
+	var fireball_top_wall_session = _playing_session_from_level(wall_vfx_level)
+	fireball_top_wall_session.force_ball(
+		Vector2(200.0, GameSessionScript.BALL_TOP_Y - 1.0),
+		Vector2(0, -80),
+		GameSessionScript.BALL_SIZE,
+		GameSessionScript.BALL_TYPE_FIREBALL
+	)
+	fireball_top_wall_session.update(0.0)
+	var top_wall_effects: Array = fireball_top_wall_session.visible_impact_effects()
+	_assert(top_wall_effects.size() == 1, "fireball top-wall hit spawns original explosion VFX")
+	if top_wall_effects.size() == 1:
+		_assert(
+			top_wall_effects[0]["position"] == Vector2(
+				200.0 + GameSessionScript.BALL_SIZE * 0.5,
+				GameSessionScript.BALL_TOP_Y
+			) + GameSessionScript.FIREBALL_WALL_IMPACT_OFFSET,
+			"fireball top-wall VFX uses the original wall-impact offset"
+		)
+
+	var fireball_bottom_wall_session = _playing_session_from_level(wall_vfx_level)
+	fireball_bottom_wall_session.force_ball(
+		Vector2(200.0, GameSessionScript.BALL_BOTTOM_Y - GameSessionScript.BALL_SIZE + 1.0),
+		Vector2(0, 80),
+		GameSessionScript.BALL_SIZE,
+		GameSessionScript.BALL_TYPE_FIREBALL
+	)
+	fireball_bottom_wall_session.update(0.0)
+	var bottom_wall_effects: Array = fireball_bottom_wall_session.visible_impact_effects()
+	_assert(bottom_wall_effects.size() == 1, "fireball bottom-wall hit spawns original explosion VFX")
+	if bottom_wall_effects.size() == 1:
+		_assert(
+			bottom_wall_effects[0]["position"] == Vector2(
+				200.0 + GameSessionScript.BALL_SIZE * 0.5,
+				GameSessionScript.BALL_BOTTOM_Y
+			) + GameSessionScript.FIREBALL_WALL_IMPACT_OFFSET,
+			"fireball bottom-wall VFX uses the original wall-impact offset"
+		)
+
+	var fireball_back_wall_session = _playing_session_from_level(wall_vfx_level)
+	fireball_back_wall_session.back_wall_time_remaining = GameSessionScript.BACK_WALL_DURATION_SECONDS
+	fireball_back_wall_session.force_ball(
+		Vector2(GameSessionScript.BACK_WALL_BOUNCE_X - GameSessionScript.BALL_SIZE + 1.0, 200.0),
+		Vector2(80, 0),
+		GameSessionScript.BALL_SIZE,
+		GameSessionScript.BALL_TYPE_FIREBALL
+	)
+	fireball_back_wall_session.update(0.0)
+	var back_wall_effects: Array = fireball_back_wall_session.visible_impact_effects()
+	_assert(back_wall_effects.size() == 1, "fireball active-back-wall hit spawns original explosion VFX")
+	if back_wall_effects.size() == 1:
+		_assert(
+			back_wall_effects[0]["position"] == Vector2(
+				GameSessionScript.BACK_WALL_BOUNCE_X,
+				200.0 + GameSessionScript.BALL_SIZE * 0.5
+			) + GameSessionScript.FIREBALL_WALL_IMPACT_OFFSET,
+			"fireball active-back-wall VFX uses the original wall-impact offset"
+		)
+
+	var standard_wall_session = _playing_session_from_level(wall_vfx_level)
+	standard_wall_session.force_ball(
+		Vector2(GameSessionScript.BALL_LEFT_X - 1.0, 200.0),
+		Vector2(-80, 0)
+	)
+	standard_wall_session.update(0.0)
+	_assert(standard_wall_session.visible_impact_effects().is_empty(), "standard wall hit does not spawn fireball wall VFX")
+
+	var fireball_right_miss_session = _playing_session_from_level(wall_vfx_level)
+	fireball_right_miss_session.force_ball(
+		Vector2(GameSessionScript.BALL_LOST_X + 1.0, 200.0),
+		Vector2(80, 0),
+		GameSessionScript.BALL_SIZE,
+		GameSessionScript.BALL_TYPE_FIREBALL
+	)
+	fireball_right_miss_session.update(0.0)
+	_assert(fireball_right_miss_session.visible_impact_effects().is_empty(), "fireball right-side miss without back wall does not spawn wall VFX")
+
 	var downgrade_session = _game_session_from_level(_make_level_from_rows([[15, 42, 70, 1]]))
 	var downgrade_15: Dictionary = downgrade_session._resolve_board_tile_hit(0, 0, 15)
 	downgrade_session._apply_board_hit_result(downgrade_15)

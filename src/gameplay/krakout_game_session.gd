@@ -239,6 +239,12 @@ const IMPACT_EFFECT_KIND_HARD_BRICK_IMPACT := 4
 const IMPACT_EFFECT_KIND_MONSTER_HIT := IMPACT_EFFECT_KIND_EXPLOSION
 const IMPACT_EFFECT_KIND_CHAIN_EXPLOSION := IMPACT_EFFECT_KIND_EXPLOSION
 const CHAIN_EXPLOSION_IMPACT_OFFSET := Vector2(-8, 1)
+const FIREBALL_WALL_IMPACT_NONE := 0
+const FIREBALL_WALL_IMPACT_LEFT := 1
+const FIREBALL_WALL_IMPACT_BACK := 2
+const FIREBALL_WALL_IMPACT_TOP := 3
+const FIREBALL_WALL_IMPACT_BOTTOM := 4
+const FIREBALL_WALL_IMPACT_OFFSET := Vector2(-16, -16)
 const IMPACT_EFFECT_FRAME_SECONDS := 0.05
 const IMPACT_EFFECT_FRAME_COUNT := 11
 const IMPACT_EFFECT_DURATION_SECONDS := IMPACT_EFFECT_FRAME_SECONDS * IMPACT_EFFECT_FRAME_COUNT
@@ -1240,20 +1246,24 @@ func _advance_ball(ball: Dictionary, delta: float) -> void:
 	var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
 	var size := float(ball.get("size", BALL_SIZE))
 	var wall_hit := false
+	var fireball_wall_impact_side := FIREBALL_WALL_IMPACT_NONE
 
 	if position.y <= BALL_TOP_Y:
 		position.y = BALL_TOP_Y
 		velocity.y = absf(velocity.y)
 		wall_hit = true
+		fireball_wall_impact_side = FIREBALL_WALL_IMPACT_TOP
 	elif position.y + size >= BALL_BOTTOM_Y:
 		position.y = BALL_BOTTOM_Y - size
 		velocity.y = -absf(velocity.y)
 		wall_hit = true
+		fireball_wall_impact_side = FIREBALL_WALL_IMPACT_BOTTOM
 
 	if position.x <= BALL_LEFT_X:
 		position.x = BALL_LEFT_X
 		velocity.x = absf(velocity.x)
 		wall_hit = true
+		fireball_wall_impact_side = FIREBALL_WALL_IMPACT_LEFT
 
 	ball["position"] = position
 	ball["velocity"] = velocity
@@ -1267,9 +1277,14 @@ func _advance_ball(ball: Dictionary, delta: float) -> void:
 	if _collide_with_back_wall(ball):
 		position = ball.get("position", position)
 		velocity = ball.get("velocity", velocity)
+		if fireball_wall_impact_side != FIREBALL_WALL_IMPACT_LEFT:
+			fireball_wall_impact_side = FIREBALL_WALL_IMPACT_BACK
 	elif position.x > BALL_LOST_X:
+		_spawn_fireball_wall_impact_if_needed(ball, fireball_wall_impact_side)
 		ball["active"] = false
 		return
+
+	_spawn_fireball_wall_impact_if_needed(ball, fireball_wall_impact_side)
 
 	if _ball_collides_with_enemies(ball):
 		if _collide_ball_with_monsters(ball):
@@ -2601,6 +2616,33 @@ func _spawn_chain_explosion_impact_effects(cleared_cells: Array) -> int:
 		if _spawn_impact_effect(brick_origin + CHAIN_EXPLOSION_IMPACT_OFFSET, IMPACT_EFFECT_KIND_CHAIN_EXPLOSION):
 			spawned_count += 1
 	return spawned_count
+
+
+func _spawn_fireball_wall_impact_if_needed(ball: Dictionary, impact_side: int) -> bool:
+	if impact_side == FIREBALL_WALL_IMPACT_NONE:
+		return false
+	if _ball_type(ball) != BALL_TYPE_FIREBALL:
+		return false
+
+	var rect := ball_rect(ball)
+	var center := rect.get_center()
+	var impact_anchor := Vector2.ZERO
+	match impact_side:
+		FIREBALL_WALL_IMPACT_LEFT:
+			impact_anchor = Vector2(BALL_LEFT_X, center.y)
+		FIREBALL_WALL_IMPACT_BACK:
+			impact_anchor = Vector2(BACK_WALL_BOUNCE_X, center.y)
+		FIREBALL_WALL_IMPACT_TOP:
+			impact_anchor = Vector2(center.x, BALL_TOP_Y)
+		FIREBALL_WALL_IMPACT_BOTTOM:
+			impact_anchor = Vector2(center.x, BALL_BOTTOM_Y)
+		_:
+			return false
+
+	return _spawn_impact_effect(
+		impact_anchor + FIREBALL_WALL_IMPACT_OFFSET,
+		IMPACT_EFFECT_KIND_EXPLOSION
+	)
 
 
 func _compact_bees() -> void:
