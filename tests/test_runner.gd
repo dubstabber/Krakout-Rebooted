@@ -1672,9 +1672,14 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(int(snake_activation_evidence.get("slot_count", 0)) == GameSessionScript.MAX_SNAKE_SEGMENTS, "Snake VFX evidence records the original 100-slot pool")
 	_assert(String(snake_activation_evidence.get("reset", "")).find("sub_419600") != -1, "Snake VFX evidence names the original reset helper")
 	_assert(String(snake_activation_evidence.get("update", "")).find("+0x0A74") != -1, "Snake VFX evidence records that update requires a pre-active slot")
+	_assert(String(snake_activation_evidence.get("update_guard", "")).find("+0x0A74 == 1") != -1, "Snake VFX evidence records the original update guard")
 	_assert(String(snake_activation_evidence.get("collision", "")).find("sub_41B390") != -1, "Snake VFX evidence names the original ball/projectile truncation helper")
+	_assert(String(snake_activation_evidence.get("write_scan", "")).find("+0x0A70..+0x0A8C") != -1, "Snake VFX evidence records the audited direct-write range")
+	_assert(String(snake_activation_evidence.get("write_scan", "")).find("no production writer") != -1, "Snake VFX evidence records the missing activation writer")
+	_assert(String(snake_activation_evidence.get("input_state_overlap", "")).find("sub_415A70") != -1, "Snake VFX evidence excludes the DirectInput offset overlap")
 	_assert(String(snake_activation_evidence.get("activation", "")).find("No production write") != -1, "Snake VFX evidence records the missing production initializer")
 	_assert(String(GameSessionScript.SNAKE_IDA_EVIDENCE).find("+0x0A74") != -1, "Snake VFX text evidence records the original active-slot offset")
+	_assert(String(GameSessionScript.SNAKE_IDA_EVIDENCE).find("+0x0A70..+0x0A8C") != -1, "Snake VFX text evidence records the direct-write audit range")
 	var snake_dormant_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	snake_dormant_session._monster_spawn_cooldown = 999.0
 	snake_dormant_session._bee_spawn_delay_remaining = 999.0

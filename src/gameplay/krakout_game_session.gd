@@ -243,7 +243,7 @@ const SNAKE_TERMINAL_DOWN := 17
 const SNAKE_TERMINAL_LEFT := 18
 const SNAKE_TERMINAL_RIGHT := 19
 const SNAKE_RUNTIME_ACTIVATION_PROVEN := false
-const SNAKE_IDA_EVIDENCE := "IDA anchors: sub_4194C0 load, sub_419650 draw, sub_419600 clears 100 16-byte slots from +0x0A74, sub_419B00 only updates when +0x0A74 is already active, sub_41A9A0/sub_41B140/sub_41B2E0 step/rewrite existing slots, and sub_41B390 truncates from ball/projectile callers; no production write sets the first active slot."
+const SNAKE_IDA_EVIDENCE := "IDA anchors: sub_4194C0 load, sub_419650 draw, sub_419600 clears 100 16-byte slots from +0x0A74, sub_419B00 gates updates on +0x0A74 == 1 before calling sub_41A9A0/sub_41B140/sub_41B2E0, and sub_41B390 truncates from ball/projectile callers; the +0x0A70..+0x0A8C write audit found no production initializer for +0x0A74."
 const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
 const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
@@ -817,8 +817,11 @@ static func snake_runtime_activation_evidence() -> Dictionary:
 		"draw": "sub_419650 draws already-active Snake slots.",
 		"reset": "sub_419600 clears 100 16-byte Snake slots from +0x0A74.",
 		"update": "sub_419B00 reads +0x0A74 and only steps existing active slots through sub_41A9A0/sub_41B140/sub_41B2E0.",
+		"update_guard": "sub_419B00 gates the Snake update block on dword +0x0A74 == 1 before calling the movement and terminal-rewrite helpers.",
 		"collision": "sub_41B390 truncates existing slots from ball and projectile callers.",
-		"activation": "No production write that sets the first active Snake slot was found.",
+		"write_scan": "The direct write scan over +0x0A70..+0x0A8C found reset clears, step rewrites, terminal-kind rewrites, and no production writer of +0x0A74 := 1.",
+		"input_state_overlap": "Offset hits in sub_415A70/sub_415C00 belong to DirectInput current/previous state buffers and are not Snake activation writes.",
+		"activation": "No production write that sets the +0x0A74 Snake activation guard or first active slot was found.",
 	}
 
 
