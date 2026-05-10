@@ -168,6 +168,7 @@ func _set_hovered_menu_item(item_id: String, is_hovered: bool) -> void:
 			return
 		_hovered_item_id = ""
 		_selected_icon_frame_elapsed = 0.0
+	_update_selected_caption()
 	_update_menu_button_frames()
 
 
@@ -254,7 +255,7 @@ func _icon_frame_texture(source_x: int, frame: int) -> AtlasTexture:
 
 
 func selected_caption() -> String:
-	return String(_captions_by_id.get(_selected_item_id, ""))
+	return String(_captions_by_id.get(_hovered_item_id, ""))
 
 
 func menu_item_frame(item_id: String) -> int:
@@ -267,6 +268,7 @@ func reset_menu_button_animation() -> void:
 	_hovered_item_id = ""
 	for spec: Dictionary in MENU_ITEM_SPECS:
 		_icon_frames[String(spec["id"])] = 0
+	_update_selected_caption()
 	_update_menu_button_frames()
 
 

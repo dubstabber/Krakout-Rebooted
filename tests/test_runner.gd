@@ -36,11 +36,13 @@ const OptionsVxEffectsScript := preload("res://src/menu/options_vx_effects.gd")
 const WaveBitmapLabelScript := preload("res://src/menu/krakout_wave_bitmap_label.gd")
 const OptionsScreenScript := preload("res://src/menu/options_screen.gd")
 const MainMenuScreenScript := preload("res://src/menu/main_menu_screen.gd")
+const ExitConfirmScreenScript := preload("res://src/menu/exit_confirm_screen.gd")
 const EpisodeSelectScreenScript := preload("res://src/menu/episode_select_screen.gd")
 const RulesScreenScript := preload("res://src/menu/rules_screen.gd")
 const CreditsScreenScript := preload("res://src/menu/credits_screen.gd")
 const NameEntryScreenScript := preload("res://src/menu/name_entry_screen.gd")
 const MainMenuScreenScene := preload("res://scenes/menu/main_menu_screen.tscn")
+const ExitConfirmScreenScene := preload("res://scenes/menu/exit_confirm_screen.tscn")
 const EpisodeSelectScreenScene := preload("res://scenes/menu/episode_select_screen.tscn")
 const RulesScreenScene := preload("res://scenes/menu/rules_screen.tscn")
 const HighScoreScreenScene := preload("res://scenes/menu/high_score_screen.tscn")
@@ -3454,6 +3456,7 @@ func _validate_menu_and_game_scenes() -> void:
 	_assert(ResourceLoader.exists("res://scenes/menu/name_entry_screen.tscn"), "name entry scene exists")
 	_assert(ResourceLoader.exists("res://scenes/menu/options_screen.tscn"), "options scene exists")
 	_assert(ResourceLoader.exists("res://scenes/menu/credits_screen.tscn"), "credits scene exists")
+	_assert(ResourceLoader.exists("res://scenes/menu/exit_confirm_screen.tscn"), "exit confirmation scene exists")
 	_assert(ResourceLoader.exists("res://scenes/game/game_screen.tscn"), "game screen scene exists")
 
 	var menu := MainMenuScreenScene.instantiate()
@@ -3500,52 +3503,65 @@ func _validate_menu_and_game_scenes() -> void:
 
 	_assert(menu.has_method("selected_caption"), "main menu exposes selected caption for tests")
 	if menu.has_method("selected_caption"):
-		_assert(menu.call("selected_caption") == "Start New Game", "main menu defaults to start caption")
+		_assert(menu.call("selected_caption") == "", "main menu hides the status caption until a button is hovered")
+	if selected_caption != null:
+		_assert(String(selected_caption.get("text")) == "", "main menu starts with no visible status caption")
 	if _audio != null and _audio.has_method("is_sfx_playing"):
 		_assert(not bool(_audio.call("is_sfx_playing", "eff01")), "main menu startup stays silent")
 		_assert(not bool(_audio.call("is_sfx_playing", "eff02")), "main menu deferred focus stays silent")
 
-		var start_button := menu.find_child("StartGameButton", true, false) as TextureButton
-		_assert(start_button != null, "main menu creates start game button")
-		if start_button != null:
-			menu.call("reset_menu_button_animation")
-			_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu icon animation resets to first frame")
-			menu.call("_process", MainMenuScreenScript.ICON_SELECTED_FRAME_GATE_SECONDS + 0.001)
-			_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu selected icon does not animate without hover")
-			start_button.emit_signal("mouse_entered")
-			menu.call("_process", MainMenuScreenScript.ICON_SELECTED_FRAME_GATE_SECONDS)
-			_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu hovered icon waits for original strict 20 ms gate")
-			menu.call("_process", 0.001)
-			_assert(int(menu.call("menu_item_frame", "start")) == 1, "main menu hovered icon advances once after original sampled gate")
-			start_button.emit_signal("mouse_exited")
-			_assert(int(menu.call("menu_item_frame", "start")) == 1, "main menu icon keeps its current frame when hover leaves")
+	var start_button := menu.find_child("StartGameButton", true, false) as TextureButton
+	_assert(start_button != null, "main menu creates start game button")
+	if start_button != null:
+		menu.call("reset_menu_button_animation")
+		_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu icon animation resets to first frame")
+		menu.call("_process", MainMenuScreenScript.ICON_SELECTED_FRAME_GATE_SECONDS + 0.001)
+		_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu selected icon does not animate without hover")
+		start_button.emit_signal("mouse_entered")
+		if selected_caption != null:
+			_assert(String(selected_caption.get("text")) == "Start New Game", "main menu shows status caption while the start icon is hovered")
+		menu.call("_process", MainMenuScreenScript.ICON_SELECTED_FRAME_GATE_SECONDS)
+		_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu hovered icon waits for original strict 20 ms gate")
+		menu.call("_process", 0.001)
+		_assert(int(menu.call("menu_item_frame", "start")) == 1, "main menu hovered icon advances once after original sampled gate")
+		start_button.emit_signal("mouse_exited")
+		if selected_caption != null:
+			_assert(String(selected_caption.get("text")) == "", "main menu clears status caption when the start icon is unhovered")
+		_assert(int(menu.call("menu_item_frame", "start")) == 1, "main menu icon keeps its current frame when hover leaves")
+		menu.call("_process", MainMenuScreenScript.ICON_RETURN_FRAME_GATE_SECONDS + 0.001)
+		_assert(int(menu.call("menu_item_frame", "start")) == 2, "main menu icon continues its cycle after hover leaves")
+		for _main_menu_finish_step in range(MainMenuScreenScript.ICON_FRAME_COUNT - 2):
 			menu.call("_process", MainMenuScreenScript.ICON_RETURN_FRAME_GATE_SECONDS + 0.001)
-			_assert(int(menu.call("menu_item_frame", "start")) == 2, "main menu icon continues its cycle after hover leaves")
-			for _main_menu_finish_step in range(MainMenuScreenScript.ICON_FRAME_COUNT - 2):
-				menu.call("_process", MainMenuScreenScript.ICON_RETURN_FRAME_GATE_SECONDS + 0.001)
-			_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu icon stops after finishing its unhovered cycle")
-			if _audio != null and _audio.has_method("stop_all") and _audio.has_method("is_sfx_playing"):
-				_audio.call("stop_all")
-			menu.call("_select_menu_item", "rules")
-			if _audio != null and _audio.has_method("is_sfx_playing"):
-				_assert(bool(_audio.call("is_sfx_playing", "eff02")), "main menu selection change plays original hover cue")
-				_audio.call("stop_all")
-				menu.call("_select_menu_item", "rules")
-				_assert(not bool(_audio.call("is_sfx_playing", "eff02")), "main menu does not replay hover cue when selection is unchanged")
-			menu.call("_process", MainMenuScreenScript.ICON_SELECTED_FRAME_GATE_SECONDS + 0.001)
-			_assert(int(menu.call("menu_item_frame", "rules")) == 0, "main menu newly selected icon stays idle without hover")
-			if selected_caption != null:
-				menu.call("_select_menu_item", "rules")
-				_assert(String(selected_caption.get("text")) == "Game Rules", "main menu updates bitmap caption text when selection changes")
-
-		var signal_state := {"did_request_start": false}
-		menu.start_game_requested.connect(func() -> void: signal_state["did_request_start"] = true)
-		if _audio != null and _audio.has_method("stop_all"):
+		_assert(int(menu.call("menu_item_frame", "start")) == 0, "main menu icon stops after finishing its unhovered cycle")
+		if _audio != null and _audio.has_method("stop_all") and _audio.has_method("is_sfx_playing"):
 			_audio.call("stop_all")
-		start_button.emit_signal("pressed")
-		_assert(signal_state["did_request_start"], "start game button emits start request")
+		menu.call("_select_menu_item", "rules")
 		if _audio != null and _audio.has_method("is_sfx_playing"):
-			_assert(bool(_audio.call("is_sfx_playing", "eff01")), "main menu activation plays original confirm cue")
+			_assert(bool(_audio.call("is_sfx_playing", "eff02")), "main menu selection change plays original hover cue")
+			_audio.call("stop_all")
+			menu.call("_select_menu_item", "rules")
+			_assert(not bool(_audio.call("is_sfx_playing", "eff02")), "main menu does not replay hover cue when selection is unchanged")
+		menu.call("_process", MainMenuScreenScript.ICON_SELECTED_FRAME_GATE_SECONDS + 0.001)
+		_assert(int(menu.call("menu_item_frame", "rules")) == 0, "main menu newly selected icon stays idle without hover")
+		if selected_caption != null:
+			menu.call("_select_menu_item", "rules")
+			_assert(String(selected_caption.get("text")) == "", "main menu keeps status caption hidden for focus-only selection changes")
+			var caption_rules_button := menu.find_child("RulesButton", true, false) as TextureButton
+			if caption_rules_button != null:
+				caption_rules_button.emit_signal("mouse_entered")
+				_assert(String(selected_caption.get("text")) == "Game Rules", "main menu updates bitmap caption text on hover")
+				caption_rules_button.emit_signal("mouse_exited")
+				_assert(String(selected_caption.get("text")) == "", "main menu clears bitmap caption text on unhover")
+
+	var signal_state := {"did_request_start": false}
+	menu.start_game_requested.connect(func() -> void: signal_state["did_request_start"] = true)
+	if _audio != null and _audio.has_method("stop_all"):
+		_audio.call("stop_all")
+	if start_button != null:
+		start_button.emit_signal("pressed")
+	_assert(signal_state["did_request_start"], "start game button emits start request")
+	if _audio != null and _audio.has_method("is_sfx_playing"):
+		_assert(bool(_audio.call("is_sfx_playing", "eff01")), "main menu activation plays original confirm cue")
 
 	var rules_button := menu.find_child("RulesButton", true, false) as TextureButton
 	if rules_button != null:
@@ -3576,6 +3592,53 @@ func _validate_menu_and_game_scenes() -> void:
 		await process_frame
 		_assert(credits_signal_state["did_request_credits"], "credits button emits request")
 	menu.queue_free()
+
+	var exit_confirm := ExitConfirmScreenScene.instantiate()
+	root.add_child(exit_confirm)
+	await process_frame
+	_assert(exit_confirm.has_signal("exit_confirmed"), "exit confirmation screen exposes confirm signal")
+	_assert(exit_confirm.has_signal("back_requested"), "exit confirmation screen exposes back signal")
+	_assert(exit_confirm.find_child("Background", true, false) != null, "exit confirmation screen creates background art")
+	var exit_ambient_effects = exit_confirm.find_child("MenuAmbientEffects", true, false)
+	_assert(exit_ambient_effects != null, "exit confirmation screen keeps original ambient VFX")
+	if exit_ambient_effects != null:
+		_assert(exit_ambient_effects.title_target_rect() == Rect2(Vector2(122, 70), Vector2(396, 75)), "exit confirmation ambient VFX owns title draw rect")
+	var confirm_exit_button := exit_confirm.find_child("ConfirmExitButton", true, false) as TextureButton
+	_assert(confirm_exit_button != null, "exit confirmation screen creates original Exit icon button")
+	if confirm_exit_button != null:
+		_assert(confirm_exit_button.position == ExitConfirmScreenScript.EXIT_BUTTON_POSITION, "exit confirmation confirm icon uses original coordinate")
+		_assert(confirm_exit_button.texture_normal is AtlasTexture, "exit confirmation confirm icon uses the main menu atlas")
+		if confirm_exit_button.texture_normal is AtlasTexture:
+			var confirm_texture := confirm_exit_button.texture_normal as AtlasTexture
+			_assert(confirm_texture.region == ExitConfirmScreenScript.exit_icon_source_rect_for_frame(0), "exit confirmation confirm icon starts on original Exit frame")
+		exit_confirm.call("reset_exit_button_animation")
+		confirm_exit_button.emit_signal("mouse_entered")
+		exit_confirm.call("_process", ExitConfirmScreenScript.ICON_SELECTED_FRAME_GATE_SECONDS)
+		_assert(int(exit_confirm.call("exit_button_frame")) == 0, "exit confirmation confirm icon waits for original strict 20 ms gate")
+		exit_confirm.call("_process", 0.001)
+		_assert(int(exit_confirm.call("exit_button_frame")) == 1, "exit confirmation confirm icon advances once after original sampled gate")
+	var confirm_back_button = exit_confirm.find_child("BackButton", true, false)
+	_assert(confirm_back_button != null and confirm_back_button.get_script() == StaticMenuBackButtonScript, "exit confirmation screen creates original Backward cancel button")
+	if confirm_back_button != null:
+		_assert(confirm_back_button.position == ExitConfirmScreenScript.BACK_BUTTON_POSITION, "exit confirmation Backward icon uses original coordinate")
+	var exit_confirm_signal_state := {"confirmed": false, "back": false}
+	exit_confirm.exit_confirmed.connect(func() -> void: exit_confirm_signal_state["confirmed"] = true)
+	exit_confirm.back_requested.connect(func() -> void: exit_confirm_signal_state["back"] = true)
+	if _audio != null and _audio.has_method("stop_all"):
+		_audio.call("stop_all")
+	if confirm_exit_button != null:
+		confirm_exit_button.emit_signal("pressed")
+		_assert(exit_confirm_signal_state["confirmed"], "exit confirmation confirm button emits confirm signal")
+		if _audio != null and _audio.has_method("is_sfx_playing"):
+			_assert(bool(_audio.call("is_sfx_playing", "eff01")), "exit confirmation confirm plays original activate cue")
+	if _audio != null and _audio.has_method("stop_all"):
+		_audio.call("stop_all")
+	if confirm_back_button != null and confirm_back_button.has_method("activate"):
+		confirm_back_button.call("activate")
+		_assert(exit_confirm_signal_state["back"], "exit confirmation Backward button emits back signal")
+		if _audio != null and _audio.has_method("is_sfx_playing"):
+			_assert(bool(_audio.call("is_sfx_playing", "eff01")), "exit confirmation back plays original activate cue")
+	exit_confirm.queue_free()
 
 	if _profile != null and _profile.has_method("set_save_path"):
 		_profile.call("set_save_path", _test_profile_path("menu_screens"), false)
@@ -4762,6 +4825,23 @@ func _validate_menu_and_game_scenes() -> void:
 	if _audio != null and _audio.has_method("current_music_context"):
 		_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_MAIN_MENU, "app starts main-menu music context")
 		_assert(String(_audio.call("current_music_name")) == "Abnormal", "app starts original main-menu music")
+
+	if app_menu != null:
+		app_menu.emit_signal("quit_requested")
+		await process_frame
+		var app_exit_confirm := app.find_child("ExitConfirmScreen", true, false)
+		_assert(app_exit_confirm != null, "app routes main-menu Exit into the original exit confirmation screen")
+		_assert_app_original_cursor(app, "exit confirmation screen keeps the original cursor overlay")
+		if _audio != null and _audio.has_method("current_music_context"):
+			_assert(String(_audio.call("current_music_context")) == AudioCueCatalogScript.CONTEXT_MAIN_MENU, "exit confirmation keeps main-menu music context")
+			_assert(String(_audio.call("current_music_name")) == "Abnormal", "exit confirmation keeps original main-menu music")
+		if app_exit_confirm != null:
+			app_exit_confirm.emit_signal("back_requested")
+			await process_frame
+		app_menu = app.find_child("MainMenuScreen", true, false)
+		_assert(app_menu != null, "exit confirmation Backward returns to main menu")
+		_assert_app_original_cursor(app, "exit confirmation back restores the original cursor overlay")
+
 	if app_menu != null:
 		app_menu.emit_signal("rules_requested")
 		await process_frame

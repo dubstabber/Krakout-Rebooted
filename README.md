@@ -180,8 +180,9 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   40ms/20-degree phase gate.
 - The main menu now routes every original icon into a Godot-native screen:
   episode selection, executable-backed game rules, high score, options,
-  executable-backed credits, and exit. Icon buttons animate only while hovered
-  and finish their current cycle before stopping when hover leaves.
+  executable-backed credits, and the original-backed exit confirmation screen.
+  Icon buttons animate only while hovered and finish their current cycle before
+  stopping when hover leaves.
 - Qualifying game-over scores now enter the original-backed name-entry slice:
   `BgGetName` background art, the original two-layer 48px background scroll
   with the first layer vertical and the second diagonal, 400ms blinking name

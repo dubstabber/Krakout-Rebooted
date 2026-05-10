@@ -8,6 +8,7 @@ const HighScoreScreenScene := preload("res://scenes/menu/high_score_screen.tscn"
 const NameEntryScreenScene := preload("res://scenes/menu/name_entry_screen.tscn")
 const OptionsScreenScene := preload("res://scenes/menu/options_screen.tscn")
 const CreditsScreenScene := preload("res://scenes/menu/credits_screen.tscn")
+const ExitConfirmScreenScene := preload("res://scenes/menu/exit_confirm_screen.tscn")
 const AudioCueCatalogScript := preload("res://src/audio/krakout_audio_cue_catalog.gd")
 const CursorOverlayScript := preload("res://src/app/krakout_cursor_overlay.gd")
 
@@ -110,6 +111,14 @@ func _show_credits() -> void:
 	_set_screen(screen)
 
 
+func _show_exit_confirm() -> void:
+	_play_music_context(AudioCueCatalogScript.CONTEXT_MAIN_MENU)
+	var screen := ExitConfirmScreenScene.instantiate()
+	screen.exit_confirmed.connect(_quit_tree)
+	screen.back_requested.connect(_show_main_menu)
+	_set_screen(screen)
+
+
 func _set_screen(screen: Node) -> void:
 	if _current_screen != null:
 		_current_screen.queue_free()
@@ -152,6 +161,10 @@ func _on_score_submitted(player_name: String, score: int, reached_level: int, ep
 
 
 func _on_quit_requested() -> void:
+	_show_exit_confirm()
+
+
+func _quit_tree() -> void:
 	get_tree().quit()
 
 
