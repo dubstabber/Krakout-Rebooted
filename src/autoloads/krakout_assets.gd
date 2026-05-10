@@ -199,7 +199,7 @@ func _path_from_name(index: Dictionary, name: String, default_extension: String)
 
 
 func _apply_runtime_texture_processing(name: String, texture: Texture2D) -> Texture2D:
-	if name == "Arrowup" or name == "Arrowdown":
+	if name == "Arrowup" or name == "Arrowdown" or name == "BgEpisode" or name == "BgGetName":
 		return _black_to_transparent_texture(texture)
 	if name == "Walls":
 		return _key_color_to_transparent_texture(texture, Color(4.0 / 255.0, 2.0 / 255.0, 4.0 / 255.0, 1.0))

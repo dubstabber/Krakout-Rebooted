@@ -57,6 +57,7 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	draw_rect(Rect2(Vector2.ZERO, Vector2(PlayfieldSpecScript.VIEWPORT_SIZE)), Color.BLACK)
 	if _background_texture == null:
 		return
 

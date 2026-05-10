@@ -102,6 +102,42 @@ func _run() -> void:
 				is_zero_approx(arrow_up_image.get_pixel(0, 0).a),
 				"Arrowup texture converts black key color to transparent background"
 			)
+	var episode_background_texture := _assets.load_texture("BgEpisode") as Texture2D
+	_assert(episode_background_texture != null, "BgEpisode texture is loadable")
+	if episode_background_texture != null:
+		var episode_background_image := episode_background_texture.get_image()
+		_assert(episode_background_image != null, "BgEpisode texture exposes image data")
+		if episode_background_image != null:
+			_assert(
+				is_zero_approx(episode_background_image.get_pixel(0, 0).a),
+				"BgEpisode texture converts black key color to transparent background"
+			)
+			_assert(
+				is_equal_approx(episode_background_image.get_pixel(23, 0).a, 1.0),
+				"BgEpisode keeps first grid tile pixels opaque"
+			)
+			_assert(
+				is_equal_approx(episode_background_image.get_pixel(60, 0).a, 1.0),
+				"BgEpisode keeps second grid tile pixels opaque"
+			)
+	var name_entry_background_texture := _assets.load_texture("BgGetName") as Texture2D
+	_assert(name_entry_background_texture != null, "BgGetName texture is loadable")
+	if name_entry_background_texture != null:
+		var name_entry_background_image := name_entry_background_texture.get_image()
+		_assert(name_entry_background_image != null, "BgGetName texture exposes image data")
+		if name_entry_background_image != null:
+			_assert(
+				is_zero_approx(name_entry_background_image.get_pixel(0, 0).a),
+				"BgGetName texture converts black key color to transparent background"
+			)
+			_assert(
+				is_equal_approx(name_entry_background_image.get_pixel(23, 0).a, 1.0),
+				"BgGetName keeps first grid tile pixels opaque"
+			)
+			_assert(
+				is_equal_approx(name_entry_background_image.get_pixel(60, 0).a, 1.0),
+				"BgGetName keeps second grid tile pixels opaque"
+			)
 	var walls_texture := _assets.load_texture("Walls") as Texture2D
 	_assert(walls_texture != null, "Walls texture is loadable")
 	if walls_texture != null:
