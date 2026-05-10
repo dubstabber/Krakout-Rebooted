@@ -615,6 +615,23 @@ func move_racket_to(mouse_y: float, mouse_x = null) -> void:
 		_attach_ready_balls()
 
 
+func move_racket_by_mouse_delta(mouse_delta_y: float, mouse_delta_x: float = 0.0) -> void:
+	if is_racket_stunned():
+		return
+	if is_level_ready_prompt_visible():
+		return
+	var current_height := current_racket_height()
+	var target_center_y := racket_y + current_height * 0.5 + mouse_delta_y
+	var adjusted_mouse_delta_x := mouse_delta_x
+	if is_drunk_paddle_active():
+		target_center_y = racket_y + current_height * 0.5 - mouse_delta_y
+		adjusted_mouse_delta_x = -adjusted_mouse_delta_x
+	_update_double_paddle_x(adjusted_mouse_delta_x)
+	racket_y = clampf(target_center_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
+	if state == STATE_READY or state == STATE_BALL_LOST:
+		_attach_ready_balls()
+
+
 func launch_ready_ball() -> bool:
 	if state == STATE_PLAYING:
 		return _release_magnet_attached_balls()

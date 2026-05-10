@@ -756,8 +756,14 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 
 	session.move_racket_to(-100.0)
 	_assert(session.racket_rect().position.y == GameSessionScript.RACKET_MIN_Y, "racket clamps to top bound")
+	var top_clamp_y: float = session.racket_rect().position.y
+	session.move_racket_by_mouse_delta(1.0)
+	_assert(is_equal_approx(session.racket_rect().position.y, top_clamp_y + 1.0), "relative mouse motion leaves top clamp immediately")
 	session.move_racket_to(10000.0)
 	_assert(session.racket_rect().end.y == GameSessionScript.RACKET_MAX_BOTTOM, "racket clamps to bottom bound")
+	var bottom_clamp_y: float = session.racket_rect().position.y
+	session.move_racket_by_mouse_delta(-1.0)
+	_assert(is_equal_approx(session.racket_rect().position.y, bottom_clamp_y - 1.0), "relative mouse motion leaves bottom clamp immediately")
 	_assert(session.first_ball_position().y > session.racket_rect().position.y, "ready ball follows racket")
 	_assert(session.launch_ready_ball(), "ready ball launches")
 	_assert(session.state == GameSessionScript.STATE_PLAYING, "game session enters playing state")
@@ -4608,6 +4614,20 @@ func _validate_menu_and_game_scenes() -> void:
 				_assert(int(_profile.call("best_score")) == 1000, "game screen records new persisted high score")
 			game.call("move_racket_to", 10000.0)
 			_assert(gameplay.racket_rect().end.y == GameSessionScript.RACKET_MAX_BOTTOM, "game screen routes racket movement")
+			var game_bottom_clamp_y: float = gameplay.racket_rect().position.y
+			game.call("_input", _mouse_motion_event(Vector2(320, 470), Vector2(0, -2)))
+			_assert(
+				is_equal_approx(gameplay.racket_rect().position.y, game_bottom_clamp_y - 2.0),
+				"game screen routes relative mouse motion out of the bottom clamp"
+			)
+			game.call("move_racket_to", -100.0)
+			_assert(gameplay.racket_rect().position.y == GameSessionScript.RACKET_MIN_Y, "game screen routes top racket clamp")
+			var game_top_clamp_y: float = gameplay.racket_rect().position.y
+			game.call("_input", _mouse_motion_event(Vector2(320, 70), Vector2(0, 2)))
+			_assert(
+				is_equal_approx(gameplay.racket_rect().position.y, game_top_clamp_y + 2.0),
+				"game screen routes relative mouse motion out of the top clamp"
+			)
 			game.call("_input", _action_event(GameScreenScript.ACTION_LAUNCH_BALL))
 			await process_frame
 			_assert(gameplay.state == GameSessionScript.STATE_PLAYING, "game screen launch enters playing state")
@@ -5279,6 +5299,14 @@ func _mouse_button_event(button_index: MouseButton) -> InputEventMouseButton:
 	return event
 
 
+func _mouse_motion_event(position: Vector2, relative: Vector2, button_mask := 0) -> InputEventMouseMotion:
+	var event := InputEventMouseMotion.new()
+	event.position = position
+	event.relative = relative
+	event.button_mask = button_mask
+	return event
+
+
 func _action_has_key(
 	action_name: String,
 	keycode: Key,
@@ -5350,12 +5378,15 @@ func _assert_app_original_cursor(app: Node, message: String) -> void:
 	_assert(cursor_overlay != null, "%s exists" % message)
 	if cursor_overlay == null:
 		return
-	_assert(bool(cursor_overlay.call("is_cursor_active")), "%s is active" % message)
+	_assert(bool(cursor_overlay.call("is_cursor_active")), "%s draws the original software cursor overlay" % message)
 	_assert(cursor_overlay.call("cursor_texture_size") == Vector2i(68, 58), "%s uses extracted Cursor texture" % message)
 	_assert(cursor_overlay.call("logo_texture_size") == Vector2i(200, 240), "%s uses extracted Welogo animation sheet" % message)
-	_assert(bool(app.call("is_system_cursor_hidden_for_menu")), "%s hides the system cursor" % message)
+	_assert(bool(app.call("is_system_cursor_hidden_for_menu")), "%s visually hides the native cursor behind the overlay" % message)
+	_assert(bool(app.call("is_native_menu_cursor_active")), "%s keeps native visible mouse input active under the overlay" % message)
+	cursor_overlay.call("_input", _mouse_motion_event(Vector2(123, 234), Vector2(5, 3), MOUSE_BUTTON_MASK_RIGHT))
+	_assert(cursor_overlay.call("cursor_position") == Vector2(123, 234), "%s keeps the overlay moving during right-click drag" % message)
 	if DisplayServer.get_name() != "headless":
-		_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_HIDDEN, "%s applies hidden OS cursor mode" % message)
+		_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_VISIBLE, "%s applies visible OS cursor mode" % message)
 
 
 func _assert_app_original_cursor_animation(app: Node, message: String) -> void:
@@ -5374,6 +5405,7 @@ func _assert_app_original_cursor_inactive(app: Node, message: String) -> void:
 	if cursor_overlay == null:
 		return
 	_assert(not bool(cursor_overlay.call("is_cursor_active")), "%s is inactive" % message)
+	_assert(not bool(app.call("is_native_menu_cursor_active")), "%s clears the native menu cursor" % message)
 
 
 func _assert_app_no_mouse_cursor(app: Node, message: String) -> void:
@@ -5383,6 +5415,7 @@ func _assert_app_no_mouse_cursor(app: Node, message: String) -> void:
 		return
 	_assert(not bool(cursor_overlay.call("is_cursor_active")), "%s disables the original cursor overlay" % message)
 	_assert(bool(app.call("is_system_cursor_hidden_for_menu")), "%s hides the system cursor" % message)
+	_assert(not bool(app.call("is_native_menu_cursor_active")), "%s clears the native menu cursor" % message)
 	if DisplayServer.get_name() != "headless":
 		_assert(Input.get_mouse_mode() == Input.MOUSE_MODE_HIDDEN, "%s applies hidden OS cursor mode" % message)
 

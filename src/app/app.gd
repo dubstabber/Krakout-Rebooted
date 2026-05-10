@@ -11,12 +11,34 @@ const CreditsScreenScene := preload("res://scenes/menu/credits_screen.tscn")
 const ExitConfirmScreenScene := preload("res://scenes/menu/exit_confirm_screen.tscn")
 const AudioCueCatalogScript := preload("res://src/audio/krakout_audio_cue_catalog.gd")
 const CursorOverlayScript := preload("res://src/app/krakout_cursor_overlay.gd")
+const MENU_TRANSPARENT_CURSOR_SIZE := Vector2i(32, 32)
+const MENU_CURSOR_SHAPES := [
+	Input.CURSOR_ARROW,
+	Input.CURSOR_IBEAM,
+	Input.CURSOR_POINTING_HAND,
+	Input.CURSOR_CROSS,
+	Input.CURSOR_WAIT,
+	Input.CURSOR_BUSY,
+	Input.CURSOR_DRAG,
+	Input.CURSOR_CAN_DROP,
+	Input.CURSOR_FORBIDDEN,
+	Input.CURSOR_VSIZE,
+	Input.CURSOR_HSIZE,
+	Input.CURSOR_BDIAGSIZE,
+	Input.CURSOR_FDIAGSIZE,
+	Input.CURSOR_MOVE,
+	Input.CURSOR_VSPLIT,
+	Input.CURSOR_HSPLIT,
+	Input.CURSOR_HELP,
+]
 
 var _current_screen: Node
 var _cursor_overlay: Control
 var _previous_mouse_mode: int = Input.MOUSE_MODE_VISIBLE
 var _owns_mouse_mode := false
 var _system_cursor_hidden_for_menu := false
+var _native_menu_cursor_active := false
+var _transparent_menu_cursor: Texture2D
 var _fullscreen_enabled := false
 var _last_high_score_highlight_entry: Dictionary = {}
 var _screen_generation := 0
@@ -35,6 +57,7 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if not _owns_mouse_mode:
 		return
+	_clear_native_menu_cursor()
 	Input.set_mouse_mode(_previous_mouse_mode)
 	_system_cursor_hidden_for_menu = false
 	_owns_mouse_mode = false
@@ -176,6 +199,10 @@ func is_system_cursor_hidden_for_menu() -> bool:
 	return _system_cursor_hidden_for_menu
 
 
+func is_native_menu_cursor_active() -> bool:
+	return _native_menu_cursor_active
+
+
 func is_fullscreen_enabled() -> bool:
 	return _fullscreen_enabled
 
@@ -241,6 +268,7 @@ func _apply_cursor_policy_after_screen_cleanup(screen: Node, generation: int) ->
 
 func _hide_mouse_cursor_without_overlay() -> void:
 	_ensure_cursor_overlay()
+	_clear_native_menu_cursor()
 	Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
 	_system_cursor_hidden_for_menu = true
 	_cursor_overlay.set_cursor_active(false)
@@ -249,11 +277,41 @@ func _hide_mouse_cursor_without_overlay() -> void:
 func _set_original_cursor_active(is_active: bool) -> void:
 	_ensure_cursor_overlay()
 	if is_active:
-		Input.set_mouse_mode(Input.MOUSE_MODE_HIDDEN)
-		_system_cursor_hidden_for_menu = true
+		_show_original_menu_cursor()
 	else:
+		_clear_native_menu_cursor()
+		_cursor_overlay.set_cursor_active(false)
 		_system_cursor_hidden_for_menu = false
-	_cursor_overlay.set_cursor_active(is_active)
+
+
+func _show_original_menu_cursor() -> void:
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	var transparent_cursor := _transparent_cursor_texture()
+	for cursor_shape: int in MENU_CURSOR_SHAPES:
+		Input.set_custom_mouse_cursor(transparent_cursor, cursor_shape)
+	_cursor_overlay.set_cursor_active(true)
+	_native_menu_cursor_active = true
+	_system_cursor_hidden_for_menu = true
+
+
+func _clear_native_menu_cursor() -> void:
+	for cursor_shape: int in MENU_CURSOR_SHAPES:
+		Input.set_custom_mouse_cursor(null, cursor_shape)
+	_native_menu_cursor_active = false
+
+
+func _transparent_cursor_texture() -> Texture2D:
+	if _transparent_menu_cursor != null:
+		return _transparent_menu_cursor
+	var image := Image.create(
+		MENU_TRANSPARENT_CURSOR_SIZE.x,
+		MENU_TRANSPARENT_CURSOR_SIZE.y,
+		false,
+		Image.FORMAT_RGBA8
+	)
+	image.fill(Color.TRANSPARENT)
+	_transparent_menu_cursor = ImageTexture.create_from_image(image)
+	return _transparent_menu_cursor
 
 
 func _profile_service() -> Node:

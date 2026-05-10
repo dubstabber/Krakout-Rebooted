@@ -192,7 +192,7 @@ func _input(event: InputEvent) -> void:
 			_hourglass_cursor.set_cursor_position(event.position)
 		if is_debug_cheats_visible() or _paused or _exit_confirmation_visible:
 			return
-		gameplay_session.move_racket_to(event.position.y, event.position.x)
+		gameplay_session.move_racket_by_mouse_delta(event.relative.y, event.relative.x)
 		_refresh_actor_renderers()
 		return
 	elif event is InputEventMouseButton and event.pressed and _cursor_released_from_game_map and not is_debug_cheats_visible():
@@ -994,7 +994,7 @@ func _apply_pause_overlay() -> void:
 
 func _lock_cursor_to_game_map() -> void:
 	_cursor_released_from_game_map = false
-	Input.set_mouse_mode(Input.MOUSE_MODE_CONFINED_HIDDEN)
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	_system_cursor_hidden_for_game_map = true
 
 

@@ -30,6 +30,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	_sync_to_viewport_mouse()
 	advance_animation(delta)
 
 
@@ -86,6 +87,16 @@ func logo_texture_size() -> Vector2i:
 
 func current_logo_frame_index() -> int:
 	return _logo_frame_index
+
+
+func _sync_to_viewport_mouse() -> void:
+	if not _cursor_active:
+		return
+	var next_position := get_viewport().get_mouse_position()
+	if next_position == _cursor_position:
+		return
+	_cursor_position = next_position
+	queue_redraw()
 
 
 func _draw() -> void:
