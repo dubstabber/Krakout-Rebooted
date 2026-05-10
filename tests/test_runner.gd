@@ -28,6 +28,9 @@ const GameplayContextScript := preload("res://src/gameplay/krakout_gameplay_cont
 const BallSystemScript := preload("res://src/gameplay/systems/krakout_ball_system.gd")
 const BonusSystemScript := preload("res://src/gameplay/systems/krakout_bonus_system.gd")
 const EnemyHazardSystemScript := preload("res://src/gameplay/systems/krakout_enemy_hazard_system.gd")
+const MonsterSystemScript := preload("res://src/gameplay/systems/krakout_monster_system.gd")
+const BeeSystemScript := preload("res://src/gameplay/systems/krakout_bee_system.gd")
+const SnakeVfxSystemScript := preload("res://src/gameplay/systems/krakout_snake_vfx_system.gd")
 const LevelReadySystemScript := preload("res://src/gameplay/systems/krakout_level_ready_system.gd")
 const ProjectileSystemScript := preload("res://src/gameplay/systems/krakout_projectile_system.gd")
 const RacketSystemScript := preload("res://src/gameplay/systems/krakout_racket_system.gd")
@@ -704,6 +707,37 @@ func _validate_session_helper_modules() -> void:
 		_assert(is_equal_approx(float(clamped_payloads[0].get("pan100", 0.0)), GameSessionScript.SFX_PAN_MAX), "audio event queue clamps explicit pan values")
 	audio_queue.queue_event("")
 	_assert(audio_queue.pop_event_names().is_empty(), "audio event queue ignores empty semantic event names")
+
+	var subsystem_monsters: Array[Dictionary] = []
+	var monster_system = MonsterSystemScript.new(subsystem_monsters, RandomScript.new(1), RandomScript.new(1))
+	_assert(monster_system.force_monster(Vector2(210, 220), 3, 0), "monster subsystem spawns into shared storage")
+	_assert(subsystem_monsters.size() == 1 and monster_system.active_count() == 1, "monster subsystem exposes active shared storage")
+	_assert(monster_system.set_monster_age_for_test(0, GameSessionScript.MONSTER_LIFETIME_SECONDS - 0.1), "monster subsystem keeps the monster age test seam")
+	monster_system.clear()
+	_assert(subsystem_monsters.is_empty(), "monster subsystem clears shared storage")
+
+	var subsystem_bees: Array[Dictionary] = []
+	var bee_system = BeeSystemScript.new(subsystem_bees, RandomScript.new(1))
+	_assert(bee_system.force_bee(Vector2(GameSessionScript.BEE_SPAWN_X, 100), 5), "Bee subsystem spawns into shared storage")
+	_assert(subsystem_bees.size() == 1 and bee_system.active_count() == 1, "Bee subsystem exposes active shared storage")
+	bee_system.clear()
+	_assert(subsystem_bees.is_empty(), "Bee subsystem clears shared storage")
+
+	var subsystem_snake_segments: Array[Dictionary] = []
+	var snake_vfx_system = SnakeVfxSystemScript.new(subsystem_snake_segments)
+	_assert(
+		snake_vfx_system.force_segments_for_test([
+			{"position": Vector2(100, 100), "kind": GameSessionScript.SNAKE_KIND_LEFT},
+			{"position": Vector2(110, 100), "kind": 99},
+		]) == 2,
+		"Snake VFX subsystem owns the segment test seam"
+	)
+	_assert(
+		snake_vfx_system.visible_segments()[1]["kind"] == GameSessionScript.SNAKE_KIND_COUNT - 1,
+		"Snake VFX subsystem clamps segment kinds to the original atlas range"
+	)
+	snake_vfx_system.clear()
+	_assert(subsystem_snake_segments.is_empty(), "Snake VFX subsystem clears shared storage")
 
 	var shared_monsters: Array[Dictionary] = []
 	var shared_bees: Array[Dictionary] = []
