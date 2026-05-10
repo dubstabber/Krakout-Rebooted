@@ -4,6 +4,9 @@ class_name KrakoutGameSession
 const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
 const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantics.gd")
 const RandomScript := preload("res://src/gameplay/krakout_random.gd")
+const AudioEventQueueScript := preload("res://src/gameplay/krakout_audio_event_queue.gd")
+const BallTrackPoolScript := preload("res://src/gameplay/krakout_ball_track_pool.gd")
+const TransientVfxPoolScript := preload("res://src/gameplay/krakout_transient_vfx_pool.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 
 const STATE_READY := "ready"
@@ -473,9 +476,15 @@ var _low_block_timer_started := false
 var _ball_track_spawn_elapsed: Array[float] = []
 var _snake_update_elapsed := 0.0
 var _audio_events: Array[Dictionary] = []
+var _audio_event_queue
+var _ball_track_pool
+var _transient_vfx_pool
 
 
 func _init() -> void:
+	_audio_event_queue = AudioEventQueueScript.new(_audio_events)
+	_ball_track_pool = BallTrackPoolScript.new(ball_tracks, _ball_track_spawn_elapsed, _ball_track_rng)
+	_transient_vfx_pool = TransientVfxPoolScript.new(impact_effects, score_popups)
 	_bonus_rng.set_seed(Time.get_ticks_msec())
 
 
@@ -487,7 +496,7 @@ func load_level(level: KrakoutLevelData) -> void:
 
 
 func start_run(level: KrakoutLevelData, selected_display_level_number: int = 1, starting_best_score: int = 0) -> void:
-	_audio_events.clear()
+	_audio_event_queue.clear()
 	score = 0
 	displayed_score = 0
 	best_score = max(0, starting_best_score)
@@ -512,7 +521,7 @@ func advance_to_level(level: KrakoutLevelData, next_display_level_number: int) -
 
 
 func set_board_state(state_value) -> void:
-	_audio_events.clear()
+	_audio_event_queue.clear()
 	board_state = state_value
 	_load_bonus_stock_from_level(board_state.source_level if board_state != null else null)
 	falling_bonuses.clear()
@@ -574,11 +583,7 @@ func _chain_cells_source_x(cleared_cells: Array) -> float:
 
 
 func visible_score_popups() -> Array[Dictionary]:
-	var visible: Array[Dictionary] = []
-	for popup: Dictionary in score_popups:
-		if bool(popup.get("active", false)):
-			visible.append(popup.duplicate())
-	return visible
+	return _transient_vfx_pool.visible_score_popups()
 
 
 func visible_lives() -> int:
@@ -739,8 +744,7 @@ func visible_balls() -> Array[Dictionary]:
 
 func set_ball_tracks_enabled(is_enabled: bool) -> void:
 	ball_tracks_enabled = is_enabled
-	if not ball_tracks_enabled:
-		_clear_ball_tracks()
+	_ball_track_pool.set_enabled(ball_tracks_enabled)
 
 
 func are_ball_tracks_enabled() -> bool:
@@ -748,15 +752,8 @@ func are_ball_tracks_enabled() -> bool:
 
 
 func visible_ball_tracks() -> Array[Dictionary]:
-	var visible: Array[Dictionary] = []
-	if not ball_tracks_enabled:
-		return visible
-
-	for slots in ball_tracks:
-		for track: Dictionary in slots:
-			if bool(track.get("active", false)):
-				visible.append(track.duplicate())
-	return visible
+	_ball_track_pool.set_enabled(ball_tracks_enabled)
+	return _ball_track_pool.visible_tracks()
 
 
 func visible_falling_bonuses() -> Array[Dictionary]:
@@ -802,11 +799,7 @@ func visible_snake_segments() -> Array[Dictionary]:
 
 
 func visible_impact_effects() -> Array[Dictionary]:
-	var visible: Array[Dictionary] = []
-	for effect: Dictionary in impact_effects:
-		if bool(effect.get("active", false)):
-			visible.append(effect.duplicate())
-	return visible
+	return _transient_vfx_pool.visible_impact_effects()
 
 
 func bonus_stack_entries() -> Array[Dictionary]:
@@ -1070,29 +1063,19 @@ func fire_shooting_paddle() -> Dictionary:
 
 
 static func sfx_pan100_for_source_x(source_x: float) -> float:
-	return clampf(source_x * SFX_PAN_SOURCE_SCALE + SFX_PAN_SOURCE_OFFSET, SFX_PAN_MIN, SFX_PAN_MAX)
+	return AudioEventQueueScript.sfx_pan100_for_source_x(source_x)
 
 
 static func sfx_pan_for_source_x(source_x: float) -> float:
-	return sfx_pan100_for_source_x(source_x) / SFX_PAN_MAX
+	return AudioEventQueueScript.sfx_pan_for_source_x(source_x)
 
 
 func pop_audio_events() -> Array[String]:
-	var events: Array[String] = []
-	for event_payload: Dictionary in _audio_events:
-		var event_name := String(event_payload.get("event", ""))
-		if not event_name.is_empty():
-			events.append(event_name)
-	_audio_events.clear()
-	return events
+	return _audio_event_queue.pop_event_names()
 
 
 func pop_audio_event_payloads() -> Array[Dictionary]:
-	var events: Array[Dictionary] = []
-	for event_payload: Dictionary in _audio_events:
-		events.append(event_payload.duplicate(true))
-	_audio_events.clear()
-	return events
+	return _audio_event_queue.pop_payloads()
 
 
 func activate_next_bonus() -> Dictionary:
@@ -1558,121 +1541,41 @@ func _update_ball_animation(delta: float) -> void:
 
 
 func _update_ball_tracks(delta: float) -> void:
-	if not ball_tracks_enabled:
-		return
-
-	_ensure_ball_track_slots()
-	for index in range(balls.size()):
-		var ball := balls[index]
-		if not bool(ball.get("active", false)):
-			_clear_ball_track_slots(index)
-			continue
-
-		_advance_ball_track_slots(index, delta)
-		if _ball_type(ball) == BALL_TYPE_NON_STRICKED:
-			_clear_ball_track_slots(index)
-			continue
-
-		_ball_track_spawn_elapsed[index] = float(_ball_track_spawn_elapsed[index]) + delta
-		while float(_ball_track_spawn_elapsed[index]) > BALL_TRACK_SPAWN_SECONDS:
-			_ball_track_spawn_elapsed[index] = float(_ball_track_spawn_elapsed[index]) - BALL_TRACK_SPAWN_SECONDS
-			_spawn_ball_track(index, ball)
+	_ball_track_pool.set_enabled(ball_tracks_enabled)
+	_ball_track_pool.update(delta, balls, ball_size)
 
 
 func _ensure_ball_track_slots() -> void:
-	while ball_tracks.size() > balls.size():
-		ball_tracks.pop_back()
-	while _ball_track_spawn_elapsed.size() > balls.size():
-		_ball_track_spawn_elapsed.pop_back()
-	while ball_tracks.size() < balls.size():
-		ball_tracks.append(_new_ball_track_slots())
-	while _ball_track_spawn_elapsed.size() < balls.size():
-		_ball_track_spawn_elapsed.append(0.0)
+	_ball_track_pool.ensure_slots(balls.size())
 
 
 func _new_ball_track_slots() -> Array[Dictionary]:
-	var slots: Array[Dictionary] = []
-	for _slot_index in range(BALL_TRACK_SLOT_COUNT):
-		slots.append({
-			"active": false,
-			"position": Vector2.ZERO,
-			"frame": 0,
-			"frame_elapsed": 0.0,
-			"type_id": BALL_TYPE_STANDARD,
-		})
-	return slots
+	return _ball_track_pool.new_track_slots()
 
 
 func _clear_ball_tracks() -> void:
-	ball_tracks.clear()
-	_ball_track_spawn_elapsed.clear()
+	_ball_track_pool.clear()
 
 
 func _clear_ball_track_slots(ball_index: int) -> void:
-	if ball_index < 0 or ball_index >= ball_tracks.size():
-		return
-	for track_index in range(ball_tracks[ball_index].size()):
-		var track: Dictionary = ball_tracks[ball_index][track_index]
-		track["active"] = false
-		track["frame_elapsed"] = 0.0
-		ball_tracks[ball_index][track_index] = track
-	if ball_index < _ball_track_spawn_elapsed.size():
-		_ball_track_spawn_elapsed[ball_index] = 0.0
+	_ball_track_pool.clear_slots(ball_index)
 
 
 func _advance_ball_track_slots(ball_index: int, delta: float) -> void:
-	if ball_index < 0 or ball_index >= ball_tracks.size():
-		return
-	for track_index in range(ball_tracks[ball_index].size()):
-		var track: Dictionary = ball_tracks[ball_index][track_index]
-		if not bool(track.get("active", false)):
-			continue
-
-		var frame_elapsed := float(track.get("frame_elapsed", 0.0)) + delta
-		var frame := int(track.get("frame", 0))
-		while frame_elapsed > BALL_TRACK_FRAME_SECONDS and bool(track.get("active", false)):
-			frame += 1
-			frame_elapsed -= BALL_TRACK_FRAME_SECONDS
-			if frame >= BALL_TRACK_FRAME_COUNT:
-				track["active"] = false
-				frame_elapsed = 0.0
-		track["frame"] = frame
-		track["frame_elapsed"] = frame_elapsed
-		ball_tracks[ball_index][track_index] = track
+	_ball_track_pool.advance_slots(ball_index, delta)
 
 
 func _spawn_ball_track(ball_index: int, ball: Dictionary) -> bool:
 	if ball_index < 0:
 		return false
-	_ensure_ball_track_slots()
+	_ball_track_pool.ensure_slots(balls.size())
 	if ball_index >= ball_tracks.size():
 		return false
-
-	for track_index in range(ball_tracks[ball_index].size()):
-		var track: Dictionary = ball_tracks[ball_index][track_index]
-		if bool(track.get("active", false)):
-			continue
-
-		track["active"] = true
-		track["position"] = _ball_track_position(ball)
-		track["frame"] = 0
-		track["frame_elapsed"] = 0.0
-		track["type_id"] = _ball_type(ball)
-		ball_tracks[ball_index][track_index] = track
-		return true
-	return false
+	return _ball_track_pool.spawn_track(ball_index, ball, ball_size)
 
 
 func _ball_track_position(ball: Dictionary) -> Vector2:
-	var position: Vector2 = ball.get("position", Vector2.ZERO)
-	var ball_pixel_size: int = max(1, int(float(ball.get("size", ball_size))))
-	var half_size: int = max(1, int(float(ball_pixel_size) / 2.0))
-	var random_span: int = max(1, 2 * half_size - 8)
-	var center_x: int = int(position.x) + half_size
-	var center_y: int = int(position.y) + half_size
-	var track_x: int = center_x - _ball_track_rng.next_mod(random_span) + half_size - 10
-	var track_y: int = center_y - _ball_track_rng.next_mod(random_span) + half_size - 10
-	return Vector2(float(track_x), float(track_y))
+	return _ball_track_pool.track_position(ball, ball_size)
 
 
 func _update_level_ready_sequence(delta: float) -> void:
@@ -3061,93 +2964,19 @@ func _reset_bee_spawn_delay() -> void:
 
 
 func _update_impact_effects(delta: float) -> void:
-	for index in range(impact_effects.size()):
-		var effect := impact_effects[index]
-		if not bool(effect.get("active", false)):
-			continue
-
-		var age := float(effect.get("age", 0.0)) + delta
-		var frame_elapsed := float(effect.get("frame_elapsed", 0.0)) + delta
-		var frame := int(effect.get("frame", 0))
-		while frame_elapsed >= IMPACT_EFFECT_FRAME_SECONDS:
-			frame = mini(frame + 1, IMPACT_EFFECT_FRAME_COUNT - 1)
-			frame_elapsed -= IMPACT_EFFECT_FRAME_SECONDS
-		effect["age"] = age
-		effect["frame"] = frame
-		effect["frame_elapsed"] = frame_elapsed
-		if age >= IMPACT_EFFECT_DURATION_SECONDS:
-			effect["active"] = false
-		impact_effects[index] = effect
-
-	_compact_impact_effects()
+	_transient_vfx_pool.update_impact_effects(delta)
 
 
 func _update_score_popups(delta: float) -> void:
-	for index in range(score_popups.size()):
-		var popup := score_popups[index]
-		if not bool(popup.get("active", false)):
-			continue
-
-		var position: Vector2 = popup.get("position", Vector2.ZERO)
-		var step_elapsed := float(popup.get("step_elapsed", 0.0)) + delta
-		while step_elapsed >= SCORE_POPUP_STEP_SECONDS:
-			step_elapsed -= SCORE_POPUP_STEP_SECONDS
-			position.y -= SCORE_POPUP_STEP_PIXELS
-
-		var frame_elapsed := float(popup.get("frame_elapsed", 0.0)) + delta
-		var frame := int(popup.get("frame", 0))
-		while frame_elapsed >= SCORE_POPUP_FRAME_SECONDS and bool(popup.get("active", false)):
-			frame_elapsed -= SCORE_POPUP_FRAME_SECONDS
-			frame += 1
-			if frame >= SCORE_POPUP_FRAME_COUNT:
-				popup["active"] = false
-				frame = SCORE_POPUP_FRAME_COUNT - 1
-				frame_elapsed = 0.0
-
-		if position.y < SCORE_POPUP_MIN_Y:
-			popup["active"] = false
-
-		popup["position"] = position
-		popup["step_elapsed"] = step_elapsed
-		popup["frame"] = frame
-		popup["frame_elapsed"] = frame_elapsed
-		score_popups[index] = popup
-
-	_compact_score_popups()
+	_transient_vfx_pool.update_score_popups(delta)
 
 
 func _spawn_impact_effect(position: Vector2, kind: int) -> bool:
-	_compact_impact_effects()
-	if impact_effects.size() >= MAX_IMPACT_EFFECTS:
-		return false
-	impact_effects.append({
-		"active": true,
-		"position": position,
-		"kind": kind,
-		"frame": 0,
-		"frame_elapsed": 0.0,
-		"age": 0.0,
-	})
-	return true
+	return _transient_vfx_pool.spawn_impact_effect(position, kind)
 
 
 func _spawn_score_popup(position: Vector2, value: int) -> bool:
-	if value <= 0:
-		return false
-
-	_compact_score_popups()
-	if score_popups.size() >= MAX_SCORE_POPUPS:
-		return false
-
-	score_popups.append({
-		"active": true,
-		"position": position,
-		"value": value,
-		"frame": 0,
-		"frame_elapsed": 0.0,
-		"step_elapsed": 0.0,
-	})
-	return true
+	return _transient_vfx_pool.spawn_score_popup(position, value)
 
 
 func _spawn_chain_explosion_impact_effects(cleared_cells: Array) -> int:
@@ -3202,23 +3031,15 @@ func _has_active_bee() -> bool:
 
 
 func _compact_impact_effects() -> void:
-	var compacted: Array[Dictionary] = []
-	for effect: Dictionary in impact_effects:
-		if bool(effect.get("active", false)):
-			compacted.append(effect)
-	impact_effects = compacted
+	_transient_vfx_pool.compact_impact_effects()
 
 
 func _compact_score_popups() -> void:
-	var compacted: Array[Dictionary] = []
-	for popup: Dictionary in score_popups:
-		if bool(popup.get("active", false)):
-			compacted.append(popup)
-	score_popups = compacted
+	_transient_vfx_pool.compact_score_popups()
 
 
 func _clear_score_popups() -> void:
-	score_popups.clear()
+	_transient_vfx_pool.clear_score_popups()
 
 
 func _compact_projectiles() -> void:
@@ -3614,32 +3435,16 @@ func _mark_level_complete(play_audio_event := true) -> void:
 
 
 func _queue_audio_event(event_name: String) -> void:
-	_queue_audio_event_payload({"event": event_name})
+	_audio_event_queue.queue_event(event_name)
 
 
 func _queue_audio_event_at_x(event_name: String, source_x: float) -> void:
-	_queue_audio_event_payload({
-		"event": event_name,
-		"source_x": source_x,
-		"pan100": sfx_pan100_for_source_x(source_x),
-	})
+	_audio_event_queue.queue_event_at_x(event_name, source_x)
 
 
 func _queue_audio_event_with_pan100(event_name: String, pan100: float) -> void:
-	_queue_audio_event_payload({
-		"event": event_name,
-		"pan100": pan100,
-	})
+	_audio_event_queue.queue_event_with_pan100(event_name, pan100)
 
 
 func _queue_audio_event_payload(event_payload: Dictionary) -> void:
-	var event_name := String(event_payload.get("event", ""))
-	if event_name.is_empty():
-		return
-	var normalized_payload := event_payload.duplicate(true)
-	normalized_payload["event"] = event_name
-	if normalized_payload.has("source_x") and not normalized_payload.has("pan100"):
-		normalized_payload["pan100"] = sfx_pan100_for_source_x(float(normalized_payload["source_x"]))
-	elif normalized_payload.has("pan100"):
-		normalized_payload["pan100"] = clampf(float(normalized_payload["pan100"]), SFX_PAN_MIN, SFX_PAN_MAX)
-	_audio_events.append(normalized_payload)
+	_audio_event_queue.queue_payload(event_payload)

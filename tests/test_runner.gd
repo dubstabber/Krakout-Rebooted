@@ -16,6 +16,9 @@ const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantic
 const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
 const GameSessionScript := preload("res://src/gameplay/krakout_game_session.gd")
 const RandomScript := preload("res://src/gameplay/krakout_random.gd")
+const AudioEventQueueScript := preload("res://src/gameplay/krakout_audio_event_queue.gd")
+const BallTrackPoolScript := preload("res://src/gameplay/krakout_ball_track_pool.gd")
+const TransientVfxPoolScript := preload("res://src/gameplay/krakout_transient_vfx_pool.gd")
 const RacketRendererScript := preload("res://src/render/racket_renderer.gd")
 const BallRendererScript := preload("res://src/render/ball_renderer.gd")
 const BonusRendererScript := preload("res://src/render/bonus_renderer.gd")
@@ -173,6 +176,7 @@ func _run() -> void:
 		_assert(default_bonus_counts[14] == 5, "Default level bonus stock mirrors preserved tail bytes")
 		_assert(level.tile_semantics == "unmapped", "Default level tile semantics stay unmapped")
 		_assert(level.populated_tile_count() > 0, "Default level contains non-empty raw tiles")
+		_validate_session_helper_modules()
 		_validate_board_state(level)
 		_validate_game_session(level)
 
@@ -491,6 +495,79 @@ func _validate_board_state(default_level: KrakoutLevelData) -> void:
 	_assert(one_strike_state.tile_at(13, 0) == 142, "one-strike board helper maps tile 143 to 142")
 	_assert(one_strike_state.tile_at(14, 0) == 144, "one-strike board helper maps tile 145 to 144")
 	_assert(one_strike_state.tile_at(15, 0) == 1, "one-strike board helper leaves ordinary tile 1 unchanged")
+
+
+func _validate_session_helper_modules() -> void:
+	var queued_audio_events: Array[Dictionary] = []
+	var audio_queue = AudioEventQueueScript.new(queued_audio_events)
+	audio_queue.queue_event_at_x(GameSessionScript.SFX_EVENT_RACKET_BOUNCE, 320.0)
+	var centered_payloads: Array[Dictionary] = audio_queue.pop_payloads()
+	_assert(centered_payloads.size() == 1, "audio event queue exposes queued payloads")
+	if centered_payloads.size() == 1:
+		_assert(String(centered_payloads[0].get("event", "")) == GameSessionScript.SFX_EVENT_RACKET_BOUNCE, "audio event queue preserves semantic event names")
+		_assert(is_equal_approx(float(centered_payloads[0].get("pan100", -1.0)), 0.0), "audio event queue applies original source-x pan formula")
+	_assert(queued_audio_events.is_empty(), "audio event queue drains shared storage after payload pop")
+	audio_queue.queue_payload({"event": GameSessionScript.SFX_EVENT_BRICK_CLEAR, "source_x": 640.0})
+	_assert(audio_queue.pop_event_names() == [GameSessionScript.SFX_EVENT_BRICK_CLEAR], "audio event queue preserves legacy event-name drain")
+	audio_queue.queue_event_with_pan100(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE, 250.0)
+	var clamped_payloads: Array[Dictionary] = audio_queue.pop_payloads()
+	if clamped_payloads.size() == 1:
+		_assert(is_equal_approx(float(clamped_payloads[0].get("pan100", 0.0)), GameSessionScript.SFX_PAN_MAX), "audio event queue clamps explicit pan values")
+	audio_queue.queue_event("")
+	_assert(audio_queue.pop_event_names().is_empty(), "audio event queue ignores empty semantic event names")
+
+	var shared_tracks: Array = []
+	var shared_track_elapsed: Array[float] = []
+	var track_pool = BallTrackPoolScript.new(shared_tracks, shared_track_elapsed, RandomScript.new(1))
+	var tracked_balls: Array[Dictionary] = [{
+		"active": true,
+		"position": Vector2(300, 200),
+		"size": GameSessionScript.BALL_SIZE,
+		"type_id": GameSessionScript.BALL_TYPE_STANDARD,
+	}]
+	track_pool.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS, tracked_balls, GameSessionScript.BALL_SIZE)
+	_assert(track_pool.visible_tracks().is_empty(), "ball-track helper preserves strict original spawn gate")
+	track_pool.update(0.001, tracked_balls, GameSessionScript.BALL_SIZE)
+	var helper_tracks: Array[Dictionary] = track_pool.visible_tracks()
+	_assert(helper_tracks.size() == 1, "ball-track helper spawns after the strict gate")
+	_assert(shared_tracks.size() == 1 and shared_track_elapsed.size() == 1, "ball-track helper owns shared per-ball pool state")
+	track_pool.advance_slots(0, GameSessionScript.BALL_TRACK_FRAME_SECONDS + 0.001)
+	helper_tracks = track_pool.visible_tracks()
+	if helper_tracks.size() == 1:
+		_assert(int(helper_tracks[0].get("frame", -1)) == 1, "ball-track helper advances source frames")
+	track_pool.set_enabled(false)
+	_assert(shared_tracks.is_empty() and track_pool.visible_tracks().is_empty(), "ball-track helper clears shared slots when disabled")
+	track_pool.set_enabled(true)
+	var non_stricked_balls: Array[Dictionary] = [{
+		"active": true,
+		"position": Vector2(300, 200),
+		"size": GameSessionScript.BALL_SIZE,
+		"type_id": GameSessionScript.BALL_TYPE_NON_STRICKED,
+	}]
+	track_pool.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS + 0.001, non_stricked_balls, GameSessionScript.BALL_SIZE)
+	_assert(track_pool.visible_tracks().is_empty(), "ball-track helper suppresses non-stricked ball tracks")
+
+	var shared_impacts: Array = []
+	var shared_popups: Array = []
+	var transient_pool = TransientVfxPoolScript.new(shared_impacts, shared_popups)
+	_assert(not transient_pool.spawn_score_popup(Vector2(10, 10), 0), "transient VFX helper rejects zero-value score popups")
+	_assert(transient_pool.spawn_score_popup(Vector2(100, 100), 25), "transient VFX helper accepts score popups")
+	transient_pool.update_score_popups(GameSessionScript.SCORE_POPUP_STEP_SECONDS + 0.001)
+	var helper_popups: Array[Dictionary] = transient_pool.visible_score_popups()
+	if helper_popups.size() == 1:
+		_assert(helper_popups[0]["position"] == Vector2(100, 97), "transient VFX helper applies original popup drift")
+	for score_popup_index in range(GameSessionScript.MAX_SCORE_POPUPS + 5):
+		transient_pool.spawn_score_popup(Vector2(score_popup_index, 200), score_popup_index + 1)
+	_assert(transient_pool.visible_score_popups().size() == GameSessionScript.MAX_SCORE_POPUPS, "transient VFX helper enforces score-popup cap")
+	transient_pool.clear_score_popups()
+	_assert(shared_popups.is_empty(), "transient VFX helper clears shared popup storage")
+	_assert(transient_pool.spawn_impact_effect(Vector2(10, 20), GameSessionScript.IMPACT_EFFECT_KIND_EXPLOSION), "transient VFX helper accepts impact effects")
+	transient_pool.update_impact_effects(GameSessionScript.IMPACT_EFFECT_FRAME_SECONDS + 0.001)
+	var helper_impacts: Array[Dictionary] = transient_pool.visible_impact_effects()
+	if helper_impacts.size() == 1:
+		_assert(int(helper_impacts[0].get("frame", -1)) == 1, "transient VFX helper advances impact frames")
+	transient_pool.update_impact_effects(GameSessionScript.IMPACT_EFFECT_DURATION_SECONDS)
+	_assert(transient_pool.visible_impact_effects().is_empty(), "transient VFX helper expires impact effects")
 
 
 func _validate_game_session(default_level: KrakoutLevelData) -> void:
