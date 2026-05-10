@@ -22,6 +22,11 @@ const EXTRA_LIFE_SCORE_STEP := 20000
 const RACKET_X := 570.0
 const RACKET_WIDTH := 16.0
 const RACKET_HEIGHT := 74.0
+# sub_4012D0 writes racket x = 575 on primary-paddle contact; sub_40DAF0
+# walks it back to 570 one pixel at a strict 15 ms gate.
+const RACKET_HIT_RECOIL_PIXELS := 5.0
+const RACKET_HIT_RECOIL_STEP_SECONDS := 0.015
+const RACKET_HIT_RECOIL_STEP_PIXELS := 1.0
 const RACKET_SEGMENT_PIXEL_STEP := 5.0
 const RACKET_SEGMENT_MARGIN := 24.0
 const RACKET_DEFAULT_SEGMENTS := 10
@@ -440,6 +445,8 @@ var racket_visual_mode := RACKET_VISUAL_MODE_NORMAL
 var racket_visual_frame := 0
 var _racket_visual_target_mode := RACKET_VISUAL_MODE_NORMAL
 var _racket_visual_elapsed := 0.0
+var _racket_hit_recoil_offset_x := 0.0
+var _racket_hit_recoil_elapsed := 0.0
 var _single_shot_projectile_armed := false
 var _double_paddle_active := false
 var _double_paddle_x := RACKET_X + DOUBLE_PADDLE_OFFSET_X
@@ -633,6 +640,7 @@ func update(delta: float) -> void:
 	_update_impact_effects(delta)
 	_update_score_popups(delta)
 	_update_racket_visual(delta)
+	_update_racket_hit_recoil(delta)
 	_update_bonus_stack(delta)
 
 	if board_state != null:
@@ -1214,8 +1222,12 @@ func current_racket_height() -> float:
 	return RACKET_SEGMENT_PIXEL_STEP * float(racket_segment_count) + RACKET_SEGMENT_MARGIN
 
 
+func current_racket_x() -> float:
+	return RACKET_X + _racket_hit_recoil_offset_x
+
+
 func racket_rect() -> Rect2:
-	return Rect2(Vector2(RACKET_X, racket_y), Vector2(RACKET_WIDTH, current_racket_height()))
+	return Rect2(Vector2(current_racket_x(), racket_y), Vector2(RACKET_WIDTH, current_racket_height()))
 
 
 func racket_rects() -> Array[Rect2]:
@@ -1421,6 +1433,7 @@ func _restore_ball_type_after_non_stricked(ball: Dictionary) -> void:
 
 
 func _reset_racket_to_ready_center() -> void:
+	_clear_racket_hit_recoil()
 	racket_y = clampf(
 		RACKET_READY_CENTER_Y - current_racket_height() * 0.5,
 		RACKET_MIN_Y,
@@ -1670,13 +1683,17 @@ func _collide_with_racket(ball: Dictionary) -> bool:
 	if velocity.x <= 0.0:
 		return false
 
-	for racket_hit_rect: Rect2 in racket_rects():
+	var current_racket_rects := racket_rects()
+	for racket_index in range(current_racket_rects.size()):
+		var racket_hit_rect: Rect2 = current_racket_rects[racket_index]
 		if not rect.intersects(racket_hit_rect):
 			continue
 		if is_magnet_paddle_active():
 			_attach_ball_to_magnet(ball, racket_hit_rect)
 		else:
 			_bounce_ball_from_racket(ball, racket_hit_rect)
+		if racket_index == 0:
+			_start_racket_hit_recoil()
 		_queue_audio_event_at_x(SFX_EVENT_RACKET_BOUNCE, ball_rect(ball).position.x)
 		return true
 
@@ -2025,6 +2042,7 @@ func _clear_timed_bonus_state() -> void:
 	back_wall_time_remaining = 0.0
 	projectiles.clear()
 	_clear_paddle_mode_state(false)
+	_clear_racket_hit_recoil()
 	_drunk_paddle_time_remaining = 0.0
 	_projectile_fire_cooldown = 0.0
 
@@ -2083,6 +2101,29 @@ func _update_racket_visual(delta: float) -> void:
 			racket_visual_mode = _racket_visual_target_mode
 			if racket_visual_frame < RACKET_VISUAL_MAX_FRAME:
 				racket_visual_frame += 1
+
+
+func _start_racket_hit_recoil() -> void:
+	_racket_hit_recoil_offset_x = RACKET_HIT_RECOIL_PIXELS
+	_racket_hit_recoil_elapsed = 0.0
+
+
+func _clear_racket_hit_recoil() -> void:
+	_racket_hit_recoil_offset_x = 0.0
+	_racket_hit_recoil_elapsed = 0.0
+
+
+func _update_racket_hit_recoil(delta: float) -> void:
+	if _racket_hit_recoil_offset_x <= 0.0:
+		_clear_racket_hit_recoil()
+		return
+
+	_racket_hit_recoil_elapsed += delta
+	while _racket_hit_recoil_elapsed > RACKET_HIT_RECOIL_STEP_SECONDS and _racket_hit_recoil_offset_x > 0.0:
+		_racket_hit_recoil_elapsed -= RACKET_HIT_RECOIL_STEP_SECONDS
+		_racket_hit_recoil_offset_x = maxf(0.0, _racket_hit_recoil_offset_x - RACKET_HIT_RECOIL_STEP_PIXELS)
+	if _racket_hit_recoil_offset_x <= 0.0:
+		_clear_racket_hit_recoil()
 
 
 func _mouse_delta_x(mouse_x) -> float:
