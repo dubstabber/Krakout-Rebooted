@@ -71,7 +71,7 @@
     0
   ],
   "rows_count": 13,
-  "source_episode": "/run/media/ydro/WDC/gamedev-workspace/krakout-rebooted/extract-krakout-assets/krakout/Episodes/Kid.lev",
+  "source_episode": "Episodes/Kid.lev",
   "source_level_index": 29,
   "tail_unique_values": [
     0,

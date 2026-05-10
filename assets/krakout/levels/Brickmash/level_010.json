@@ -71,7 +71,7 @@
     0
   ],
   "rows_count": 13,
-  "source_episode": "/run/media/ydro/WDC/gamedev-workspace/krakout-rebooted/extract-krakout-assets/krakout/Episodes/Brickmash.lev",
+  "source_episode": "Episodes/Brickmash.lev",
   "source_level_index": 9,
   "tail_unique_values": [
     0,

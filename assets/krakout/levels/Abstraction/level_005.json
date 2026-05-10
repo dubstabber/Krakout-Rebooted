@@ -71,7 +71,7 @@
     170
   ],
   "rows_count": 13,
-  "source_episode": "/run/media/ydro/WDC/gamedev-workspace/krakout-rebooted/extract-krakout-assets/krakout/Episodes/Abstraction.lev",
+  "source_episode": "Episodes/Abstraction.lev",
   "source_level_index": 4,
   "tail_unique_values": [
     0,

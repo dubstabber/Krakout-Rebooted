@@ -2606,10 +2606,10 @@ func _validate_project_input_map() -> void:
 
 
 func _validate_legacy_high_score_file() -> void:
-	var original_high_score_path := _project_file_path("extract-krakout-assets/krakout/Krakout.high")
-	_assert(FileAccess.file_exists(original_high_score_path), "original Krakout.high fixture exists")
-	var original_entries: Array = HighScoreFileScript.load_entries(original_high_score_path)
-	_assert(original_entries.is_empty(), "original Krakout.high fixture decodes to the empty default table")
+	var empty_default_bytes := HighScoreFileScript.encode_entries([])
+	_assert(empty_default_bytes.size() == HighScoreFileScript.FILE_BYTES, "empty legacy high-score fixture uses original file size")
+	var original_entries: Array = HighScoreFileScript.decode_entries(empty_default_bytes)
+	_assert(original_entries.is_empty(), "empty legacy Krakout.high fixture decodes to the empty default table")
 
 	var encoded_entries := HighScoreFileScript.encode_entries([
 		{"name": "Middle", "score": 900, "level": 4, "episode": "Retro"},
@@ -5341,13 +5341,6 @@ func _test_profile_path(label: String) -> String:
 
 func _test_legacy_high_score_path(label: String) -> String:
 	return "user://krakout_%s_legacy_%d.high" % [label, Time.get_ticks_usec()]
-
-
-func _project_file_path(relative_path: String) -> String:
-	var project_root := ProjectSettings.globalize_path("res://")
-	if not project_root.ends_with("/"):
-		project_root += "/"
-	return project_root + relative_path
 
 
 func _shutdown_test_audio() -> void:

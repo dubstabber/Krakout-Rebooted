@@ -3,7 +3,7 @@
 Godot 4.6 reimplementation foundation for Krakout, using the extracted original
 assets as the runtime source of truth. The tracked `assets/krakout` tree contains
 the Godot-ready textures, audio, level JSON, and a normalized manifest with
-`res://` runtime paths plus original extraction provenance.
+`res://` runtime paths plus original source-entry provenance.
 
 ## Current Slice
 

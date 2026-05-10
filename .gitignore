@@ -50,8 +50,9 @@ venv/
 /user/
 *.log
 
-# Raw original install and generated extraction dump.
-extract-krakout-assets/
+# Local source-material workspaces.
+/extract-*/
+
 AGENTS.md
 CLAUDE.md
 Godot_v4.6.2-stable_linux.x86_64

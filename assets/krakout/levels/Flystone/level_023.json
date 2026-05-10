@@ -71,7 +71,7 @@
     0
   ],
   "rows_count": 13,
-  "source_episode": "/run/media/ydro/WDC/gamedev-workspace/krakout-rebooted/extract-krakout-assets/krakout/Episodes/Flystone.lev",
+  "source_episode": "Episodes/Flystone.lev",
   "source_level_index": 22,
   "tail_unique_values": [
     0,
