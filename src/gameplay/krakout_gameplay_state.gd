@@ -78,6 +78,7 @@ var ball_system
 var ball_track_pool
 var bonus_system
 var enemy_hazard_system
+var level_ready_system
 var projectile_system
 var gameplay_context
 var racket_system

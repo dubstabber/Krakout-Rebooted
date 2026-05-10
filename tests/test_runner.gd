@@ -28,6 +28,7 @@ const GameplayContextScript := preload("res://src/gameplay/krakout_gameplay_cont
 const BallSystemScript := preload("res://src/gameplay/systems/krakout_ball_system.gd")
 const BonusSystemScript := preload("res://src/gameplay/systems/krakout_bonus_system.gd")
 const EnemyHazardSystemScript := preload("res://src/gameplay/systems/krakout_enemy_hazard_system.gd")
+const LevelReadySystemScript := preload("res://src/gameplay/systems/krakout_level_ready_system.gd")
 const ProjectileSystemScript := preload("res://src/gameplay/systems/krakout_projectile_system.gd")
 const RacketSystemScript := preload("res://src/gameplay/systems/krakout_racket_system.gd")
 const TransientVfxPoolScript := preload("res://src/gameplay/krakout_transient_vfx_pool.gd")
@@ -519,6 +520,8 @@ func _validate_session_helper_modules() -> void:
 	_assert(GameplayEventsScript.SFX_EVENT_RACKET_BOUNCE == GameSessionScript.SFX_EVENT_RACKET_BOUNCE, "gameplay events own semantic SFX names")
 	_assert(is_equal_approx(GameplayEventsScript.pan100_for_source_x(320.0), 0.0), "gameplay events own source-x pan formula")
 	_assert(EnemyRulesScript.monster_spawn_pool() == GameSessionScript.monster_spawn_pool(), "enemy rules own registered monster spawn traits")
+	_assert(LevelReadySystemScript.ROLLER_STEP_SECONDS == GameSessionScript.LEVEL_READY_ROLLER_STEP_SECONDS, "level-ready system owns roller cadence")
+	_assert(LevelReadySystemScript.ANIMATION_SECONDS == GameSessionScript.LEVEL_READY_ANIMATION_SECONDS, "level-ready system owns roller animation duration")
 
 	var racket_system = RacketSystemScript.new()
 	_assert(racket_system.current_height() == GameSessionScript.RACKET_HEIGHT, "racket system exposes default racket height")
@@ -532,6 +535,22 @@ func _validate_session_helper_modules() -> void:
 	_assert(gameplay_context.racket_segment_count() == GameSessionScript.RACKET_DEFAULT_SEGMENTS, "gameplay context exposes typed session ports")
 
 	var gameplay_state = GameplayStateScript.new()
+	var level_ready_system = LevelReadySystemScript.new(gameplay_state)
+	level_ready_system.start()
+	_assert(level_ready_system.is_sequence_active(), "level-ready system starts the original countdown")
+	_assert(level_ready_system.is_prompt_visible(), "level-ready system starts the roller prompt")
+	_assert(not level_ready_system.are_gameplay_actors_visible(), "level-ready system hides gameplay actors during the prompt")
+	_assert(gameplay_state.level_ready_time_remaining == GameSessionScript.LEVEL_READY_SEQUENCE_SECONDS, "level-ready system stores countdown in typed gameplay state")
+	var helper_roller_layout: Dictionary = level_ready_system.roller_layout()
+	_assert(helper_roller_layout["destination"] == Rect2(GameSessionScript.LEVEL_READY_ROLLER_POSITION, GameSessionScript.LEVEL_READY_ROLLER_SOURCE_SIZE), "level-ready system exposes the original roller layout")
+	level_ready_system.update(GameSessionScript.LEVEL_READY_ROLLER_STEP_SECONDS)
+	_assert(gameplay_state.level_ready_roller_offset == GameSessionScript.LEVEL_READY_ROLLER_STEP_PIXELS, "level-ready system advances roller offset by the original step")
+	_assert(int(gameplay_state.level_ready_roller_frame) == 1, "level-ready system advances roller source frame")
+	level_ready_system.skip_prompt()
+	_assert(not level_ready_system.is_prompt_visible(), "level-ready system can skip only the visible prompt")
+	level_ready_system.clear()
+	_assert(not level_ready_system.is_sequence_active(), "level-ready system clears countdown state")
+
 	var state_ball_system = BallSystemScript.new(gameplay_state)
 	_assert(
 		state_ball_system.add_ball(Vector2(15, 25), Vector2.ZERO, true, GameSessionScript.BALL_SIZE, GameSessionScript.BALL_TYPE_STANDARD, 2.0, 0.0),

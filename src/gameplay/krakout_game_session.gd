@@ -16,6 +16,7 @@ const GameplayContextScript := preload("res://src/gameplay/krakout_gameplay_cont
 const BallSystemScript := preload("res://src/gameplay/systems/krakout_ball_system.gd")
 const BonusSystemScript := preload("res://src/gameplay/systems/krakout_bonus_system.gd")
 const EnemyHazardSystemScript := preload("res://src/gameplay/systems/krakout_enemy_hazard_system.gd")
+const LevelReadySystemScript := preload("res://src/gameplay/systems/krakout_level_ready_system.gd")
 const ProjectileSystemScript := preload("res://src/gameplay/systems/krakout_projectile_system.gd")
 const RacketSystemScript := preload("res://src/gameplay/systems/krakout_racket_system.gd")
 const TransientVfxPoolScript := preload("res://src/gameplay/krakout_transient_vfx_pool.gd")
@@ -119,8 +120,8 @@ const BONUS_STACK_FRAME_SECONDS := BonusCatalogScript.BONUS_STACK_FRAME_SECONDS
 const BONUS_POINTER_FRAME_SECONDS := BonusCatalogScript.BONUS_POINTER_FRAME_SECONDS
 const BACK_WALL_DURATION_SECONDS := BonusCatalogScript.BACK_WALL_DURATION_SECONDS
 const BACK_WALL_STATUS_ICON_INDEX := BonusCatalogScript.BACK_WALL_STATUS_ICON_INDEX
-const LEVEL_READY_SEQUENCE_SECONDS := BonusCatalogScript.LEVEL_READY_SEQUENCE_SECONDS
-const LEVEL_READY_STATUS_ICON_INDEX := BonusCatalogScript.LEVEL_READY_STATUS_ICON_INDEX
+const LEVEL_READY_SEQUENCE_SECONDS := LevelReadySystemScript.SEQUENCE_SECONDS
+const LEVEL_READY_STATUS_ICON_INDEX := LevelReadySystemScript.STATUS_ICON_INDEX
 const RACKET_STUN_STATUS_ICON_INDEX := BonusCatalogScript.RACKET_STUN_STATUS_ICON_INDEX
 const LOW_BLOCK_TIMER_TRIGGER_REQUIRED_BRICKS := BonusCatalogScript.LOW_BLOCK_TIMER_TRIGGER_REQUIRED_BRICKS
 const LOW_BLOCK_TIMER_SECONDS := BonusCatalogScript.LOW_BLOCK_TIMER_SECONDS
@@ -131,14 +132,14 @@ const LOW_BLOCK_TIMER_CHAIN_TILE_ID := BonusCatalogScript.LOW_BLOCK_TIMER_CHAIN_
 const LOW_BLOCK_TIMER_CHAIN_DELAY_SECONDS := BonusCatalogScript.LOW_BLOCK_TIMER_CHAIN_DELAY_SECONDS
 # sub_40F940 draws Roller.tga as a 20x390 strip at x = 47 + reveal_offset
 # and advances ten source frames while revealing the 20 board columns.
-const LEVEL_READY_ROLLER_FRAME_COUNT := 10
-const LEVEL_READY_ROLLER_STEP_SECONDS := 1.0 / ORIGINAL_UPDATE_HZ
-const LEVEL_READY_ROLLER_STEP_EPSILON := 0.000001
-const LEVEL_READY_ROLLER_STEP_PIXELS := 4.0
-const LEVEL_READY_ROLLER_SOURCE_SIZE := Vector2(20, 390)
-const LEVEL_READY_ROLLER_POSITION := Vector2(47, 63)
-const LEVEL_READY_ROLLER_TRAVEL_PIXELS := 380.0
-const LEVEL_READY_ANIMATION_SECONDS := LEVEL_READY_ROLLER_TRAVEL_PIXELS / LEVEL_READY_ROLLER_STEP_PIXELS * LEVEL_READY_ROLLER_STEP_SECONDS
+const LEVEL_READY_ROLLER_FRAME_COUNT := LevelReadySystemScript.ROLLER_FRAME_COUNT
+const LEVEL_READY_ROLLER_STEP_SECONDS := LevelReadySystemScript.ROLLER_STEP_SECONDS
+const LEVEL_READY_ROLLER_STEP_EPSILON := LevelReadySystemScript.ROLLER_STEP_EPSILON
+const LEVEL_READY_ROLLER_STEP_PIXELS := LevelReadySystemScript.ROLLER_STEP_PIXELS
+const LEVEL_READY_ROLLER_SOURCE_SIZE := LevelReadySystemScript.ROLLER_SOURCE_SIZE
+const LEVEL_READY_ROLLER_POSITION := LevelReadySystemScript.ROLLER_POSITION
+const LEVEL_READY_ROLLER_TRAVEL_PIXELS := LevelReadySystemScript.ROLLER_TRAVEL_PIXELS
+const LEVEL_READY_ANIMATION_SECONDS := LevelReadySystemScript.ANIMATION_SECONDS
 const MAX_PROJECTILES := ProjectileSystemScript.MAX_PROJECTILES
 const PROJECTILE_FIRE_COOLDOWN_SECONDS := ProjectileSystemScript.PROJECTILE_FIRE_COOLDOWN_SECONDS
 const PROJECTILE_STEP_X := ProjectileSystemScript.PROJECTILE_STEP_X
@@ -550,6 +551,7 @@ func _init() -> void:
 	gameplay_state.ball_system = BallSystemScript.new(gameplay_state)
 	gameplay_state.ball_track_pool = BallTrackPoolScript.new(gameplay_state)
 	gameplay_state.bonus_system = BonusSystemScript.new(gameplay_state)
+	gameplay_state.level_ready_system = LevelReadySystemScript.new(gameplay_state)
 	gameplay_state.gameplay_context = GameplayContextScript.new(self)
 	gameplay_state.racket_system = RacketSystemScript.new(gameplay_state)
 	gameplay_state.enemy_hazard_system = EnemyHazardSystemScript.new(gameplay_state)
@@ -962,7 +964,7 @@ func active_bonus_indicators() -> Array[Dictionary]:
 	if is_level_ready_sequence_active():
 		indicators.append({
 			"icon_index": LEVEL_READY_STATUS_ICON_INDEX,
-			"value": ceili(level_ready_time_remaining),
+			"value": ceili(gameplay_state.level_ready_system.time_remaining()),
 		})
 	if is_racket_stunned():
 		indicators.append({
@@ -984,51 +986,33 @@ func active_bonus_indicators() -> Array[Dictionary]:
 
 func start_level_ready_sequence(queue_audio := true) -> void:
 	_reset_racket_to_ready_center()
-	level_ready_time_remaining = LEVEL_READY_SEQUENCE_SECONDS
-	gameplay_state.level_ready_animation_time_remaining = LEVEL_READY_ANIMATION_SECONDS
-	gameplay_state.level_ready_roller_offset = 0.0
-	gameplay_state.level_ready_roller_frame = 0
-	gameplay_state.level_ready_roller_step_elapsed = 0.0
-	gameplay_state.level_ready_auto_launch_pending = false
+	gameplay_state.level_ready_system.start()
 	if queue_audio:
 		_queue_audio_event(SFX_EVENT_LEVEL_READY)
 
 
 func is_level_ready_sequence_active() -> bool:
-	return level_ready_time_remaining > 0.0
+	return gameplay_state.level_ready_system.is_sequence_active()
 
 
 func is_level_ready_prompt_visible() -> bool:
-	return gameplay_state.level_ready_animation_time_remaining > 0.0
+	return gameplay_state.level_ready_system.is_prompt_visible()
 
 
 func is_racket_visible() -> bool:
-	return not is_level_ready_prompt_visible()
+	return gameplay_state.level_ready_system.are_gameplay_actors_visible()
 
 
 func are_balls_visible() -> bool:
-	return not is_level_ready_prompt_visible()
+	return gameplay_state.level_ready_system.are_gameplay_actors_visible()
 
 
 func level_ready_animation_progress() -> float:
-	if LEVEL_READY_ROLLER_TRAVEL_PIXELS <= 0.0:
-		return 1.0
-	return clampf(gameplay_state.level_ready_roller_offset / LEVEL_READY_ROLLER_TRAVEL_PIXELS, 0.0, 1.0)
+	return gameplay_state.level_ready_system.animation_progress()
 
 
 func level_ready_roller_layout() -> Dictionary:
-	if not is_level_ready_prompt_visible():
-		return {"visible": false}
-
-	var roller_position := LEVEL_READY_ROLLER_POSITION + Vector2(gameplay_state.level_ready_roller_offset, 0.0)
-	return {
-		"visible": true,
-		"position": roller_position,
-		"destination": Rect2(roller_position, LEVEL_READY_ROLLER_SOURCE_SIZE),
-		"source": Rect2(Vector2(gameplay_state.level_ready_roller_frame * LEVEL_READY_ROLLER_SOURCE_SIZE.x, 0), LEVEL_READY_ROLLER_SOURCE_SIZE),
-		"frame": gameplay_state.level_ready_roller_frame,
-		"progress": level_ready_animation_progress(),
-	}
+	return gameplay_state.level_ready_system.roller_layout()
 
 
 func is_back_wall_active() -> bool:
@@ -1574,43 +1558,20 @@ func _ball_track_position(ball: Dictionary) -> Vector2:
 
 
 func _update_level_ready_sequence(delta: float) -> void:
-	if level_ready_time_remaining > 0.0:
-		level_ready_time_remaining = maxf(0.0, level_ready_time_remaining - delta)
-		if level_ready_time_remaining <= 0.0:
-			gameplay_state.level_ready_auto_launch_pending = true
-	if gameplay_state.level_ready_animation_time_remaining > 0.0:
-		gameplay_state.level_ready_roller_step_elapsed += delta
-		while gameplay_state.level_ready_roller_step_elapsed + LEVEL_READY_ROLLER_STEP_EPSILON >= LEVEL_READY_ROLLER_STEP_SECONDS and gameplay_state.level_ready_animation_time_remaining > 0.0:
-			gameplay_state.level_ready_roller_step_elapsed -= LEVEL_READY_ROLLER_STEP_SECONDS
-			if gameplay_state.level_ready_roller_step_elapsed < 0.0:
-				gameplay_state.level_ready_roller_step_elapsed = 0.0
-			gameplay_state.level_ready_roller_offset = minf(LEVEL_READY_ROLLER_TRAVEL_PIXELS, gameplay_state.level_ready_roller_offset + LEVEL_READY_ROLLER_STEP_PIXELS)
-			gameplay_state.level_ready_roller_frame = (gameplay_state.level_ready_roller_frame + 1) % LEVEL_READY_ROLLER_FRAME_COUNT
-			gameplay_state.level_ready_animation_time_remaining = maxf(0.0, gameplay_state.level_ready_animation_time_remaining - LEVEL_READY_ROLLER_STEP_SECONDS)
-		if gameplay_state.level_ready_roller_offset >= LEVEL_READY_ROLLER_TRAVEL_PIXELS:
-			gameplay_state.level_ready_animation_time_remaining = 0.0
-			gameplay_state.level_ready_roller_step_elapsed = 0.0
+	gameplay_state.level_ready_system.update(delta)
 
 
 func _clear_level_ready_sequence() -> void:
-	level_ready_time_remaining = 0.0
-	gameplay_state.level_ready_animation_time_remaining = 0.0
-	gameplay_state.level_ready_roller_offset = 0.0
-	gameplay_state.level_ready_roller_frame = 0
-	gameplay_state.level_ready_roller_step_elapsed = 0.0
-	gameplay_state.level_ready_auto_launch_pending = false
+	gameplay_state.level_ready_system.clear()
 
 
 func _skip_level_ready_prompt() -> void:
-	gameplay_state.level_ready_animation_time_remaining = 0.0
-	gameplay_state.level_ready_roller_offset = LEVEL_READY_ROLLER_TRAVEL_PIXELS
-	gameplay_state.level_ready_roller_step_elapsed = 0.0
+	gameplay_state.level_ready_system.skip_prompt()
 
 
 func _auto_launch_ready_ball_if_needed() -> bool:
-	if not gameplay_state.level_ready_auto_launch_pending:
+	if not gameplay_state.level_ready_system.consume_auto_launch_pending():
 		return false
-	gameplay_state.level_ready_auto_launch_pending = false
 	return launch_ready_ball()
 
 
