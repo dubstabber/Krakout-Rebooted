@@ -18,6 +18,7 @@ const GameSessionScript := preload("res://src/gameplay/krakout_game_session.gd")
 const RandomScript := preload("res://src/gameplay/krakout_random.gd")
 const AudioEventQueueScript := preload("res://src/gameplay/krakout_audio_event_queue.gd")
 const BallTrackPoolScript := preload("res://src/gameplay/krakout_ball_track_pool.gd")
+const ProjectileSystemScript := preload("res://src/gameplay/systems/krakout_projectile_system.gd")
 const TransientVfxPoolScript := preload("res://src/gameplay/krakout_transient_vfx_pool.gd")
 const RacketRendererScript := preload("res://src/render/racket_renderer.gd")
 const BallRendererScript := preload("res://src/render/ball_renderer.gd")
@@ -569,6 +570,37 @@ func _validate_session_helper_modules() -> void:
 	transient_pool.update_impact_effects(GameSessionScript.IMPACT_EFFECT_DURATION_SECONDS)
 	_assert(transient_pool.visible_impact_effects().is_empty(), "transient VFX helper expires impact effects")
 
+	var shared_projectiles: Array[Dictionary] = []
+	var projectile_system = ProjectileSystemScript.new(shared_projectiles)
+	_assert(GameSessionScript.PROJECTILE_SIZE == ProjectileSystemScript.PROJECTILE_SIZE, "projectile helper keeps facade constants aligned")
+	_assert(
+		projectile_system.spawn_projectile(ProjectileSystemScript.PROJECTILE_TYPE_CONTINUOUS, Vector2(100, 200)),
+		"projectile helper spawns a projectile into shared storage"
+	)
+	_assert(shared_projectiles.size() == 1, "projectile helper owns shared projectile storage")
+	if shared_projectiles.size() == 1:
+		_assert(
+			projectile_system.projectile_rect(shared_projectiles[0]) == Rect2(Vector2(100, 200), ProjectileSystemScript.PROJECTILE_SIZE),
+			"projectile helper exposes original projectile hit rectangle"
+		)
+	projectile_system.start_fire_cooldown()
+	_assert(
+		is_equal_approx(projectile_system.fire_cooldown_remaining(), ProjectileSystemScript.PROJECTILE_FIRE_COOLDOWN_SECONDS),
+		"projectile helper starts the original fire cooldown"
+	)
+	projectile_system.update_fire_cooldown(ProjectileSystemScript.PROJECTILE_FIRE_COOLDOWN_SECONDS)
+	_assert(is_zero_approx(projectile_system.fire_cooldown_remaining()), "projectile helper drains the fire cooldown")
+	projectile_system.update(ProjectileSystemScript.PROJECTILE_HEAD_FRAME_SECONDS + 0.001)
+	var helper_projectiles: Array[Dictionary] = projectile_system.visible_projectiles()
+	if helper_projectiles.size() == 1:
+		_assert(helper_projectiles[0]["position"] == Vector2(100 - ProjectileSystemScript.PROJECTILE_STEP_X, 200), "projectile helper applies original per-update x step")
+		_assert(int(helper_projectiles[0]["head_frame"]) == 1, "projectile helper advances head animation frames")
+	projectile_system.replace_projectiles_for_test([
+		_projectile(ProjectileSystemScript.PROJECTILE_TYPE_CONTINUOUS, Vector2(ProjectileSystemScript.PROJECTILE_EXPIRE_X + 1.0, 200)),
+	])
+	projectile_system.update(0.0)
+	_assert(projectile_system.visible_projectiles().is_empty(), "projectile helper expires projectiles at the original left bound")
+
 
 func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(GameSessionScript.BONUS_TYPE_NAMES.size() == GameSessionScript.BONUS_TYPE_COUNT, "bonus catalog names every original type")
@@ -801,15 +833,15 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(is_equal_approx(GameSessionScript.LOW_BLOCK_TIMER_CHAIN_DELAY_SECONDS, 3.0), "low-block timer uses the original 100 chain ticks")
 	var four_block_session = _game_session_from_level(_make_level_from_rows([[1, 1, 1, 1]]))
 	four_block_session.force_ball(Vector2(300, 200), Vector2.ZERO)
-	four_block_session._monster_spawn_cooldown = 1000.0
-	four_block_session._bee_spawn_delay_remaining = 1000.0
+	four_block_session.set_monster_spawn_cooldown_for_test(1000.0)
+	four_block_session.set_bee_spawn_delay_for_test(1000.0)
 	four_block_session.update(0.0)
 	_assert(not four_block_session.is_low_block_timer_active(), "low-block timer waits while more than three required bricks remain")
 
 	var low_block_session = _game_session_from_level(_make_level_from_rows([[1, 1, 1]]))
 	low_block_session.force_ball(Vector2(300, 200), Vector2.ZERO)
-	low_block_session._monster_spawn_cooldown = 1000.0
-	low_block_session._bee_spawn_delay_remaining = 1000.0
+	low_block_session.set_monster_spawn_cooldown_for_test(1000.0)
+	low_block_session.set_bee_spawn_delay_for_test(1000.0)
 	low_block_session.update(0.0)
 	_assert(low_block_session.is_low_block_timer_active(), "low-block timer arms when only three required bricks remain")
 	var low_block_indicator := _indicator_for_icon(low_block_session.active_bonus_indicators(), GameSessionScript.LOW_BLOCK_TIMER_STATUS_ICON_INDEX)
@@ -1166,7 +1198,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		GameSessionScript.PROJECTILE_TYPE_CONTINUOUS,
 		PlayfieldSpecScript.GRID_ORIGIN + Vector2(7, 1)
 	)]
-	projectile_chain_session.projectiles = projectile_chain_projectiles
+	projectile_chain_session.replace_projectiles_for_test(projectile_chain_projectiles)
 	projectile_chain_session.update(0.0)
 	_assert(projectile_chain_session.board_state.tile_at(0, 0) == 0, "projectile hit clears chain tile through shared board hit routing")
 	_assert(projectile_chain_session.active_projectile_count() == 0, "projectile is consumed by chain board hit")
@@ -1390,7 +1422,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	var one_shot_audio_events: Array[String] = one_shot_session.pop_audio_events()
 	_assert(not one_shot_audio_events.has(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "one-shot shooting activation does not queue projectile-fire SFX event")
 	_assert(one_shot_audio_events.has(GameSessionScript.SFX_EVENT_BONUS_APPLY), "one-shot shooting queues bonus-apply SFX event")
-	one_shot_session._monster_spawn_cooldown = 999.0
+	one_shot_session.set_monster_spawn_cooldown_for_test(999.0)
 	one_shot_session.update(GameSessionScript.RACKET_VISUAL_FRAME_SECONDS)
 	_assert(one_shot_session.current_racket_visual_frame() == 1, "one-shot launcher advances through original 50 ms frames")
 	one_shot_session.update(GameSessionScript.RACKET_VISUAL_FRAME_SECONDS * 3.0)
@@ -1429,7 +1461,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(continuous_shooting_session.is_shooting_paddle_active(), "continuous shooting bonus arms shooting mode")
 	_assert(continuous_shooting_session.current_racket_visual_mode() == GameSessionScript.RACKET_VISUAL_MODE_SHOOTING_CONTINUOUS, "continuous shooting bonus switches racket to original launcher insert")
 	_assert(continuous_shooting_session.active_projectile_count() == 0, "continuous shooting bonus waits for explicit right-click fire")
-	continuous_shooting_session._monster_spawn_cooldown = 999.0
+	continuous_shooting_session.set_monster_spawn_cooldown_for_test(999.0)
 	var continuous_activation_audio_events: Array[String] = continuous_shooting_session.pop_audio_events()
 	_assert(not continuous_activation_audio_events.has(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "continuous shooting activation does not queue projectile-fire SFX event")
 	continuous_shooting_session.update(GameSessionScript.PROJECTILE_FIRE_COOLDOWN_SECONDS)
@@ -1445,13 +1477,14 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(continuous_second_fire_result["status"] == "fired", "continuous right-click fire works again after cooldown")
 	_assert(continuous_shooting_session.active_projectile_count() == 2, "continuous right-click fire creates a second projectile after cooldown")
 	_assert(continuous_shooting_session.pop_audio_events().has(GameSessionScript.SFX_EVENT_PROJECTILE_FIRE), "continuous shooting queues projectile-fire SFX event on explicit fire")
-	continuous_shooting_session.projectiles.clear()
+	var capped_projectiles: Array[Dictionary] = []
 	for shot_index in range(GameSessionScript.MAX_PROJECTILES):
-		continuous_shooting_session.projectiles.append(_projectile(
+		capped_projectiles.append(_projectile(
 			GameSessionScript.PROJECTILE_TYPE_CONTINUOUS,
 			Vector2(500 - shot_index, 30)
 		))
-	continuous_shooting_session._projectile_fire_cooldown = 0.0
+	continuous_shooting_session.replace_projectiles_for_test(capped_projectiles)
+	continuous_shooting_session.set_projectile_fire_cooldown_for_test(0.0)
 	continuous_shooting_session.fire_shooting_paddle()
 	_assert(continuous_shooting_session.active_projectile_count() == GameSessionScript.MAX_PROJECTILES, "continuous shooting caps active projectiles")
 
@@ -1460,7 +1493,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		GameSessionScript.PROJECTILE_TYPE_CONTINUOUS,
 		PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2)
 	)]
-	projectile_hit_session.projectiles = hit_projectiles
+	projectile_hit_session.replace_projectiles_for_test(hit_projectiles)
 	projectile_hit_session.update(0.0)
 	_assert(projectile_hit_session.board_state.tile_at(0, 0) == 0, "projectile hit clears brick through board state")
 	_assert(projectile_hit_session.consume_board_changed(), "projectile hit marks board for redraw")
@@ -1491,7 +1524,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		GameSessionScript.PROJECTILE_TYPE_STRONG,
 		PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2)
 	)]
-	strong_projectile_hard_session.projectiles = strong_hard_projectiles
+	strong_projectile_hard_session.replace_projectiles_for_test(strong_hard_projectiles)
 	strong_projectile_hard_session.update(0.0)
 	_assert(strong_projectile_hard_session.board_state.tile_at(0, 0) == 0, "strong projectile force-breaks hard brick")
 	_assert(strong_projectile_hard_session.consume_board_changed(), "strong projectile hard-brick hit marks board for redraw")
@@ -1507,7 +1540,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		GameSessionScript.PROJECTILE_TYPE_STRONG,
 		PlayfieldSpecScript.GRID_ORIGIN + Vector2(2, 2)
 	)]
-	strong_projectile_downgrade_session.projectiles = strong_downgrade_projectiles
+	strong_projectile_downgrade_session.replace_projectiles_for_test(strong_downgrade_projectiles)
 	strong_projectile_downgrade_session.update(0.0)
 	_assert(strong_projectile_downgrade_session.board_state.tile_at(0, 0) == 0, "strong projectile clears downgrade brick instead of stepping it down")
 	_assert(strong_projectile_downgrade_session.score == GameSessionScript.NORMAL_BRICK_SCORE, "strong projectile downgrade hit awards original downgrade score")
@@ -1521,7 +1554,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		GameSessionScript.PROJECTILE_TYPE_CONTINUOUS,
 		Vector2(GameSessionScript.PROJECTILE_EXPIRE_X + 1.0, 200)
 	)]
-	projectile_expire_session.projectiles = expiring_projectiles
+	projectile_expire_session.replace_projectiles_for_test(expiring_projectiles)
 	projectile_expire_session.update(0.0)
 	_assert(projectile_expire_session.active_projectile_count() == 0, "projectile expires at original left bound")
 	_assert(projectile_expire_session.visible_impact_effects().is_empty(), "projectile expiry does not invent contact VFX")
@@ -1596,7 +1629,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	var eye_monsters: Array = eye_follow_session.visible_monsters()
 	if eye_monsters.size() == 1:
 		_assert(float(eye_monsters[0]["position"].y) < 260.0, "type 3 eye follows the paddle instead of the active ball")
-	monster_motion_session.monsters[0]["age"] = GameSessionScript.MONSTER_LIFETIME_SECONDS - 0.01
+	monster_motion_session.set_monster_age_for_test(0, GameSessionScript.MONSTER_LIFETIME_SECONDS - 0.01)
 	monster_motion_session.update(0.02)
 	_assert(monster_motion_session.active_monster_count() == 0, "monster expires after original lifetime")
 	var timeout_effects: Array = monster_motion_session.visible_impact_effects()
@@ -1933,8 +1966,8 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(String(GameSessionScript.SNAKE_IDA_EVIDENCE).find("sub_41A780") != -1, "Snake VFX text evidence records the stubbed initializer candidate")
 	_assert(String(GameSessionScript.SNAKE_IDA_EVIDENCE).find("level_tail_bytes[22:50]") != -1, "Snake VFX text evidence records the level-tail audit")
 	var snake_dormant_session = _playing_session_from_level(_make_level_from_rows([[1]]))
-	snake_dormant_session._monster_spawn_cooldown = 999.0
-	snake_dormant_session._bee_spawn_delay_remaining = 999.0
+	snake_dormant_session.set_monster_spawn_cooldown_for_test(999.0)
+	snake_dormant_session.set_bee_spawn_delay_for_test(999.0)
 	snake_dormant_session.update(GameSessionScript.SNAKE_UPDATE_SECONDS * 4.0)
 	_assert(snake_dormant_session.visible_snake_segments().is_empty(), "normal gameplay update keeps Snake VFX dormant without proven original activation evidence")
 	var snake_tail_flag: Array[int] = []
@@ -1942,8 +1975,8 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		snake_tail_flag.append(0)
 	snake_tail_flag[29] = 1
 	var snake_tail_flag_session = _playing_session_from_level(_make_level_from_rows([[1]], snake_tail_flag))
-	snake_tail_flag_session._monster_spawn_cooldown = 999.0
-	snake_tail_flag_session._bee_spawn_delay_remaining = 999.0
+	snake_tail_flag_session.set_monster_spawn_cooldown_for_test(999.0)
+	snake_tail_flag_session.set_bee_spawn_delay_for_test(999.0)
 	snake_tail_flag_session.update(GameSessionScript.SNAKE_UPDATE_SECONDS * 4.0)
 	_assert(snake_tail_flag_session.visible_snake_segments().is_empty(), "Flystone-style tail byte 29 anomaly does not activate Snake without original write evidence")
 	var snake_tail_padding: Array[int] = []
@@ -1952,8 +1985,8 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	for tail_index in range(30, LevelDataScript.LEVEL_TAIL_SIZE):
 		snake_tail_padding[tail_index] = 170
 	var snake_tail_padding_session = _playing_session_from_level(_make_level_from_rows([[1]], snake_tail_padding))
-	snake_tail_padding_session._monster_spawn_cooldown = 999.0
-	snake_tail_padding_session._bee_spawn_delay_remaining = 999.0
+	snake_tail_padding_session.set_monster_spawn_cooldown_for_test(999.0)
+	snake_tail_padding_session.set_bee_spawn_delay_for_test(999.0)
 	snake_tail_padding_session.update(GameSessionScript.SNAKE_UPDATE_SECONDS * 4.0)
 	_assert(snake_tail_padding_session.visible_snake_segments().is_empty(), "170-padded level tails do not activate Snake without original write evidence")
 
@@ -2022,7 +2055,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		{"position": Vector2(232, 200), "kind": 7},
 	])
 	var snake_projectiles: Array[Dictionary] = [_projectile(GameSessionScript.PROJECTILE_TYPE_CONTINUOUS, Vector2(227, 200))]
-	snake_projectile_hit_session.projectiles = snake_projectiles
+	snake_projectile_hit_session.replace_projectiles_for_test(snake_projectiles)
 	snake_projectile_hit_session.update(0.0)
 	var snake_after_projectile_hit: Array = snake_projectile_hit_session.visible_snake_segments()
 	_assert(snake_after_projectile_hit.size() == 2, "projectile overlap truncates the Snake VFX chain at the hit segment")
@@ -2049,7 +2082,7 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 		GameSessionScript.PROJECTILE_TYPE_CONTINUOUS,
 		Vector2(200, 200)
 	)]
-	monster_projectile_hit_session.projectiles = monster_hit_projectiles
+	monster_projectile_hit_session.replace_projectiles_for_test(monster_hit_projectiles)
 	monster_projectile_hit_session.update(0.0)
 	_assert(monster_projectile_hit_session.active_monster_count() == 0, "projectile collision removes active monster")
 	_assert(monster_projectile_hit_session.active_projectile_count() == 0, "projectile is consumed by monster collision")
@@ -2346,8 +2379,8 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(magnet_paddle_session.current_racket_visual_mode() == GameSessionScript.RACKET_VISUAL_MODE_MAGNET, "magnet-paddle bonus switches racket to original magnet insert")
 	_assert(magnet_paddle_session.current_racket_visual_frame() == 0, "magnet-paddle insert starts at first original frame")
 	magnet_paddle_session.force_ball(Vector2(300, 200), Vector2.ZERO)
-	magnet_paddle_session._monster_spawn_cooldown = 999.0
-	magnet_paddle_session._bee_spawn_delay_remaining = 999.0
+	magnet_paddle_session.set_monster_spawn_cooldown_for_test(999.0)
+	magnet_paddle_session.set_bee_spawn_delay_for_test(999.0)
 	magnet_paddle_session.update(GameSessionScript.RACKET_VISUAL_FRAME_SECONDS)
 	_assert(magnet_paddle_session.current_racket_visual_frame() == 1, "magnet-paddle insert advances through original 50 ms frames")
 	for magnet_frame_index in range(GameSessionScript.RACKET_MAGNET_VISUAL_FRAME_COUNT - 1):
@@ -2388,8 +2421,8 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	drunk_paddle_session.move_racket_to(260.0)
 	_assert(is_equal_approx(drunk_paddle_session.racket_rect().get_center().y, sober_center_y - 40.0), "drunk-paddle inverts mouse movement delta")
 	drunk_paddle_session.force_ball(Vector2(300, 200), Vector2.ZERO)
-	drunk_paddle_session._monster_spawn_cooldown = 999.0
-	drunk_paddle_session._bee_spawn_delay_remaining = 999.0
+	drunk_paddle_session.set_monster_spawn_cooldown_for_test(999.0)
+	drunk_paddle_session.set_bee_spawn_delay_for_test(999.0)
 	drunk_paddle_session.update(10.0)
 	_stack_bonus(drunk_paddle_session, GameSessionScript.BONUS_DRUNK_PADDLE)
 	var repeated_drunk_result: Dictionary = drunk_paddle_session.activate_next_bonus()
@@ -4963,12 +4996,12 @@ func _validate_menu_and_game_scenes() -> void:
 			game.call("_input", _action_event(GameScreenScript.ACTION_FIRE_PADDLE))
 			await process_frame
 			_assert(gameplay.active_projectile_count() == 1, "game screen routes right-click shooting-paddle fire")
-			gameplay.projectiles.clear()
+			gameplay.clear_projectiles_for_test()
 			_stack_bonus(gameplay, GameSessionScript.BONUS_SHOOTING_PADDLE_CONTINUOUS)
 			var continuous_shooting_result: Dictionary = game.call("activate_next_bonus")
 			await process_frame
 			_assert(continuous_shooting_result["effect"] == "shooting_paddle_continuous", "game screen routes continuous shooting bonus activation")
-			gameplay._projectile_fire_cooldown = 0.0
+			gameplay.set_projectile_fire_cooldown_for_test(0.0)
 			Input.action_press(GameScreenScript.ACTION_FIRE_PADDLE)
 			game.call("_process", 0.0)
 			_assert(gameplay.active_projectile_count() == 1, "held fire shoots continuous launcher immediately")

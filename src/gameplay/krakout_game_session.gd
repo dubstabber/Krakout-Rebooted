@@ -6,6 +6,7 @@ const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantic
 const RandomScript := preload("res://src/gameplay/krakout_random.gd")
 const AudioEventQueueScript := preload("res://src/gameplay/krakout_audio_event_queue.gd")
 const BallTrackPoolScript := preload("res://src/gameplay/krakout_ball_track_pool.gd")
+const ProjectileSystemScript := preload("res://src/gameplay/systems/krakout_projectile_system.gd")
 const TransientVfxPoolScript := preload("res://src/gameplay/krakout_transient_vfx_pool.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 
@@ -130,18 +131,18 @@ const LEVEL_READY_ROLLER_SOURCE_SIZE := Vector2(20, 390)
 const LEVEL_READY_ROLLER_POSITION := Vector2(47, 63)
 const LEVEL_READY_ROLLER_TRAVEL_PIXELS := 380.0
 const LEVEL_READY_ANIMATION_SECONDS := LEVEL_READY_ROLLER_TRAVEL_PIXELS / LEVEL_READY_ROLLER_STEP_PIXELS * LEVEL_READY_ROLLER_STEP_SECONDS
-const MAX_PROJECTILES := 10
-const PROJECTILE_FIRE_COOLDOWN_SECONDS := 0.25
-const PROJECTILE_STEP_X := 7.0
-const PROJECTILE_EXPIRE_X := 27.0
-const PROJECTILE_SIZE := Vector2(30, 13)
-const PROJECTILE_TRAIL_OFFSET := Vector2(26, 0)
-const PROJECTILE_HEAD_FRAME_COUNT := 5
-const PROJECTILE_TRAIL_FRAME_COUNT := 10
-const PROJECTILE_HEAD_FRAME_SECONDS := 0.05
-const PROJECTILE_TRAIL_FRAME_SECONDS := 0.01
-const PROJECTILE_TYPE_STRONG := 0
-const PROJECTILE_TYPE_CONTINUOUS := 1
+const MAX_PROJECTILES := ProjectileSystemScript.MAX_PROJECTILES
+const PROJECTILE_FIRE_COOLDOWN_SECONDS := ProjectileSystemScript.PROJECTILE_FIRE_COOLDOWN_SECONDS
+const PROJECTILE_STEP_X := ProjectileSystemScript.PROJECTILE_STEP_X
+const PROJECTILE_EXPIRE_X := ProjectileSystemScript.PROJECTILE_EXPIRE_X
+const PROJECTILE_SIZE := ProjectileSystemScript.PROJECTILE_SIZE
+const PROJECTILE_TRAIL_OFFSET := ProjectileSystemScript.PROJECTILE_TRAIL_OFFSET
+const PROJECTILE_HEAD_FRAME_COUNT := ProjectileSystemScript.PROJECTILE_HEAD_FRAME_COUNT
+const PROJECTILE_TRAIL_FRAME_COUNT := ProjectileSystemScript.PROJECTILE_TRAIL_FRAME_COUNT
+const PROJECTILE_HEAD_FRAME_SECONDS := ProjectileSystemScript.PROJECTILE_HEAD_FRAME_SECONDS
+const PROJECTILE_TRAIL_FRAME_SECONDS := ProjectileSystemScript.PROJECTILE_TRAIL_FRAME_SECONDS
+const PROJECTILE_TYPE_STRONG := ProjectileSystemScript.PROJECTILE_TYPE_STRONG
+const PROJECTILE_TYPE_CONTINUOUS := ProjectileSystemScript.PROJECTILE_TYPE_CONTINUOUS
 const PROJECTILE_MODE_DISABLED := 0
 const PROJECTILE_MODE_CONTINUOUS := 1
 const RACKET_VISUAL_MODE_NORMAL := 0
@@ -450,7 +451,6 @@ var _bonus_drop_cooldown := BONUS_DROP_GATE_SECONDS
 var _bee_spawn_delay_remaining := BEE_SPAWN_DELAY_MAX_SECONDS
 var _racket_stun_time_remaining := 0.0
 var _bonus_pointer_elapsed := 0.0
-var _projectile_fire_cooldown := 0.0
 var _shooting_paddle_mode := PROJECTILE_MODE_DISABLED
 var racket_visual_mode := RACKET_VISUAL_MODE_NORMAL
 var racket_visual_frame := 0
@@ -478,12 +478,14 @@ var _snake_update_elapsed := 0.0
 var _audio_events: Array[Dictionary] = []
 var _audio_event_queue
 var _ball_track_pool
+var _projectile_system
 var _transient_vfx_pool
 
 
 func _init() -> void:
 	_audio_event_queue = AudioEventQueueScript.new(_audio_events)
 	_ball_track_pool = BallTrackPoolScript.new(ball_tracks, _ball_track_spawn_elapsed, _ball_track_rng)
+	_projectile_system = ProjectileSystemScript.new(projectiles)
 	_transient_vfx_pool = TransientVfxPoolScript.new(impact_effects, score_popups)
 	_bonus_rng.set_seed(Time.get_ticks_msec())
 
@@ -765,11 +767,7 @@ func visible_falling_bonuses() -> Array[Dictionary]:
 
 
 func visible_projectiles() -> Array[Dictionary]:
-	var visible: Array[Dictionary] = []
-	for projectile: Dictionary in projectiles:
-		if bool(projectile.get("active", false)):
-			visible.append(projectile.duplicate())
-	return visible
+	return _projectile_system.visible_projectiles()
 
 
 func visible_monsters() -> Array[Dictionary]:
@@ -1050,14 +1048,15 @@ func fire_shooting_paddle() -> Dictionary:
 	else:
 		return {"status": "unarmed"}
 
-	if _projectile_fire_cooldown > 0.0:
-		return {"status": "cooldown", "remaining": _projectile_fire_cooldown, "projectile_type": projectile_type}
+	var projectile_fire_cooldown: float = float(_projectile_system.fire_cooldown_remaining())
+	if projectile_fire_cooldown > 0.0:
+		return {"status": "cooldown", "remaining": projectile_fire_cooldown, "projectile_type": projectile_type}
 
 	if _spawn_projectile(projectile_type):
 		if projectile_type == PROJECTILE_TYPE_STRONG:
 			_single_shot_projectile_armed = false
 			_set_racket_visual_target(RACKET_VISUAL_MODE_NORMAL)
-		_projectile_fire_cooldown = PROJECTILE_FIRE_COOLDOWN_SECONDS
+		_projectile_system.start_fire_cooldown()
 		return {"status": "fired", "projectile_type": projectile_type}
 	return {"status": "blocked", "projectile_type": projectile_type}
 
@@ -1220,12 +1219,41 @@ func force_bee_spawn_ready() -> void:
 	_bee_spawn_delay_remaining = 0.0
 
 
+func set_projectile_fire_cooldown_for_test(seconds: float) -> void:
+	_projectile_system.set_fire_cooldown_for_test(seconds)
+
+
+func replace_projectiles_for_test(next_projectiles: Array) -> void:
+	_projectile_system.replace_projectiles_for_test(next_projectiles)
+
+
+func clear_projectiles_for_test() -> void:
+	_projectile_system.clear()
+
+
+func set_monster_spawn_cooldown_for_test(seconds: float) -> void:
+	_monster_spawn_cooldown = maxf(0.0, seconds)
+
+
+func set_bee_spawn_delay_for_test(seconds: float) -> void:
+	_bee_spawn_delay_remaining = maxf(0.0, seconds)
+
+
+func set_monster_age_for_test(index: int, age: float) -> bool:
+	if index < 0 or index >= monsters.size():
+		return false
+	var monster := monsters[index]
+	monster["age"] = maxf(0.0, age)
+	monsters[index] = monster
+	return true
+
+
 func active_ball_count() -> int:
 	return visible_balls().size()
 
 
 func active_projectile_count() -> int:
-	return visible_projectiles().size()
+	return _projectile_system.active_count()
 
 
 func active_monster_count() -> int:
@@ -1269,7 +1297,7 @@ func ball_rect(ball: Dictionary) -> Rect2:
 
 
 func projectile_rect(projectile: Dictionary) -> Rect2:
-	return Rect2(projectile.get("position", Vector2.ZERO), PROJECTILE_SIZE)
+	return _projectile_system.projectile_rect(projectile)
 
 
 func monster_rect(monster: Dictionary) -> Rect2:
@@ -1984,11 +2012,10 @@ func _clear_timed_bonus_state() -> void:
 	back_wall_time_remaining = 0.0
 	low_block_timer_time_remaining = 0.0
 	_low_block_timer_started = false
-	projectiles.clear()
+	_projectile_system.reset()
 	_clear_paddle_mode_state(false)
 	_clear_racket_hit_recoil()
 	_drunk_paddle_time_remaining = 0.0
-	_projectile_fire_cooldown = 0.0
 
 
 func _update_bonus_timers(delta: float) -> void:
@@ -2342,27 +2369,13 @@ func _advance_falling_bonus(bonus: Dictionary, delta: float) -> void:
 
 
 func _update_projectile_fire(delta: float) -> void:
-	if _projectile_fire_cooldown > 0.0:
-		_projectile_fire_cooldown = maxf(0.0, _projectile_fire_cooldown - delta)
-		if is_zero_approx(_projectile_fire_cooldown):
-			_projectile_fire_cooldown = 0.0
+	_projectile_system.update_fire_cooldown(delta)
 
 
 func _spawn_projectile(projectile_type: int) -> bool:
-	_compact_projectiles()
-	if projectiles.size() >= MAX_PROJECTILES:
-		return false
-
 	var position := _projectile_spawn_position()
-	projectiles.append({
-		"active": true,
-		"type": projectile_type,
-		"position": position,
-		"head_frame": 0,
-		"head_frame_elapsed": 0.0,
-		"trail_frame": 0,
-		"trail_frame_elapsed": 0.0,
-	})
+	if not _projectile_system.spawn_projectile(projectile_type, position):
+		return false
 	_queue_audio_event_at_x(SFX_EVENT_PROJECTILE_FIRE, position.x)
 	return true
 
@@ -2376,46 +2389,21 @@ func _projectile_spawn_position() -> Vector2:
 
 
 func _update_projectiles(delta: float) -> void:
-	for index in range(projectiles.size()):
-		var projectile := projectiles[index]
-		if not bool(projectile.get("active", false)):
-			continue
+	_projectile_system.update(delta, Callable(self, "_resolve_projectile_collision"))
 
-		_advance_projectile(projectile, delta)
-		if bool(projectile.get("active", false)) and _collide_projectile_with_snake(projectile):
-			projectile["active"] = false
-		if bool(projectile.get("active", false)) and _collide_projectile_with_monsters(projectile):
-			projectile["active"] = false
-		if bool(projectile.get("active", false)) and _collide_projectile_with_board(projectile):
-			if int(projectile.get("type", PROJECTILE_TYPE_CONTINUOUS)) == PROJECTILE_TYPE_CONTINUOUS:
-				projectile["active"] = false
-		projectiles[index] = projectile
 
-	_compact_projectiles()
+func _resolve_projectile_collision(projectile: Dictionary) -> bool:
+	if _collide_projectile_with_snake(projectile):
+		return true
+	if _collide_projectile_with_monsters(projectile):
+		return true
+	if _collide_projectile_with_board(projectile):
+		return int(projectile.get("type", PROJECTILE_TYPE_CONTINUOUS)) == PROJECTILE_TYPE_CONTINUOUS
+	return false
 
 
 func _advance_projectile(projectile: Dictionary, delta: float) -> void:
-	var position: Vector2 = projectile.get("position", Vector2.ZERO)
-	position.x -= PROJECTILE_STEP_X
-	projectile["position"] = position
-	if position.x <= PROJECTILE_EXPIRE_X:
-		projectile["active"] = false
-
-	var head_elapsed := float(projectile.get("head_frame_elapsed", 0.0)) + delta
-	var head_frame := int(projectile.get("head_frame", 0))
-	while head_elapsed >= PROJECTILE_HEAD_FRAME_SECONDS:
-		head_frame = (head_frame + 1) % PROJECTILE_HEAD_FRAME_COUNT
-		head_elapsed -= PROJECTILE_HEAD_FRAME_SECONDS
-	projectile["head_frame"] = head_frame
-	projectile["head_frame_elapsed"] = head_elapsed
-
-	var trail_elapsed := float(projectile.get("trail_frame_elapsed", 0.0)) + delta
-	var trail_frame := int(projectile.get("trail_frame", 0))
-	while trail_elapsed >= PROJECTILE_TRAIL_FRAME_SECONDS:
-		trail_frame = (trail_frame + 1) % PROJECTILE_TRAIL_FRAME_COUNT
-		trail_elapsed -= PROJECTILE_TRAIL_FRAME_SECONDS
-	projectile["trail_frame"] = trail_frame
-	projectile["trail_frame_elapsed"] = trail_elapsed
+	_projectile_system.advance_projectile(projectile, delta)
 
 
 func _collide_projectile_with_board(projectile: Dictionary) -> bool:
@@ -3043,11 +3031,7 @@ func _clear_score_popups() -> void:
 
 
 func _compact_projectiles() -> void:
-	var compacted: Array[Dictionary] = []
-	for projectile: Dictionary in projectiles:
-		if bool(projectile.get("active", false)):
-			compacted.append(projectile)
-	projectiles = compacted
+	_projectile_system.compact()
 
 
 func _compact_falling_bonuses() -> void:
