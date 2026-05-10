@@ -143,15 +143,40 @@ func schedule_all_chain_explosions() -> int:
 	return scheduled_count
 
 
-func convert_to_chain_explosion_tile(column: int, row: int, tile_id: int) -> bool:
+func convert_to_chain_explosion_tile(
+	column: int,
+	row: int,
+	tile_id: int,
+	delay_seconds := CHAIN_EXPLOSION_DELAY_SECONDS
+) -> bool:
 	if not _is_in_bounds(column, row):
 		return false
 	if not BrickSemanticsScript.is_chain_explosion_tile(tile_id):
 		return false
 
 	set_tile(column, row, tile_id)
-	_schedule_chain_explosion(column, row)
+	_schedule_chain_explosion(column, row, delay_seconds)
 	return true
+
+
+func convert_required_bricks_to_chain_explosions(
+	tile_id: int,
+	delay_seconds := CHAIN_EXPLOSION_DELAY_SECONDS
+) -> int:
+	if not BrickSemanticsScript.is_chain_explosion_tile(tile_id):
+		return 0
+
+	var changed_count := 0
+	for row_index in range(rows_count):
+		for column_index in range(columns):
+			var current_tile_id := tile_at(column_index, row_index)
+			if not BrickSemanticsScript.is_required_tile(current_tile_id):
+				continue
+			if BrickSemanticsScript.is_chain_explosion_tile(current_tile_id):
+				continue
+			if convert_to_chain_explosion_tile(column_index, row_index, tile_id, delay_seconds):
+				changed_count += 1
+	return changed_count
 
 
 func process_chain_explosions(delta: float) -> int:
@@ -218,16 +243,20 @@ func _update_counts_for_change(previous_tile_id: int, next_tile_id: int) -> void
 		remaining_required_bricks += 1
 
 
-func _schedule_chain_explosion(column: int, row: int) -> void:
+func _schedule_chain_explosion(
+	column: int,
+	row: int,
+	delay_seconds := CHAIN_EXPLOSION_DELAY_SECONDS
+) -> void:
 	for entry: Dictionary in _pending_chain_explosions:
 		if int(entry.get("column", -1)) == column and int(entry.get("row", -1)) == row:
-			entry["remaining"] = CHAIN_EXPLOSION_DELAY_SECONDS
+			entry["remaining"] = delay_seconds
 			return
 
 	_pending_chain_explosions.append({
 		"column": column,
 		"row": row,
-		"remaining": CHAIN_EXPLOSION_DELAY_SECONDS,
+		"remaining": delay_seconds,
 	})
 
 

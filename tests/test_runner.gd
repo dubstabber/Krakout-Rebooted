@@ -465,6 +465,14 @@ func _validate_board_state(default_level: KrakoutLevelData) -> void:
 	_assert(converted_chain_state.tile_at(0, 0) == 68, "converted chain tile is stored in board state")
 	_assert(converted_chain_state.pending_chain_explosion_count() == 1, "converted chain tile is scheduled")
 
+	var low_block_chain_state = _board_state_from_level(_make_level_from_rows([[1, 8, 43, 68, 162]]))
+	_assert(low_block_chain_state.convert_required_bricks_to_chain_explosions(43, 3.0) == 1, "low-block helper converts only remaining ordinary required bricks")
+	_assert(low_block_chain_state.tile_at(0, 0) == 43, "low-block helper rewrites eligible bricks to original tile 43")
+	_assert(low_block_chain_state.tile_at(1, 0) == 8, "low-block helper preserves force-break-only non-required bricks")
+	_assert(low_block_chain_state.tile_at(2, 0) == 43, "low-block helper preserves existing tile 43 chain bricks")
+	_assert(low_block_chain_state.tile_at(3, 0) == 68, "low-block helper preserves existing tile 68 chain bricks")
+	_assert(low_block_chain_state.pending_chain_explosion_count() == 1, "low-block helper schedules converted tile only")
+
 	var one_strike_state = _board_state_from_level(_make_level_from_rows([[8, 15, 40, 39, 42, 69, 70, 71, 101, 133, 137, 139, 141, 143, 145, 1]]))
 	_assert(one_strike_state.weaken_all_for_one_strike() == 15, "one-strike board helper weakens every mapped original tile")
 	_assert(one_strike_state.tile_at(0, 0) == 7, "one-strike board helper maps tile 8 to 7")
@@ -709,6 +717,42 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(not auto_launch_session.is_level_ready_sequence_active(), "automatic ready launch clears the countdown")
 	_assert(auto_launch_session.first_ball_velocity().x < 0.0, "automatic ready launch uses the normal original launch vector")
 	_assert(auto_launch_session.first_ball_position() == auto_launch_ready_position, "automatic ready launch does not advance the ball during the timeout frame")
+
+	_assert(GameSessionScript.LOW_BLOCK_TIMER_TRIGGER_REQUIRED_BRICKS == 3, "low-block timer starts at the original three-brick threshold")
+	_assert(is_equal_approx(GameSessionScript.LOW_BLOCK_TIMER_SECONDS, 30.0), "low-block timer uses the original thirty-second countdown")
+	_assert(GameSessionScript.LOW_BLOCK_TIMER_STATUS_ICON_INDEX == 4, "low-block timer uses the original fifth InfoIcons slot")
+	_assert(is_equal_approx(GameSessionScript.LOW_BLOCK_TIMER_CHAIN_DELAY_SECONDS, 3.0), "low-block timer uses the original 100 chain ticks")
+	var four_block_session = _game_session_from_level(_make_level_from_rows([[1, 1, 1, 1]]))
+	four_block_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	four_block_session._monster_spawn_cooldown = 1000.0
+	four_block_session._bee_spawn_delay_remaining = 1000.0
+	four_block_session.update(0.0)
+	_assert(not four_block_session.is_low_block_timer_active(), "low-block timer waits while more than three required bricks remain")
+
+	var low_block_session = _game_session_from_level(_make_level_from_rows([[1, 1, 1]]))
+	low_block_session.force_ball(Vector2(300, 200), Vector2.ZERO)
+	low_block_session._monster_spawn_cooldown = 1000.0
+	low_block_session._bee_spawn_delay_remaining = 1000.0
+	low_block_session.update(0.0)
+	_assert(low_block_session.is_low_block_timer_active(), "low-block timer arms when only three required bricks remain")
+	var low_block_indicator := _indicator_for_icon(low_block_session.active_bonus_indicators(), GameSessionScript.LOW_BLOCK_TIMER_STATUS_ICON_INDEX)
+	_assert(not low_block_indicator.is_empty(), "low-block timer exposes original status countdown indicator")
+	_assert(int(low_block_indicator["value"]) == 30, "low-block timer starts at the original thirty-second count")
+	low_block_session.update(1.0)
+	low_block_indicator = _indicator_for_icon(low_block_session.active_bonus_indicators(), GameSessionScript.LOW_BLOCK_TIMER_STATUS_ICON_INDEX)
+	_assert(int(low_block_indicator["value"]) == 29, "low-block timer counts down once per second")
+	low_block_session.update(GameSessionScript.LOW_BLOCK_TIMER_SECONDS - 1.0)
+	_assert(not low_block_session.is_low_block_timer_active(), "low-block timer indicator clears after expiry")
+	_assert(_indicator_for_icon(low_block_session.active_bonus_indicators(), GameSessionScript.LOW_BLOCK_TIMER_STATUS_ICON_INDEX).is_empty(), "expired low-block timer hides its status icon")
+	_assert(low_block_session.board_state.tile_at(0, 0) == 43, "expired low-block timer rewrites first remaining brick to tile 43")
+	_assert(low_block_session.board_state.tile_at(1, 0) == 43, "expired low-block timer rewrites second remaining brick to tile 43")
+	_assert(low_block_session.board_state.tile_at(2, 0) == 43, "expired low-block timer rewrites third remaining brick to tile 43")
+	_assert(low_block_session.board_state.pending_chain_explosion_count() == 3, "expired low-block timer schedules each rewritten chain tile")
+	low_block_session.update(GameSessionScript.LOW_BLOCK_TIMER_CHAIN_DELAY_SECONDS - 0.001)
+	_assert(low_block_session.board_state.remaining_required_bricks == 3, "low-block chain tiles wait for the original delayed explosion")
+	low_block_session.update(0.002)
+	_assert(low_block_session.board_state.remaining_required_bricks == 0, "low-block delayed chain explosions clear the remaining required bricks")
+	_assert(low_block_session.state == GameSessionScript.STATE_LEVEL_COMPLETE, "low-block delayed chain explosions can complete the level")
 
 	session.move_racket_to(-100.0)
 	_assert(session.racket_rect().position.y == GameSessionScript.RACKET_MIN_Y, "racket clamps to top bound")
@@ -1717,10 +1761,10 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(bee_racket_hit_session.score == GameSessionScript.BEE_STUN_SCORE, "bee hit awards original stun-hazard score")
 	_assert(bee_racket_hit_session.is_racket_stunned(), "bee hit stuns the racket")
 	var bee_stun_indicators: Array = bee_racket_hit_session.active_bonus_indicators()
-	_assert(bee_stun_indicators.size() == 1, "bee stun exposes one active status indicator")
-	if bee_stun_indicators.size() == 1:
-		_assert(int(bee_stun_indicators[0]["icon_index"]) == GameSessionScript.RACKET_STUN_STATUS_ICON_INDEX, "bee stun status uses original stuck-racket icon slot")
-		_assert(int(bee_stun_indicators[0]["value"]) == int(GameSessionScript.RACKET_STUN_DURATION_SECONDS), "bee stun status starts at original duration")
+	var bee_stun_indicator := _indicator_for_icon(bee_stun_indicators, GameSessionScript.RACKET_STUN_STATUS_ICON_INDEX)
+	_assert(not bee_stun_indicator.is_empty(), "bee stun exposes original stuck-racket status indicator")
+	if not bee_stun_indicator.is_empty():
+		_assert(int(bee_stun_indicator["value"]) == int(GameSessionScript.RACKET_STUN_DURATION_SECONDS), "bee stun status starts at original duration")
 	_assert(bee_racket_hit_session.visible_impact_effects().size() == 1, "bee hit spawns impact VFX")
 	_assert(
 		bee_racket_hit_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BEE_STOP, GameSessionScript.SFX_EVENT_MONSTER_HIT],
@@ -1728,11 +1772,12 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	)
 	bee_racket_hit_session.update(1.0)
 	var bee_stun_countdown: Array = bee_racket_hit_session.active_bonus_indicators()
-	_assert(bee_stun_countdown.size() == 1, "bee stun status remains visible while stun is active")
-	if bee_stun_countdown.size() == 1:
-		_assert(int(bee_stun_countdown[0]["value"]) == int(GameSessionScript.RACKET_STUN_DURATION_SECONDS) - 1, "bee stun status counts down once per second")
+	bee_stun_indicator = _indicator_for_icon(bee_stun_countdown, GameSessionScript.RACKET_STUN_STATUS_ICON_INDEX)
+	_assert(not bee_stun_indicator.is_empty(), "bee stun status remains visible while stun is active")
+	if not bee_stun_indicator.is_empty():
+		_assert(int(bee_stun_indicator["value"]) == int(GameSessionScript.RACKET_STUN_DURATION_SECONDS) - 1, "bee stun status counts down once per second")
 	bee_racket_hit_session.update(GameSessionScript.RACKET_STUN_DURATION_SECONDS - 1.0)
-	_assert(bee_racket_hit_session.active_bonus_indicators().is_empty(), "expired bee stun clears status indicator")
+	_assert(_indicator_for_icon(bee_racket_hit_session.active_bonus_indicators(), GameSessionScript.RACKET_STUN_STATUS_ICON_INDEX).is_empty(), "expired bee stun clears stuck-racket status indicator")
 
 	var snake_vfx_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	var snake_inputs: Array[Dictionary] = [
@@ -5284,6 +5329,13 @@ func _shutdown_test_audio() -> void:
 
 func _is_runtime_path(entry: Dictionary) -> bool:
 	return String(entry.get("output_path", "")).begins_with("res://assets/krakout/")
+
+
+func _indicator_for_icon(indicators: Array, icon_index: int) -> Dictionary:
+	for indicator: Dictionary in indicators:
+		if int(indicator.get("icon_index", -1)) == icon_index:
+			return indicator
+	return {}
 
 
 func _find_summary(summaries: Array, slug: String) -> Dictionary:

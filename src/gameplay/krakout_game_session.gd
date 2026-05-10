@@ -110,6 +110,13 @@ const BACK_WALL_STATUS_ICON_INDEX := 3
 const LEVEL_READY_SEQUENCE_SECONDS := 30.0
 const LEVEL_READY_STATUS_ICON_INDEX := 2
 const RACKET_STUN_STATUS_ICON_INDEX := 1
+const LOW_BLOCK_TIMER_TRIGGER_REQUIRED_BRICKS := 3
+const LOW_BLOCK_TIMER_SECONDS := 30.0
+const LOW_BLOCK_TIMER_STATUS_ICON_INDEX := 4
+const LOW_BLOCK_TIMER_CHAIN_TILE_ID := 43
+# sub_40DAF0 rewrites the last eligible bricks to tile 43 and stores a 100-count
+# tile timer; sub_40F940 decrements those tile timers on its 30 ms gate.
+const LOW_BLOCK_TIMER_CHAIN_DELAY_SECONDS := 100.0 * BoardStateScript.CHAIN_EXPLOSION_DELAY_SECONDS
 # sub_40F940 draws Roller.tga as a 20x390 strip at x = 47 + reveal_offset
 # and advances ten source frames while revealing the 20 board columns.
 const LEVEL_READY_ROLLER_FRAME_COUNT := 10
@@ -428,6 +435,7 @@ var impact_effects: Array[Dictionary] = []
 var score_popups: Array[Dictionary] = []
 var back_wall_time_remaining := 0.0
 var level_ready_time_remaining := 0.0
+var low_block_timer_time_remaining := 0.0
 var _drunk_paddle_time_remaining := 0.0
 var _bonus_rng = RandomScript.new()
 var _ball_animation_rng = RandomScript.new(31415)
@@ -461,6 +469,7 @@ var _level_ready_roller_offset := 0.0
 var _level_ready_roller_frame := 0
 var _level_ready_roller_step_elapsed := 0.0
 var _level_ready_auto_launch_pending := false
+var _low_block_timer_started := false
 var _ball_track_spawn_elapsed: Array[float] = []
 var _snake_update_elapsed := 0.0
 var _audio_events: Array[Dictionary] = []
@@ -653,6 +662,8 @@ func update(delta: float) -> void:
 			_spawn_chain_explosion_impact_effects(chain_cells)
 			_queue_audio_event_at_x(SFX_EVENT_CHAIN_EXPLOSION, _chain_cells_source_x(chain_cells))
 
+	_update_low_block_timer(delta)
+	_arm_low_block_timer_if_needed()
 	if board_state != null and board_state.is_complete():
 		_mark_level_complete()
 		return
@@ -671,6 +682,7 @@ func update(delta: float) -> void:
 
 	_update_falling_bonuses(delta)
 	_update_projectiles(delta)
+	_arm_low_block_timer_if_needed()
 	if board_state != null and board_state.is_complete():
 		_mark_level_complete()
 		return
@@ -687,6 +699,7 @@ func update(delta: float) -> void:
 		if bool(ball.get("active", false)):
 			active_count += 1
 
+	_arm_low_block_timer_if_needed()
 	if board_state != null and board_state.is_complete():
 		_mark_level_complete()
 	elif active_count <= 0:
@@ -902,6 +915,11 @@ func active_bonus_indicators() -> Array[Dictionary]:
 			"icon_index": RACKET_STUN_STATUS_ICON_INDEX,
 			"value": ceili(_racket_stun_time_remaining),
 		})
+	if is_low_block_timer_active():
+		indicators.append({
+			"icon_index": LOW_BLOCK_TIMER_STATUS_ICON_INDEX,
+			"value": ceili(low_block_timer_time_remaining),
+		})
 	if is_back_wall_active():
 		indicators.append({
 			"icon_index": BACK_WALL_STATUS_ICON_INDEX,
@@ -961,6 +979,10 @@ func level_ready_roller_layout() -> Dictionary:
 
 func is_back_wall_active() -> bool:
 	return back_wall_time_remaining > 0.0
+
+
+func is_low_block_timer_active() -> bool:
+	return low_block_timer_time_remaining > 0.0
 
 
 func is_shooting_paddle_active() -> bool:
@@ -2040,6 +2062,8 @@ func _reset_bonus_drop_gate() -> void:
 
 func _clear_timed_bonus_state() -> void:
 	back_wall_time_remaining = 0.0
+	low_block_timer_time_remaining = 0.0
+	_low_block_timer_started = false
 	projectiles.clear()
 	_clear_paddle_mode_state(false)
 	_clear_racket_hit_recoil()
@@ -2057,6 +2081,48 @@ func _update_bonus_timers(delta: float) -> void:
 	if _drunk_paddle_time_remaining > 0.0:
 		_drunk_paddle_time_remaining = maxf(0.0, _drunk_paddle_time_remaining - delta)
 	_update_non_stricked_balls(delta)
+
+
+func _arm_low_block_timer_if_needed() -> void:
+	if _low_block_timer_started:
+		return
+	if state != STATE_PLAYING or board_state == null:
+		return
+	if board_state.remaining_required_bricks <= 0:
+		return
+	if board_state.remaining_required_bricks > LOW_BLOCK_TIMER_TRIGGER_REQUIRED_BRICKS:
+		return
+
+	_low_block_timer_started = true
+	low_block_timer_time_remaining = LOW_BLOCK_TIMER_SECONDS
+
+
+func _update_low_block_timer(delta: float) -> void:
+	if not _low_block_timer_started:
+		return
+	if state != STATE_PLAYING:
+		return
+	if low_block_timer_time_remaining <= 0.0:
+		return
+
+	low_block_timer_time_remaining = maxf(0.0, low_block_timer_time_remaining - delta)
+	if low_block_timer_time_remaining <= 0.0:
+		_expire_low_block_timer()
+
+
+func _expire_low_block_timer() -> void:
+	if board_state == null:
+		return
+
+	var converted_count := 0
+	if board_state.has_method("convert_required_bricks_to_chain_explosions"):
+		converted_count = int(board_state.call(
+			"convert_required_bricks_to_chain_explosions",
+			LOW_BLOCK_TIMER_CHAIN_TILE_ID,
+			LOW_BLOCK_TIMER_CHAIN_DELAY_SECONDS
+		))
+	if converted_count > 0:
+		board_changed = true
 
 
 func _update_non_stricked_balls(delta: float) -> void:
