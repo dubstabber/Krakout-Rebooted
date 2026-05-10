@@ -19,6 +19,7 @@
 *.ipa
 *.dmg
 *.app/
+export_presets.cfg
 
 # Local Godot editor binaries if one is dropped into the project root.
 /Godot_*

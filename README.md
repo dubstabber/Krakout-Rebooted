@@ -3,6 +3,10 @@
 Krakout Rebooted is a Godot 4.6.2 reimplementation of the classic brick-breaker
 Krakout, rebuilt from extracted runtime assets, decoded level data, and
 reverse-engineered executable behavior.
+<div align="center">
+  <img src="screenshots/kr1.png" width="350"/>
+  <img src="screenshots/kr2.png" width="350"/>
+</div>
 
 ## Project Status
 
