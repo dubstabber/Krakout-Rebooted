@@ -4,6 +4,7 @@ class_name KrakoutGameSession
 const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
 const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantics.gd")
 const RandomScript := preload("res://src/gameplay/krakout_random.gd")
+const GameplayStateScript := preload("res://src/gameplay/krakout_gameplay_state.gd")
 const AudioEventQueueScript := preload("res://src/gameplay/krakout_audio_event_queue.gd")
 const BallTrackPoolScript := preload("res://src/gameplay/krakout_ball_track_pool.gd")
 const BallRulesScript := preload("res://src/gameplay/rules/krakout_ball_rules.gd")
@@ -361,91 +362,200 @@ const SFX_PAN_MIN := GameplayEventsScript.SFX_PAN_MIN
 const SFX_PAN_MAX := GameplayEventsScript.SFX_PAN_MAX
 const SFX_BEE_SPAWN_PAN100 := GameplayEventsScript.SFX_BEE_SPAWN_PAN100
 
-var board_state
-var state := STATE_READY
-var balls: Array[Dictionary] = []
-var ball_tracks_enabled := true
-var ball_tracks: Array = []
-var racket_y := RACKET_MIN_Y
-var racket_segment_count := RACKET_DEFAULT_SEGMENTS
-var ball_size := BALL_SIZE
-var ball_speed_scale := BALL_DEFAULT_SPEED_SCALE
-var board_changed := false
-var score := 0
-var displayed_score := 0
-var best_score := 0
-var lives_remaining := INITIAL_LIVES
-var points_to_next_extra_life := EXTRA_LIFE_SCORE_STEP
-var display_level_number := 1
-var bonus_stock_counts: Array[int] = []
-var remaining_bonus_stock := 0
-var falling_bonuses: Array[Dictionary] = []
-var bonus_stack: Array[Dictionary] = []
-var bonus_pointer_frame := 0
-var projectiles: Array[Dictionary] = []
-var monsters: Array[Dictionary] = []
-var bees: Array[Dictionary] = []
-var snake_segments: Array[Dictionary] = []
-var impact_effects: Array[Dictionary] = []
-var score_popups: Array[Dictionary] = []
-var back_wall_time_remaining := 0.0
-var level_ready_time_remaining := 0.0
-var low_block_timer_time_remaining := 0.0
-var _drunk_paddle_time_remaining := 0.0
-var _bonus_rng = RandomScript.new()
-var _ball_animation_rng = RandomScript.new(31415)
-var _bonus_animation_rng = RandomScript.new(31415)
-var _monster_rng = RandomScript.new(31415)
-var _collision_rng = RandomScript.new(31415)
-var _ball_track_rng = RandomScript.new(31415)
-var _bonus_drop_cooldown := BONUS_DROP_GATE_SECONDS
-var _bonus_pointer_elapsed := 0.0
-var _shooting_paddle_mode := PROJECTILE_MODE_DISABLED
-var racket_visual_mode := RACKET_VISUAL_MODE_NORMAL
-var racket_visual_frame := 0
-var _racket_visual_target_mode := RACKET_VISUAL_MODE_NORMAL
-var _racket_visual_elapsed := 0.0
-var _racket_hit_recoil_offset_x := 0.0
-var _racket_hit_recoil_elapsed := 0.0
-var _single_shot_projectile_armed := false
-var _double_paddle_active := false
-var _double_paddle_x := RACKET_X + DOUBLE_PADDLE_OFFSET_X
-var _magnet_paddle_active := false
-var _last_racket_input_y := RACKET_READY_CENTER_Y
-var _last_racket_input_x := RACKET_X
-var _has_last_racket_input := false
-var _has_last_racket_x_input := false
-var _level_ready_animation_time_remaining := 0.0
-var _level_ready_roller_offset := 0.0
-var _level_ready_roller_frame := 0
-var _level_ready_roller_step_elapsed := 0.0
-var _level_ready_auto_launch_pending := false
-var _low_block_timer_started := false
-var _ball_track_spawn_elapsed: Array[float] = []
-var _audio_events: Array[Dictionary] = []
-var _audio_event_queue
-var _ball_system
-var _ball_track_pool
-var _bonus_system
-var _enemy_hazard_system
-var _projectile_system
-var _gameplay_context
-var _racket_system
-var _transient_vfx_pool
+var gameplay_state = GameplayStateScript.new()
+
+var board_state:
+	get:
+		return gameplay_state.board_state
+	set(value):
+		gameplay_state.board_state = value
+
+var state: String:
+	get:
+		return gameplay_state.phase
+	set(value):
+		gameplay_state.phase = value
+
+var balls: Array[Dictionary]:
+	get:
+		return gameplay_state.balls
+	set(value):
+		gameplay_state.balls = value
+
+var ball_tracks_enabled: bool:
+	get:
+		return gameplay_state.ball_tracks_enabled
+	set(value):
+		gameplay_state.ball_tracks_enabled = value
+
+var ball_tracks: Array:
+	get:
+		return gameplay_state.ball_tracks
+	set(value):
+		gameplay_state.ball_tracks = value
+
+var racket_y: float:
+	get:
+		return gameplay_state.racket_y
+	set(value):
+		gameplay_state.racket_y = value
+
+var racket_segment_count: int:
+	get:
+		return gameplay_state.racket_segment_count
+	set(value):
+		gameplay_state.racket_segment_count = value
+
+var ball_size: float:
+	get:
+		return gameplay_state.ball_size
+	set(value):
+		gameplay_state.ball_size = value
+
+var ball_speed_scale: float:
+	get:
+		return gameplay_state.ball_speed_scale
+	set(value):
+		gameplay_state.ball_speed_scale = value
+
+var board_changed: bool:
+	get:
+		return gameplay_state.board_changed
+	set(value):
+		gameplay_state.board_changed = value
+
+var score: int:
+	get:
+		return gameplay_state.score
+	set(value):
+		gameplay_state.score = value
+
+var displayed_score: int:
+	get:
+		return gameplay_state.displayed_score
+	set(value):
+		gameplay_state.displayed_score = value
+
+var best_score: int:
+	get:
+		return gameplay_state.best_score
+	set(value):
+		gameplay_state.best_score = value
+
+var lives_remaining: int:
+	get:
+		return gameplay_state.lives_remaining
+	set(value):
+		gameplay_state.lives_remaining = value
+
+var points_to_next_extra_life: int:
+	get:
+		return gameplay_state.points_to_next_extra_life
+	set(value):
+		gameplay_state.points_to_next_extra_life = value
+
+var display_level_number: int:
+	get:
+		return gameplay_state.display_level_number
+	set(value):
+		gameplay_state.display_level_number = value
+
+var bonus_stock_counts: Array[int]:
+	get:
+		return gameplay_state.bonus_stock_counts
+	set(value):
+		gameplay_state.bonus_stock_counts = value
+
+var remaining_bonus_stock: int:
+	get:
+		return gameplay_state.remaining_bonus_stock
+	set(value):
+		gameplay_state.remaining_bonus_stock = value
+
+var falling_bonuses: Array[Dictionary]:
+	get:
+		return gameplay_state.falling_bonuses
+	set(value):
+		gameplay_state.falling_bonuses = value
+
+var bonus_stack: Array[Dictionary]:
+	get:
+		return gameplay_state.bonus_stack
+	set(value):
+		gameplay_state.bonus_stack = value
+
+var bonus_pointer_frame: int:
+	get:
+		return gameplay_state.bonus_pointer_frame
+	set(value):
+		gameplay_state.bonus_pointer_frame = value
+
+var projectiles: Array[Dictionary]:
+	get:
+		return gameplay_state.projectiles
+	set(value):
+		gameplay_state.projectiles = value
+
+var monsters: Array[Dictionary]:
+	get:
+		return gameplay_state.monsters
+	set(value):
+		gameplay_state.monsters = value
+
+var bees: Array[Dictionary]:
+	get:
+		return gameplay_state.bees
+	set(value):
+		gameplay_state.bees = value
+
+var snake_segments: Array[Dictionary]:
+	get:
+		return gameplay_state.snake_segments
+	set(value):
+		gameplay_state.snake_segments = value
+
+var impact_effects: Array[Dictionary]:
+	get:
+		return gameplay_state.impact_effects
+	set(value):
+		gameplay_state.impact_effects = value
+
+var score_popups: Array[Dictionary]:
+	get:
+		return gameplay_state.score_popups
+	set(value):
+		gameplay_state.score_popups = value
+
+var back_wall_time_remaining: float:
+	get:
+		return gameplay_state.back_wall_time_remaining
+	set(value):
+		gameplay_state.back_wall_time_remaining = value
+
+var level_ready_time_remaining: float:
+	get:
+		return gameplay_state.level_ready_time_remaining
+	set(value):
+		gameplay_state.level_ready_time_remaining = value
+
+var low_block_timer_time_remaining: float:
+	get:
+		return gameplay_state.low_block_timer_time_remaining
+	set(value):
+		gameplay_state.low_block_timer_time_remaining = value
 
 
 func _init() -> void:
-	_audio_event_queue = AudioEventQueueScript.new(_audio_events)
-	_ball_system = BallSystemScript.new(balls, _ball_animation_rng)
-	_ball_track_pool = BallTrackPoolScript.new(ball_tracks, _ball_track_spawn_elapsed, _ball_track_rng)
-	_bonus_system = BonusSystemScript.new(falling_bonuses, bonus_stack)
-	_gameplay_context = GameplayContextScript.new(self)
-	_racket_system = RacketSystemScript.new()
-	_racket_system.sync_from_facade(self)
-	_enemy_hazard_system = EnemyHazardSystemScript.new(monsters, bees, snake_segments, _monster_rng, _collision_rng)
-	_projectile_system = ProjectileSystemScript.new(projectiles)
-	_transient_vfx_pool = TransientVfxPoolScript.new(impact_effects, score_popups)
-	_bonus_rng.set_seed(Time.get_ticks_msec())
+	gameplay_state.audio_event_queue = AudioEventQueueScript.new(gameplay_state)
+	gameplay_state.ball_system = BallSystemScript.new(gameplay_state)
+	gameplay_state.ball_track_pool = BallTrackPoolScript.new(gameplay_state)
+	gameplay_state.bonus_system = BonusSystemScript.new(gameplay_state)
+	gameplay_state.gameplay_context = GameplayContextScript.new(self)
+	gameplay_state.racket_system = RacketSystemScript.new(gameplay_state)
+	gameplay_state.enemy_hazard_system = EnemyHazardSystemScript.new(gameplay_state)
+	gameplay_state.projectile_system = ProjectileSystemScript.new(gameplay_state)
+	gameplay_state.transient_vfx_pool = TransientVfxPoolScript.new(gameplay_state)
+	gameplay_state.bonus_rng.set_seed(Time.get_ticks_msec())
 
 
 func load_level(level: KrakoutLevelData) -> void:
@@ -456,7 +566,7 @@ func load_level(level: KrakoutLevelData) -> void:
 
 
 func start_run(level: KrakoutLevelData, selected_display_level_number: int = 1, starting_best_score: int = 0) -> void:
-	_audio_event_queue.clear()
+	gameplay_state.audio_event_queue.clear()
 	score = 0
 	displayed_score = 0
 	best_score = max(0, starting_best_score)
@@ -472,7 +582,7 @@ func start_run(level: KrakoutLevelData, selected_display_level_number: int = 1, 
 
 func advance_to_level(level: KrakoutLevelData, next_display_level_number: int) -> void:
 	display_level_number = max(1, next_display_level_number)
-	_bonus_system.clear_falling()
+	gameplay_state.bonus_system.clear_falling()
 	_clear_monster_state()
 	_clear_timed_bonus_state()
 	_reset_bonus_drop_gate()
@@ -481,10 +591,10 @@ func advance_to_level(level: KrakoutLevelData, next_display_level_number: int) -
 
 
 func set_board_state(state_value) -> void:
-	_audio_event_queue.clear()
+	gameplay_state.audio_event_queue.clear()
 	board_state = state_value
 	_load_bonus_stock_from_level(board_state.source_level if board_state != null else null)
-	_bonus_system.clear_falling()
+	gameplay_state.bonus_system.clear_falling()
 	_clear_timed_bonus_state()
 	_reset_bonus_drop_gate()
 	reset_round()
@@ -493,9 +603,9 @@ func set_board_state(state_value) -> void:
 func reset_round() -> void:
 	state = STATE_READY
 	board_changed = false
-	_ball_system.clear()
+	gameplay_state.ball_system.clear()
 	_clear_ball_tracks()
-	_bonus_system.clear_falling()
+	gameplay_state.bonus_system.clear_falling()
 	_clear_monster_state()
 	_clear_score_popups()
 	_clear_timed_bonus_state()
@@ -543,7 +653,7 @@ func _chain_cells_source_x(cleared_cells: Array) -> float:
 
 
 func visible_score_popups() -> Array[Dictionary]:
-	return _transient_vfx_pool.visible_score_popups()
+	return gameplay_state.transient_vfx_pool.visible_score_popups()
 
 
 func visible_lives() -> int:
@@ -558,47 +668,47 @@ func _load_board_for_level(level: KrakoutLevelData) -> void:
 
 
 func move_racket_to(mouse_y: float, mouse_x = null) -> void:
-	_racket_system.sync_from_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
 	if is_racket_stunned():
-		_racket_system.remember_input(mouse_y, mouse_x)
-		_racket_system.sync_to_facade(self)
+		gameplay_state.racket_system.remember_input(mouse_y, mouse_x)
+		gameplay_state.racket_system.sync_to_state(gameplay_state)
 		return
 	if is_level_ready_prompt_visible():
-		_racket_system.remember_input(mouse_y, mouse_x)
-		_racket_system.sync_to_facade(self)
+		gameplay_state.racket_system.remember_input(mouse_y, mouse_x)
+		gameplay_state.racket_system.sync_to_state(gameplay_state)
 		return
-	var current_height: float = _racket_system.current_height()
+	var current_height: float = gameplay_state.racket_system.current_height()
 	var target_center_y: float = mouse_y
-	var mouse_delta_x: float = _racket_system.mouse_delta_x(mouse_x)
+	var mouse_delta_x: float = gameplay_state.racket_system.mouse_delta_x(mouse_x)
 	if is_drunk_paddle_active():
-		if _racket_system.has_last_input:
-			target_center_y = _racket_system.y + current_height * 0.5 - (mouse_y - _racket_system.last_input_y)
+		if gameplay_state.racket_system.has_last_input:
+			target_center_y = gameplay_state.racket_system.y + current_height * 0.5 - (mouse_y - gameplay_state.racket_system.last_input_y)
 		else:
-			target_center_y = _racket_system.y + current_height * 0.5
+			target_center_y = gameplay_state.racket_system.y + current_height * 0.5
 		mouse_delta_x = -mouse_delta_x
-	_racket_system.update_double_paddle_x(mouse_delta_x)
-	_racket_system.remember_input(mouse_y, mouse_x)
-	_racket_system.y = clampf(target_center_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.update_double_paddle_x(mouse_delta_x)
+	gameplay_state.racket_system.remember_input(mouse_y, mouse_x)
+	gameplay_state.racket_system.y = clampf(target_center_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 	if state == STATE_READY or state == STATE_BALL_LOST:
 		_attach_ready_balls()
 
 
 func move_racket_by_mouse_delta(mouse_delta_y: float, mouse_delta_x: float = 0.0) -> void:
-	_racket_system.sync_from_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
 	if is_racket_stunned():
 		return
 	if is_level_ready_prompt_visible():
 		return
-	var current_height: float = _racket_system.current_height()
-	var target_center_y: float = _racket_system.y + current_height * 0.5 + mouse_delta_y
+	var current_height: float = gameplay_state.racket_system.current_height()
+	var target_center_y: float = gameplay_state.racket_system.y + current_height * 0.5 + mouse_delta_y
 	var adjusted_mouse_delta_x: float = mouse_delta_x
 	if is_drunk_paddle_active():
-		target_center_y = _racket_system.y + current_height * 0.5 - mouse_delta_y
+		target_center_y = gameplay_state.racket_system.y + current_height * 0.5 - mouse_delta_y
 		adjusted_mouse_delta_x = -adjusted_mouse_delta_x
-	_racket_system.update_double_paddle_x(adjusted_mouse_delta_x)
-	_racket_system.y = clampf(target_center_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.update_double_paddle_x(adjusted_mouse_delta_x)
+	gameplay_state.racket_system.y = clampf(target_center_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 	if state == STATE_READY or state == STATE_BALL_LOST:
 		_attach_ready_balls()
 
@@ -701,12 +811,12 @@ func consume_board_changed() -> bool:
 
 
 func visible_balls() -> Array[Dictionary]:
-	return _ball_system.visible_balls()
+	return gameplay_state.ball_system.visible_balls()
 
 
 func set_ball_tracks_enabled(is_enabled: bool) -> void:
 	ball_tracks_enabled = is_enabled
-	_ball_track_pool.set_enabled(ball_tracks_enabled)
+	gameplay_state.ball_track_pool.set_enabled(ball_tracks_enabled)
 
 
 func are_ball_tracks_enabled() -> bool:
@@ -714,8 +824,8 @@ func are_ball_tracks_enabled() -> bool:
 
 
 func visible_ball_tracks() -> Array[Dictionary]:
-	_ball_track_pool.set_enabled(ball_tracks_enabled)
-	return _ball_track_pool.visible_tracks()
+	gameplay_state.ball_track_pool.set_enabled(ball_tracks_enabled)
+	return gameplay_state.ball_track_pool.visible_tracks()
 
 
 func visible_falling_bonuses() -> Array[Dictionary]:
@@ -727,27 +837,27 @@ func visible_falling_bonuses() -> Array[Dictionary]:
 
 
 func visible_projectiles() -> Array[Dictionary]:
-	return _projectile_system.visible_projectiles()
+	return gameplay_state.projectile_system.visible_projectiles()
 
 
 func visible_monsters() -> Array[Dictionary]:
-	return _enemy_hazard_system.visible_monsters()
+	return gameplay_state.enemy_hazard_system.visible_monsters()
 
 
 func visible_bees() -> Array[Dictionary]:
-	return _enemy_hazard_system.visible_bees()
+	return gameplay_state.enemy_hazard_system.visible_bees()
 
 
 func visible_snake_segments() -> Array[Dictionary]:
-	return _enemy_hazard_system.visible_snake_segments()
+	return gameplay_state.enemy_hazard_system.visible_snake_segments()
 
 
 func visible_impact_effects() -> Array[Dictionary]:
-	return _transient_vfx_pool.visible_impact_effects()
+	return gameplay_state.transient_vfx_pool.visible_impact_effects()
 
 
 func bonus_stack_entries() -> Array[Dictionary]:
-	return _bonus_system.stack_entries()
+	return gameplay_state.bonus_system.stack_entries()
 
 
 func debug_add_bonus_to_stack(type_id: int) -> Dictionary:
@@ -782,7 +892,7 @@ func debug_remove_bonus_from_stack(index: int) -> Dictionary:
 			"index": index,
 			"count": bonus_stack.size(),
 		}
-	var removed_entry: Dictionary = _bonus_system.remove_stack_entry(index)
+	var removed_entry: Dictionary = gameplay_state.bonus_system.remove_stack_entry(index)
 	var type_id := int(removed_entry.get("type_id", -1))
 	return {
 		"status": "removed",
@@ -794,7 +904,7 @@ func debug_remove_bonus_from_stack(index: int) -> Dictionary:
 
 
 func debug_clear_bonus_stack() -> int:
-	return _bonus_system.clear_stack()
+	return gameplay_state.bonus_system.clear_stack()
 
 
 static func snake_runtime_activation_evidence() -> Dictionary:
@@ -861,7 +971,7 @@ func active_bonus_indicators() -> Array[Dictionary]:
 	if is_racket_stunned():
 		indicators.append({
 			"icon_index": RACKET_STUN_STATUS_ICON_INDEX,
-			"value": ceili(_enemy_hazard_system.racket_stun_time_remaining),
+			"value": ceili(gameplay_state.enemy_hazard_system.racket_stun_time_remaining),
 		})
 	if is_low_block_timer_active():
 		indicators.append({
@@ -879,11 +989,11 @@ func active_bonus_indicators() -> Array[Dictionary]:
 func start_level_ready_sequence(queue_audio := true) -> void:
 	_reset_racket_to_ready_center()
 	level_ready_time_remaining = LEVEL_READY_SEQUENCE_SECONDS
-	_level_ready_animation_time_remaining = LEVEL_READY_ANIMATION_SECONDS
-	_level_ready_roller_offset = 0.0
-	_level_ready_roller_frame = 0
-	_level_ready_roller_step_elapsed = 0.0
-	_level_ready_auto_launch_pending = false
+	gameplay_state.level_ready_animation_time_remaining = LEVEL_READY_ANIMATION_SECONDS
+	gameplay_state.level_ready_roller_offset = 0.0
+	gameplay_state.level_ready_roller_frame = 0
+	gameplay_state.level_ready_roller_step_elapsed = 0.0
+	gameplay_state.level_ready_auto_launch_pending = false
 	if queue_audio:
 		_queue_audio_event(SFX_EVENT_LEVEL_READY)
 
@@ -893,7 +1003,7 @@ func is_level_ready_sequence_active() -> bool:
 
 
 func is_level_ready_prompt_visible() -> bool:
-	return _level_ready_animation_time_remaining > 0.0
+	return gameplay_state.level_ready_animation_time_remaining > 0.0
 
 
 func is_racket_visible() -> bool:
@@ -907,20 +1017,20 @@ func are_balls_visible() -> bool:
 func level_ready_animation_progress() -> float:
 	if LEVEL_READY_ROLLER_TRAVEL_PIXELS <= 0.0:
 		return 1.0
-	return clampf(_level_ready_roller_offset / LEVEL_READY_ROLLER_TRAVEL_PIXELS, 0.0, 1.0)
+	return clampf(gameplay_state.level_ready_roller_offset / LEVEL_READY_ROLLER_TRAVEL_PIXELS, 0.0, 1.0)
 
 
 func level_ready_roller_layout() -> Dictionary:
 	if not is_level_ready_prompt_visible():
 		return {"visible": false}
 
-	var roller_position := LEVEL_READY_ROLLER_POSITION + Vector2(_level_ready_roller_offset, 0.0)
+	var roller_position := LEVEL_READY_ROLLER_POSITION + Vector2(gameplay_state.level_ready_roller_offset, 0.0)
 	return {
 		"visible": true,
 		"position": roller_position,
 		"destination": Rect2(roller_position, LEVEL_READY_ROLLER_SOURCE_SIZE),
-		"source": Rect2(Vector2(_level_ready_roller_frame * LEVEL_READY_ROLLER_SOURCE_SIZE.x, 0), LEVEL_READY_ROLLER_SOURCE_SIZE),
-		"frame": _level_ready_roller_frame,
+		"source": Rect2(Vector2(gameplay_state.level_ready_roller_frame * LEVEL_READY_ROLLER_SOURCE_SIZE.x, 0), LEVEL_READY_ROLLER_SOURCE_SIZE),
+		"frame": gameplay_state.level_ready_roller_frame,
 		"progress": level_ready_animation_progress(),
 	}
 
@@ -934,31 +1044,31 @@ func is_low_block_timer_active() -> bool:
 
 
 func is_shooting_paddle_active() -> bool:
-	return _shooting_paddle_mode == PROJECTILE_MODE_CONTINUOUS
+	return gameplay_state.shooting_paddle_mode == PROJECTILE_MODE_CONTINUOUS
 
 
 func is_single_shot_paddle_armed() -> bool:
-	return _single_shot_projectile_armed
+	return gameplay_state.single_shot_projectile_armed
 
 
 func is_double_paddle_active() -> bool:
-	_racket_system.sync_from_facade(self)
-	return _double_paddle_active
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	return gameplay_state.double_paddle_active
 
 
 func is_magnet_paddle_active() -> bool:
-	_racket_system.sync_from_facade(self)
-	return _magnet_paddle_active
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	return gameplay_state.magnet_paddle_active
 
 
 func is_drunk_paddle_active() -> bool:
-	_racket_system.sync_from_facade(self)
-	return _drunk_paddle_time_remaining > 0.0
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	return gameplay_state.drunk_paddle_time_remaining > 0.0
 
 
 func drunk_paddle_time_remaining() -> float:
-	_racket_system.sync_from_facade(self)
-	return _drunk_paddle_time_remaining
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	return gameplay_state.drunk_paddle_time_remaining
 
 
 func magnet_attached_ball_count() -> int:
@@ -970,39 +1080,39 @@ func magnet_attached_ball_count() -> int:
 
 
 func is_racket_stunned() -> bool:
-	return _enemy_hazard_system.is_racket_stunned()
+	return gameplay_state.enemy_hazard_system.is_racket_stunned()
 
 
 func current_racket_visual_mode() -> int:
-	_racket_system.sync_from_facade(self)
-	return racket_visual_mode
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	return gameplay_state.racket_visual_mode
 
 
 func current_racket_visual_frame() -> int:
-	_racket_system.sync_from_facade(self)
-	return racket_visual_frame
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	return gameplay_state.racket_visual_frame
 
 
 func fire_shooting_paddle() -> Dictionary:
 	if state != STATE_PLAYING:
 		return {"status": "inactive"}
 	var projectile_type := -1
-	if _shooting_paddle_mode == PROJECTILE_MODE_CONTINUOUS:
+	if gameplay_state.shooting_paddle_mode == PROJECTILE_MODE_CONTINUOUS:
 		projectile_type = PROJECTILE_TYPE_CONTINUOUS
-	elif _single_shot_projectile_armed:
+	elif gameplay_state.single_shot_projectile_armed:
 		projectile_type = PROJECTILE_TYPE_STRONG
 	else:
 		return {"status": "unarmed"}
 
-	var projectile_fire_cooldown: float = float(_projectile_system.fire_cooldown_remaining())
+	var projectile_fire_cooldown: float = float(gameplay_state.projectile_system.fire_cooldown_remaining())
 	if projectile_fire_cooldown > 0.0:
 		return {"status": "cooldown", "remaining": projectile_fire_cooldown, "projectile_type": projectile_type}
 
 	if _spawn_projectile(projectile_type):
 		if projectile_type == PROJECTILE_TYPE_STRONG:
-			_single_shot_projectile_armed = false
+			gameplay_state.single_shot_projectile_armed = false
 			_set_racket_visual_target(RACKET_VISUAL_MODE_NORMAL)
-		_projectile_system.start_fire_cooldown()
+		gameplay_state.projectile_system.start_fire_cooldown()
 		return {"status": "fired", "projectile_type": projectile_type}
 	return {"status": "blocked", "projectile_type": projectile_type}
 
@@ -1016,11 +1126,11 @@ static func sfx_pan_for_source_x(source_x: float) -> float:
 
 
 func pop_audio_events() -> Array[String]:
-	return _audio_event_queue.pop_event_names()
+	return gameplay_state.audio_event_queue.pop_event_names()
 
 
 func pop_audio_event_payloads() -> Array[Dictionary]:
-	return _audio_event_queue.pop_payloads()
+	return gameplay_state.audio_event_queue.pop_payloads()
 
 
 func activate_next_bonus() -> Dictionary:
@@ -1122,11 +1232,11 @@ static func _monster_trait_value(type_id: int, key: String, default_value):
 
 
 func set_bonus_rng_seed(seed_value: int) -> void:
-	_bonus_rng.set_seed(seed_value)
+	gameplay_state.bonus_rng.set_seed(seed_value)
 
 
 func set_monster_rng_seed(seed_value: int) -> void:
-	_enemy_hazard_system.set_monster_rng_seed(seed_value)
+	gameplay_state.enemy_hazard_system.set_monster_rng_seed(seed_value)
 
 
 func active_monster_spawn_pool() -> Array[int]:
@@ -1134,95 +1244,95 @@ func active_monster_spawn_pool() -> Array[int]:
 
 
 func set_collision_rng_seed(seed_value: int) -> void:
-	_enemy_hazard_system.set_collision_rng_seed(seed_value)
+	gameplay_state.enemy_hazard_system.set_collision_rng_seed(seed_value)
 
 
 func set_ball_track_rng_seed(seed_value: int) -> void:
-	_ball_track_rng.set_seed(seed_value)
+	gameplay_state.ball_track_rng.set_seed(seed_value)
 
 
 func force_bonus_drop_ready() -> void:
-	_bonus_drop_cooldown = 0.0
+	gameplay_state.bonus_drop_cooldown = 0.0
 
 
 func force_monster_spawn_ready() -> void:
-	_enemy_hazard_system.force_monster_spawn_ready()
+	gameplay_state.enemy_hazard_system.force_monster_spawn_ready()
 
 
 func force_bee_spawn_ready() -> void:
-	_enemy_hazard_system.force_bee_spawn_ready()
+	gameplay_state.enemy_hazard_system.force_bee_spawn_ready()
 
 
 func set_projectile_fire_cooldown_for_test(seconds: float) -> void:
-	_projectile_system.set_fire_cooldown_for_test(seconds)
+	gameplay_state.projectile_system.set_fire_cooldown_for_test(seconds)
 
 
 func replace_projectiles_for_test(next_projectiles: Array) -> void:
-	_projectile_system.replace_projectiles_for_test(next_projectiles)
+	gameplay_state.projectile_system.replace_projectiles_for_test(next_projectiles)
 
 
 func clear_projectiles_for_test() -> void:
-	_projectile_system.clear()
+	gameplay_state.projectile_system.clear()
 
 
 func set_monster_spawn_cooldown_for_test(seconds: float) -> void:
-	_enemy_hazard_system.set_monster_spawn_cooldown_for_test(seconds)
+	gameplay_state.enemy_hazard_system.set_monster_spawn_cooldown_for_test(seconds)
 
 
 func set_bee_spawn_delay_for_test(seconds: float) -> void:
-	_enemy_hazard_system.set_bee_spawn_delay_for_test(seconds)
+	gameplay_state.enemy_hazard_system.set_bee_spawn_delay_for_test(seconds)
 
 
 func set_monster_age_for_test(index: int, age: float) -> bool:
-	return _enemy_hazard_system.set_monster_age_for_test(index, age)
+	return gameplay_state.enemy_hazard_system.set_monster_age_for_test(index, age)
 
 
 func active_ball_count() -> int:
-	return _ball_system.active_count()
+	return gameplay_state.ball_system.active_count()
 
 
 func active_projectile_count() -> int:
-	return _projectile_system.active_count()
+	return gameplay_state.projectile_system.active_count()
 
 
 func active_monster_count() -> int:
-	return _enemy_hazard_system.active_monster_count()
+	return gameplay_state.enemy_hazard_system.active_monster_count()
 
 
 func active_bee_count() -> int:
-	return _enemy_hazard_system.active_bee_count()
+	return gameplay_state.enemy_hazard_system.active_bee_count()
 
 
 func active_snake_segment_count() -> int:
-	return _enemy_hazard_system.active_snake_segment_count()
+	return gameplay_state.enemy_hazard_system.active_snake_segment_count()
 
 
 func current_racket_height() -> float:
-	_racket_system.sync_from_facade(self)
-	return _racket_system.current_height()
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	return gameplay_state.racket_system.current_height()
 
 
 func current_racket_x() -> float:
-	_racket_system.sync_from_facade(self)
-	return _racket_system.current_x()
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	return gameplay_state.racket_system.current_x()
 
 
 func racket_rect() -> Rect2:
-	_racket_system.sync_from_facade(self)
-	return _racket_system.primary_rect()
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	return gameplay_state.racket_system.primary_rect()
 
 
 func racket_rects() -> Array[Rect2]:
-	_racket_system.sync_from_facade(self)
-	return _racket_system.rects()
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	return gameplay_state.racket_system.rects()
 
 
 func ball_rect(ball: Dictionary) -> Rect2:
-	return _ball_system.ball_rect(ball)
+	return gameplay_state.ball_system.ball_rect(ball)
 
 
 func projectile_rect(projectile: Dictionary) -> Rect2:
-	return _projectile_system.projectile_rect(projectile)
+	return gameplay_state.projectile_system.projectile_rect(projectile)
 
 
 func monster_rect(monster: Dictionary) -> Rect2:
@@ -1252,35 +1362,35 @@ func first_ball_velocity() -> Vector2:
 func first_ball_type_id() -> int:
 	if balls.is_empty():
 		return BALL_TYPE_STANDARD
-	return _ball_system.ball_type(balls[0])
+	return gameplay_state.ball_system.ball_type(balls[0])
 
 
 func active_non_stricked_ball_count() -> int:
-	return _ball_system.active_non_stricked_count()
+	return gameplay_state.ball_system.active_non_stricked_count()
 
 
 func force_ball(position: Vector2, velocity: Vector2, size: float = BALL_SIZE, type_id: int = BALL_TYPE_STANDARD) -> void:
-	_ball_system.force_ball(position, velocity, size, type_id, ball_speed_scale, _target_speed_for_new_ball(velocity))
+	gameplay_state.ball_system.force_ball(position, velocity, size, type_id, ball_speed_scale, _target_speed_for_new_ball(velocity))
 	_clear_ball_tracks()
 	state = STATE_PLAYING
 
 
 func force_monster(position: Vector2, type_id: int = 3, angle: int = 0) -> bool:
-	var forced: bool = _enemy_hazard_system.force_monster(position, type_id, angle)
+	var forced: bool = gameplay_state.enemy_hazard_system.force_monster(position, type_id, angle)
 	if forced:
 		state = STATE_PLAYING
 	return forced
 
 
 func force_bee(position: Vector2, frame: int = 0) -> bool:
-	var forced: bool = _enemy_hazard_system.force_bee(position, frame)
+	var forced: bool = gameplay_state.enemy_hazard_system.force_bee(position, frame)
 	if forced:
 		state = STATE_PLAYING
 	return forced
 
 
 func force_snake_vfx_segments_for_test(segments: Array) -> int:
-	return _enemy_hazard_system.force_snake_vfx_segments_for_test(segments)
+	return gameplay_state.enemy_hazard_system.force_snake_vfx_segments_for_test(segments)
 
 
 func _add_ready_ball() -> void:
@@ -1288,7 +1398,7 @@ func _add_ready_ball() -> void:
 
 
 func _add_ball(position: Vector2, velocity: Vector2, active := true, type_id := BALL_TYPE_STANDARD) -> bool:
-	return _ball_system.add_ball(
+	return gameplay_state.ball_system.add_ball(
 		position,
 		velocity,
 		active,
@@ -1329,11 +1439,11 @@ func _ready_ball_position() -> Vector2:
 
 
 func _ball_type(ball: Dictionary) -> int:
-	return _ball_system.ball_type(ball)
+	return gameplay_state.ball_system.ball_type(ball)
 
 
 func _is_non_stricked_ball(ball: Dictionary) -> bool:
-	return _ball_system.is_non_stricked_ball(ball)
+	return gameplay_state.ball_system.is_non_stricked_ball(ball)
 
 
 func _ball_force_breaks_board(ball: Dictionary) -> bool:
@@ -1358,9 +1468,9 @@ func _restore_ball_type_after_non_stricked(ball: Dictionary) -> void:
 
 
 func _reset_racket_to_ready_center() -> void:
-	_racket_system.sync_from_facade(self)
-	_racket_system.reset_to_ready_center()
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.reset_to_ready_center()
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 	if state == STATE_READY or state == STATE_BALL_LOST:
 		_attach_ready_balls()
 
@@ -1426,85 +1536,85 @@ func _advance_ball(ball: Dictionary, delta: float) -> void:
 
 
 func _update_ball_animation(delta: float) -> void:
-	_ball_system.update_animation(delta)
+	gameplay_state.ball_system.update_animation(delta)
 
 
 func _update_ball_tracks(delta: float) -> void:
-	_ball_track_pool.set_enabled(ball_tracks_enabled)
-	_ball_track_pool.update(delta, balls, ball_size)
+	gameplay_state.ball_track_pool.set_enabled(ball_tracks_enabled)
+	gameplay_state.ball_track_pool.update(delta, balls, ball_size)
 
 
 func _ensure_ball_track_slots() -> void:
-	_ball_track_pool.ensure_slots(balls.size())
+	gameplay_state.ball_track_pool.ensure_slots(balls.size())
 
 
 func _new_ball_track_slots() -> Array[Dictionary]:
-	return _ball_track_pool.new_track_slots()
+	return gameplay_state.ball_track_pool.new_track_slots()
 
 
 func _clear_ball_tracks() -> void:
-	_ball_track_pool.clear()
+	gameplay_state.ball_track_pool.clear()
 
 
 func _clear_ball_track_slots(ball_index: int) -> void:
-	_ball_track_pool.clear_slots(ball_index)
+	gameplay_state.ball_track_pool.clear_slots(ball_index)
 
 
 func _advance_ball_track_slots(ball_index: int, delta: float) -> void:
-	_ball_track_pool.advance_slots(ball_index, delta)
+	gameplay_state.ball_track_pool.advance_slots(ball_index, delta)
 
 
 func _spawn_ball_track(ball_index: int, ball: Dictionary) -> bool:
 	if ball_index < 0:
 		return false
-	_ball_track_pool.ensure_slots(balls.size())
+	gameplay_state.ball_track_pool.ensure_slots(balls.size())
 	if ball_index >= ball_tracks.size():
 		return false
-	return _ball_track_pool.spawn_track(ball_index, ball, ball_size)
+	return gameplay_state.ball_track_pool.spawn_track(ball_index, ball, ball_size)
 
 
 func _ball_track_position(ball: Dictionary) -> Vector2:
-	return _ball_track_pool.track_position(ball, ball_size)
+	return gameplay_state.ball_track_pool.track_position(ball, ball_size)
 
 
 func _update_level_ready_sequence(delta: float) -> void:
 	if level_ready_time_remaining > 0.0:
 		level_ready_time_remaining = maxf(0.0, level_ready_time_remaining - delta)
 		if level_ready_time_remaining <= 0.0:
-			_level_ready_auto_launch_pending = true
-	if _level_ready_animation_time_remaining > 0.0:
-		_level_ready_roller_step_elapsed += delta
-		while _level_ready_roller_step_elapsed + LEVEL_READY_ROLLER_STEP_EPSILON >= LEVEL_READY_ROLLER_STEP_SECONDS and _level_ready_animation_time_remaining > 0.0:
-			_level_ready_roller_step_elapsed -= LEVEL_READY_ROLLER_STEP_SECONDS
-			if _level_ready_roller_step_elapsed < 0.0:
-				_level_ready_roller_step_elapsed = 0.0
-			_level_ready_roller_offset = minf(LEVEL_READY_ROLLER_TRAVEL_PIXELS, _level_ready_roller_offset + LEVEL_READY_ROLLER_STEP_PIXELS)
-			_level_ready_roller_frame = (_level_ready_roller_frame + 1) % LEVEL_READY_ROLLER_FRAME_COUNT
-			_level_ready_animation_time_remaining = maxf(0.0, _level_ready_animation_time_remaining - LEVEL_READY_ROLLER_STEP_SECONDS)
-		if _level_ready_roller_offset >= LEVEL_READY_ROLLER_TRAVEL_PIXELS:
-			_level_ready_animation_time_remaining = 0.0
-			_level_ready_roller_step_elapsed = 0.0
+			gameplay_state.level_ready_auto_launch_pending = true
+	if gameplay_state.level_ready_animation_time_remaining > 0.0:
+		gameplay_state.level_ready_roller_step_elapsed += delta
+		while gameplay_state.level_ready_roller_step_elapsed + LEVEL_READY_ROLLER_STEP_EPSILON >= LEVEL_READY_ROLLER_STEP_SECONDS and gameplay_state.level_ready_animation_time_remaining > 0.0:
+			gameplay_state.level_ready_roller_step_elapsed -= LEVEL_READY_ROLLER_STEP_SECONDS
+			if gameplay_state.level_ready_roller_step_elapsed < 0.0:
+				gameplay_state.level_ready_roller_step_elapsed = 0.0
+			gameplay_state.level_ready_roller_offset = minf(LEVEL_READY_ROLLER_TRAVEL_PIXELS, gameplay_state.level_ready_roller_offset + LEVEL_READY_ROLLER_STEP_PIXELS)
+			gameplay_state.level_ready_roller_frame = (gameplay_state.level_ready_roller_frame + 1) % LEVEL_READY_ROLLER_FRAME_COUNT
+			gameplay_state.level_ready_animation_time_remaining = maxf(0.0, gameplay_state.level_ready_animation_time_remaining - LEVEL_READY_ROLLER_STEP_SECONDS)
+		if gameplay_state.level_ready_roller_offset >= LEVEL_READY_ROLLER_TRAVEL_PIXELS:
+			gameplay_state.level_ready_animation_time_remaining = 0.0
+			gameplay_state.level_ready_roller_step_elapsed = 0.0
 
 
 func _clear_level_ready_sequence() -> void:
 	level_ready_time_remaining = 0.0
-	_level_ready_animation_time_remaining = 0.0
-	_level_ready_roller_offset = 0.0
-	_level_ready_roller_frame = 0
-	_level_ready_roller_step_elapsed = 0.0
-	_level_ready_auto_launch_pending = false
+	gameplay_state.level_ready_animation_time_remaining = 0.0
+	gameplay_state.level_ready_roller_offset = 0.0
+	gameplay_state.level_ready_roller_frame = 0
+	gameplay_state.level_ready_roller_step_elapsed = 0.0
+	gameplay_state.level_ready_auto_launch_pending = false
 
 
 func _skip_level_ready_prompt() -> void:
-	_level_ready_animation_time_remaining = 0.0
-	_level_ready_roller_offset = LEVEL_READY_ROLLER_TRAVEL_PIXELS
-	_level_ready_roller_step_elapsed = 0.0
+	gameplay_state.level_ready_animation_time_remaining = 0.0
+	gameplay_state.level_ready_roller_offset = LEVEL_READY_ROLLER_TRAVEL_PIXELS
+	gameplay_state.level_ready_roller_step_elapsed = 0.0
 
 
 func _auto_launch_ready_ball_if_needed() -> bool:
-	if not _level_ready_auto_launch_pending:
+	if not gameplay_state.level_ready_auto_launch_pending:
 		return false
-	_level_ready_auto_launch_pending = false
+	gameplay_state.level_ready_auto_launch_pending = false
 	return launch_ready_ball()
 
 
@@ -1751,7 +1861,7 @@ func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictiona
 func _try_resolve_bonus_drop(column: int, row: int, tile_id: int) -> Dictionary:
 	if not BrickSemanticsScript.can_spawn_bonus(tile_id):
 		return {"action": "clear"}
-	if _bonus_drop_cooldown > 0.0:
+	if gameplay_state.bonus_drop_cooldown > 0.0:
 		return {"action": "clear"}
 
 	_reset_bonus_drop_gate()
@@ -1763,14 +1873,14 @@ func _try_resolve_bonus_drop(column: int, row: int, tile_id: int) -> Dictionary:
 	var chance_denominator: int = int((2 * board_state.remaining_required_bricks) / remaining_bonus_stock)
 	if chance_denominator <= 0:
 		return {"action": "clear"}
-	if _bonus_rng.next_mod(chance_denominator) != 0:
+	if gameplay_state.bonus_rng.next_mod(chance_denominator) != 0:
 		return {"action": "clear"}
 
-	var selector := _bonus_rng.next_mod(BONUS_SELECTOR_COUNT)
+	var selector: int = gameplay_state.bonus_rng.next_mod(BONUS_SELECTOR_COUNT)
 	var attempts := BONUS_SELECTOR_COUNT
 	while attempts > 0:
 		if selector >= BONUS_TYPE_COUNT:
-			var tile_selector := _bonus_rng.next_mod(CHAIN_SELECTOR_TILE_IDS.size())
+			var tile_selector: int = gameplay_state.bonus_rng.next_mod(CHAIN_SELECTOR_TILE_IDS.size())
 			var chain_tile_id := int(CHAIN_SELECTOR_TILE_IDS[tile_selector])
 			if board_state.convert_to_chain_explosion_tile(column, row, chain_tile_id):
 				return {"action": "chain"}
@@ -1844,10 +1954,10 @@ func _load_bonus_stock_from_level(level: KrakoutLevelData) -> void:
 
 
 func _clear_bonus_run_state() -> void:
-	_bonus_system.clear_falling()
-	_bonus_system.clear_stack()
+	gameplay_state.bonus_system.clear_falling()
+	gameplay_state.bonus_system.clear_stack()
 	bonus_pointer_frame = 0
-	_bonus_pointer_elapsed = 0.0
+	gameplay_state.bonus_pointer_elapsed = 0.0
 	_clear_timed_bonus_state()
 	_reset_bonus_drop_gate()
 
@@ -1857,41 +1967,41 @@ func _reset_bonus_effect_state() -> void:
 	ball_size = BALL_SIZE
 	ball_speed_scale = BALL_DEFAULT_SPEED_SCALE
 	_clear_paddle_mode_state(false)
-	_drunk_paddle_time_remaining = 0.0
-	_has_last_racket_input = false
-	_has_last_racket_x_input = false
-	_last_racket_input_y = RACKET_READY_CENTER_Y
-	_last_racket_input_x = RACKET_X
+	gameplay_state.drunk_paddle_time_remaining = 0.0
+	gameplay_state.has_last_racket_input = false
+	gameplay_state.has_last_racket_x_input = false
+	gameplay_state.last_racket_input_y = RACKET_READY_CENTER_Y
+	gameplay_state.last_racket_input_x = RACKET_X
 	racket_y = clampf(racket_y, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_racket_height())
 
 
 func _reset_bonus_drop_gate() -> void:
-	_bonus_drop_cooldown = BONUS_DROP_GATE_SECONDS
+	gameplay_state.bonus_drop_cooldown = BONUS_DROP_GATE_SECONDS
 
 
 func _clear_timed_bonus_state() -> void:
 	back_wall_time_remaining = 0.0
 	low_block_timer_time_remaining = 0.0
-	_low_block_timer_started = false
-	_projectile_system.reset()
+	gameplay_state.low_block_timer_started = false
+	gameplay_state.projectile_system.reset()
 	_clear_paddle_mode_state(false)
 	_clear_racket_hit_recoil()
-	_drunk_paddle_time_remaining = 0.0
+	gameplay_state.drunk_paddle_time_remaining = 0.0
 
 
 func _update_bonus_timers(delta: float) -> void:
-	if _bonus_drop_cooldown > 0.0:
-		_bonus_drop_cooldown = maxf(0.0, _bonus_drop_cooldown - delta)
+	if gameplay_state.bonus_drop_cooldown > 0.0:
+		gameplay_state.bonus_drop_cooldown = maxf(0.0, gameplay_state.bonus_drop_cooldown - delta)
 	if back_wall_time_remaining > 0.0:
 		back_wall_time_remaining = maxf(0.0, back_wall_time_remaining - delta)
-	_enemy_hazard_system.update_racket_stun(delta)
-	if _drunk_paddle_time_remaining > 0.0:
-		_drunk_paddle_time_remaining = maxf(0.0, _drunk_paddle_time_remaining - delta)
+	gameplay_state.enemy_hazard_system.update_racket_stun(delta)
+	if gameplay_state.drunk_paddle_time_remaining > 0.0:
+		gameplay_state.drunk_paddle_time_remaining = maxf(0.0, gameplay_state.drunk_paddle_time_remaining - delta)
 	_update_non_stricked_balls(delta)
 
 
 func _arm_low_block_timer_if_needed() -> void:
-	if _low_block_timer_started:
+	if gameplay_state.low_block_timer_started:
 		return
 	if state != STATE_PLAYING or board_state == null:
 		return
@@ -1900,12 +2010,12 @@ func _arm_low_block_timer_if_needed() -> void:
 	if board_state.remaining_required_bricks > LOW_BLOCK_TIMER_TRIGGER_REQUIRED_BRICKS:
 		return
 
-	_low_block_timer_started = true
+	gameplay_state.low_block_timer_started = true
 	low_block_timer_time_remaining = LOW_BLOCK_TIMER_SECONDS
 
 
 func _update_low_block_timer(delta: float) -> void:
-	if not _low_block_timer_started:
+	if not gameplay_state.low_block_timer_started:
 		return
 	if state != STATE_PLAYING:
 		return
@@ -1950,50 +2060,50 @@ func _update_non_stricked_balls(delta: float) -> void:
 
 
 func _set_racket_visual_target(visual_mode: int) -> void:
-	_racket_system.sync_from_facade(self)
-	_racket_system.set_visual_target(visual_mode)
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.set_visual_target(visual_mode)
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 
 
 func _update_racket_visual(delta: float) -> void:
-	_racket_system.sync_from_facade(self)
-	_racket_system.update_visual(delta)
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.update_visual(delta)
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 
 
 func _start_racket_hit_recoil() -> void:
-	_racket_system.sync_from_facade(self)
-	_racket_system.start_hit_recoil()
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.start_hit_recoil()
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 
 
 func _clear_racket_hit_recoil() -> void:
-	_racket_system.sync_from_facade(self)
-	_racket_system.clear_hit_recoil()
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.clear_hit_recoil()
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 
 
 func _update_racket_hit_recoil(delta: float) -> void:
-	_racket_system.sync_from_facade(self)
-	_racket_system.update_hit_recoil(delta)
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.update_hit_recoil(delta)
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 
 
 func _mouse_delta_x(mouse_x) -> float:
-	_racket_system.sync_from_facade(self)
-	return _racket_system.mouse_delta_x(mouse_x)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	return gameplay_state.racket_system.mouse_delta_x(mouse_x)
 
 
 func _remember_racket_input(mouse_y: float, mouse_x = null) -> void:
-	_racket_system.sync_from_facade(self)
-	_racket_system.remember_input(mouse_y, mouse_x)
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.remember_input(mouse_y, mouse_x)
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 
 
 func _update_double_paddle_x(mouse_delta_x: float) -> void:
-	_racket_system.sync_from_facade(self)
-	_racket_system.update_double_paddle_x(mouse_delta_x)
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.update_double_paddle_x(mouse_delta_x)
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 
 
 func _clear_paddle_mode_state(release_attached_balls := true) -> void:
@@ -2001,11 +2111,11 @@ func _clear_paddle_mode_state(release_attached_balls := true) -> void:
 		_release_magnet_attached_balls()
 	else:
 		_clear_all_magnet_attachments()
-	_shooting_paddle_mode = PROJECTILE_MODE_DISABLED
-	_single_shot_projectile_armed = false
-	_racket_system.sync_from_facade(self)
-	_racket_system.clear_paddle_mode_state()
-	_racket_system.sync_to_facade(self)
+	gameplay_state.shooting_paddle_mode = PROJECTILE_MODE_DISABLED
+	gameplay_state.single_shot_projectile_armed = false
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.clear_paddle_mode_state()
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 
 
 func _is_ball_magnet_attached(ball: Dictionary) -> bool:
@@ -2128,7 +2238,7 @@ func _spawn_falling_bonus(type_id: int, position: Vector2) -> bool:
 		"position": position,
 		"base_y": position.y,
 		"angle": 0,
-		"frame": _bonus_animation_rng.next_mod(BONUS_ANIMATION_FRAME_COUNT),
+		"frame": gameplay_state.bonus_animation_rng.next_mod(BONUS_ANIMATION_FRAME_COUNT),
 		"frame_elapsed": 0.0,
 		"substep_accumulator": 0.0,
 	})
@@ -2188,12 +2298,12 @@ func _advance_falling_bonus(bonus: Dictionary, delta: float) -> void:
 
 
 func _update_projectile_fire(delta: float) -> void:
-	_projectile_system.update_fire_cooldown(delta)
+	gameplay_state.projectile_system.update_fire_cooldown(delta)
 
 
 func _spawn_projectile(projectile_type: int) -> bool:
 	var position := _projectile_spawn_position()
-	if not _projectile_system.spawn_projectile(projectile_type, position):
+	if not gameplay_state.projectile_system.spawn_projectile(projectile_type, position):
 		return false
 	_queue_audio_event_at_x(SFX_EVENT_PROJECTILE_FIRE, position.x)
 	return true
@@ -2208,7 +2318,7 @@ func _projectile_spawn_position() -> Vector2:
 
 
 func _update_projectiles(delta: float) -> void:
-	_projectile_system.update(delta, Callable(self, "_resolve_projectile_collision"))
+	gameplay_state.projectile_system.update(delta, Callable(self, "_resolve_projectile_collision"))
 
 
 func _resolve_projectile_collision(projectile: Dictionary) -> bool:
@@ -2222,7 +2332,7 @@ func _resolve_projectile_collision(projectile: Dictionary) -> bool:
 
 
 func _advance_projectile(projectile: Dictionary, delta: float) -> void:
-	_projectile_system.advance_projectile(projectile, delta)
+	gameplay_state.projectile_system.advance_projectile(projectile, delta)
 
 
 func _collide_projectile_with_board(projectile: Dictionary) -> bool:
@@ -2245,7 +2355,7 @@ func _collide_projectile_with_board(projectile: Dictionary) -> bool:
 
 
 func _enemy_hazard_ports() -> Dictionary:
-	return _gameplay_context.to_ports()
+	return gameplay_state.gameplay_context.to_ports()
 
 
 func _current_racket_segment_count() -> int:
@@ -2253,40 +2363,40 @@ func _current_racket_segment_count() -> int:
 
 
 func _clear_monster_state() -> void:
-	_enemy_hazard_system.clear(Callable(self, "_queue_audio_event"))
+	gameplay_state.enemy_hazard_system.clear(Callable(self, "_queue_audio_event"))
 	impact_effects.clear()
 
 
 func _clear_snake_state() -> void:
-	_enemy_hazard_system.clear_snake_state()
+	gameplay_state.enemy_hazard_system.clear_snake_state()
 
 
 func _update_snake_segments(delta: float) -> void:
-	_enemy_hazard_system.update_snake_segments(delta, _enemy_hazard_ports())
+	gameplay_state.enemy_hazard_system.update_snake_segments(delta, _enemy_hazard_ports())
 
 
 func _collide_ball_with_snake(ball: Dictionary) -> bool:
-	return _enemy_hazard_system.collide_ball_with_snake(ball, _enemy_hazard_ports())
+	return gameplay_state.enemy_hazard_system.collide_ball_with_snake(ball, _enemy_hazard_ports())
 
 
 func _collide_projectile_with_snake(projectile: Dictionary) -> bool:
-	return _enemy_hazard_system.collide_projectile_with_snake(projectile, _enemy_hazard_ports())
+	return gameplay_state.enemy_hazard_system.collide_projectile_with_snake(projectile, _enemy_hazard_ports())
 
 
 func _has_active_snake_segments() -> bool:
-	return _enemy_hazard_system.has_active_snake_segments()
+	return gameplay_state.enemy_hazard_system.has_active_snake_segments()
 
 
 func _update_monsters(delta: float) -> void:
-	_enemy_hazard_system.update_monsters(delta, balls, _enemy_hazard_ports())
+	gameplay_state.enemy_hazard_system.update_monsters(delta, balls, _enemy_hazard_ports())
 
 
 func _collide_ball_with_monsters(ball: Dictionary) -> bool:
-	return _enemy_hazard_system.collide_ball_with_monsters(ball, balls, _enemy_hazard_ports())
+	return gameplay_state.enemy_hazard_system.collide_ball_with_monsters(ball, balls, _enemy_hazard_ports())
 
 
 func _collide_ball_with_bees(ball: Dictionary) -> bool:
-	return _enemy_hazard_system.collide_ball_with_bees(ball, _enemy_hazard_ports())
+	return gameplay_state.enemy_hazard_system.collide_ball_with_bees(ball, _enemy_hazard_ports())
 
 
 func _ball_intersects_enemy_circle(ball: Dictionary, enemy_position: Vector2, enemy_radius: float) -> bool:
@@ -2296,31 +2406,31 @@ func _ball_intersects_enemy_circle(ball: Dictionary, enemy_position: Vector2, en
 
 
 func _collide_projectile_with_monsters(projectile: Dictionary) -> bool:
-	return _enemy_hazard_system.collide_projectile_with_monsters(projectile, _enemy_hazard_ports())
+	return gameplay_state.enemy_hazard_system.collide_projectile_with_monsters(projectile, _enemy_hazard_ports())
 
 
 func _update_bees(delta: float) -> void:
-	_enemy_hazard_system.update_bees(delta, _enemy_hazard_ports())
+	gameplay_state.enemy_hazard_system.update_bees(delta, _enemy_hazard_ports())
 
 
 func _apply_racket_stun() -> void:
-	_enemy_hazard_system.apply_racket_stun()
+	gameplay_state.enemy_hazard_system.apply_racket_stun()
 
 
 func _update_impact_effects(delta: float) -> void:
-	_transient_vfx_pool.update_impact_effects(delta)
+	gameplay_state.transient_vfx_pool.update_impact_effects(delta)
 
 
 func _update_score_popups(delta: float) -> void:
-	_transient_vfx_pool.update_score_popups(delta)
+	gameplay_state.transient_vfx_pool.update_score_popups(delta)
 
 
 func _spawn_impact_effect(position: Vector2, kind: int) -> bool:
-	return _transient_vfx_pool.spawn_impact_effect(position, kind)
+	return gameplay_state.transient_vfx_pool.spawn_impact_effect(position, kind)
 
 
 func _spawn_score_popup(position: Vector2, value: int) -> bool:
-	return _transient_vfx_pool.spawn_score_popup(position, value)
+	return gameplay_state.transient_vfx_pool.spawn_score_popup(position, value)
 
 
 func _spawn_chain_explosion_impact_effects(cleared_cells: Array) -> int:
@@ -2360,23 +2470,23 @@ func _spawn_fireball_wall_impact_if_needed(ball: Dictionary, impact_side: int) -
 
 
 func _has_active_bee() -> bool:
-	return _enemy_hazard_system.has_active_bee()
+	return gameplay_state.enemy_hazard_system.has_active_bee()
 
 
 func _compact_impact_effects() -> void:
-	_transient_vfx_pool.compact_impact_effects()
+	gameplay_state.transient_vfx_pool.compact_impact_effects()
 
 
 func _compact_score_popups() -> void:
-	_transient_vfx_pool.compact_score_popups()
+	gameplay_state.transient_vfx_pool.compact_score_popups()
 
 
 func _clear_score_popups() -> void:
-	_transient_vfx_pool.clear_score_popups()
+	gameplay_state.transient_vfx_pool.clear_score_popups()
 
 
 func _compact_projectiles() -> void:
-	_projectile_system.compact()
+	gameplay_state.projectile_system.compact()
 
 
 func _compact_falling_bonuses() -> void:
@@ -2392,23 +2502,23 @@ func bonus_rect(bonus: Dictionary) -> Rect2:
 
 
 func _push_bonus_stack(type_id: int) -> bool:
-	return _bonus_system.push_stack(clampi(type_id, 0, BONUS_TYPE_COUNT - 1))
+	return gameplay_state.bonus_system.push_stack(clampi(type_id, 0, BONUS_TYPE_COUNT - 1))
 
 
 func _consume_next_bonus() -> void:
-	_bonus_system.consume_next_stack_entry()
+	gameplay_state.bonus_system.consume_next_stack_entry()
 
 
 func _update_bonus_stack(delta: float) -> void:
 	if bonus_stack.is_empty():
 		bonus_pointer_frame = 0
-		_bonus_pointer_elapsed = 0.0
+		gameplay_state.bonus_pointer_elapsed = 0.0
 		return
 
-	_bonus_pointer_elapsed += delta
-	while _bonus_pointer_elapsed >= BONUS_POINTER_FRAME_SECONDS:
+	gameplay_state.bonus_pointer_elapsed += delta
+	while gameplay_state.bonus_pointer_elapsed >= BONUS_POINTER_FRAME_SECONDS:
 		bonus_pointer_frame = (bonus_pointer_frame + 1) % BONUS_ANIMATION_FRAME_COUNT
-		_bonus_pointer_elapsed -= BONUS_POINTER_FRAME_SECONDS
+		gameplay_state.bonus_pointer_elapsed -= BONUS_POINTER_FRAME_SECONDS
 
 	for index in range(bonus_stack.size()):
 		var entry := bonus_stack[index]
@@ -2532,9 +2642,9 @@ func _activate_non_stricked_balls() -> Dictionary:
 
 
 func _adjust_racket_segments(delta_segments: int) -> Dictionary:
-	_racket_system.sync_from_facade(self)
-	_racket_system.adjust_segments(delta_segments)
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.adjust_segments(delta_segments)
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 	_update_magnet_attached_ball_positions()
 	if state == STATE_READY or state == STATE_BALL_LOST:
 		_attach_ready_balls()
@@ -2552,9 +2662,9 @@ func _activate_back_wall() -> Dictionary:
 
 func _activate_double_paddle() -> Dictionary:
 	_clear_paddle_mode_state()
-	_racket_system.sync_from_facade(self)
-	_racket_system.double_paddle_active = true
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.double_paddle_active = true
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 	return {
 		"effect": "double_paddle",
 		"active": true,
@@ -2564,9 +2674,9 @@ func _activate_double_paddle() -> Dictionary:
 
 func _activate_magnet_paddle() -> Dictionary:
 	_clear_paddle_mode_state()
-	_racket_system.sync_from_facade(self)
-	_racket_system.magnet_paddle_active = true
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.magnet_paddle_active = true
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 	_set_racket_visual_target(RACKET_VISUAL_MODE_MAGNET)
 	return {
 		"effect": "magnet_paddle",
@@ -2575,12 +2685,12 @@ func _activate_magnet_paddle() -> Dictionary:
 
 
 func _activate_drunk_paddle() -> Dictionary:
-	_racket_system.sync_from_facade(self)
-	_racket_system.drunk_time_remaining += DRUNK_PADDLE_DURATION_SECONDS
-	_racket_system.sync_to_facade(self)
+	gameplay_state.racket_system.sync_from_state(gameplay_state)
+	gameplay_state.racket_system.drunk_time_remaining += DRUNK_PADDLE_DURATION_SECONDS
+	gameplay_state.racket_system.sync_to_state(gameplay_state)
 	return {
 		"effect": "drunk_paddle",
-		"seconds_remaining": _drunk_paddle_time_remaining,
+		"seconds_remaining": gameplay_state.drunk_paddle_time_remaining,
 	}
 
 
@@ -2599,7 +2709,7 @@ func _activate_one_strike_bricks() -> Dictionary:
 func _activate_random_bonus() -> Dictionary:
 	var selected_type_id := BONUS_RANDOM_BONUS
 	while selected_type_id == BONUS_RANDOM_BONUS:
-		selected_type_id = _bonus_rng.next_mod(BONUS_TYPE_COUNT)
+		selected_type_id = gameplay_state.bonus_rng.next_mod(BONUS_TYPE_COUNT)
 
 	var pushed := _push_bonus_stack(selected_type_id)
 	return {
@@ -2634,8 +2744,8 @@ func _activate_explode_all_explodings() -> Dictionary:
 
 func _activate_shooting_paddle_one_shot() -> Dictionary:
 	_clear_paddle_mode_state()
-	_shooting_paddle_mode = PROJECTILE_MODE_DISABLED
-	_single_shot_projectile_armed = true
+	gameplay_state.shooting_paddle_mode = PROJECTILE_MODE_DISABLED
+	gameplay_state.single_shot_projectile_armed = true
 	_set_racket_visual_target(RACKET_VISUAL_MODE_SHOOTING_ONE_SHOT)
 	return {
 		"effect": "shooting_paddle_one_shot",
@@ -2645,8 +2755,8 @@ func _activate_shooting_paddle_one_shot() -> Dictionary:
 
 func _activate_shooting_paddle_continuous() -> Dictionary:
 	_clear_paddle_mode_state()
-	_shooting_paddle_mode = PROJECTILE_MODE_CONTINUOUS
-	_single_shot_projectile_armed = false
+	gameplay_state.shooting_paddle_mode = PROJECTILE_MODE_CONTINUOUS
+	gameplay_state.single_shot_projectile_armed = false
 	_set_racket_visual_target(RACKET_VISUAL_MODE_SHOOTING_CONTINUOUS)
 	return {
 		"effect": "shooting_paddle_continuous",
@@ -2671,8 +2781,8 @@ func _pop_first_active_ball() -> Dictionary:
 			balls.remove_at(index)
 			if index < ball_tracks.size():
 				ball_tracks.remove_at(index)
-			if index < _ball_track_spawn_elapsed.size():
-				_ball_track_spawn_elapsed.remove_at(index)
+			if index < gameplay_state.ball_track_spawn_elapsed.size():
+				gameplay_state.ball_track_spawn_elapsed.remove_at(index)
 			return ball.duplicate()
 	return {}
 
@@ -2726,9 +2836,9 @@ func _handle_round_lost() -> void:
 	lives_remaining -= 1
 	if lives_remaining < 0:
 		state = STATE_GAME_OVER
-		_ball_system.clear()
+		gameplay_state.ball_system.clear()
 		_clear_ball_tracks()
-		_bonus_system.clear_falling()
+		gameplay_state.bonus_system.clear_falling()
 		_clear_level_ready_sequence()
 		_clear_timed_bonus_state()
 		_clear_monster_state()
@@ -2755,16 +2865,16 @@ func _mark_level_complete(play_audio_event := true) -> void:
 
 
 func _queue_audio_event(event_name: String) -> void:
-	_audio_event_queue.queue_event(event_name)
+	gameplay_state.audio_event_queue.queue_event(event_name)
 
 
 func _queue_audio_event_at_x(event_name: String, source_x: float) -> void:
-	_audio_event_queue.queue_event_at_x(event_name, source_x)
+	gameplay_state.audio_event_queue.queue_event_at_x(event_name, source_x)
 
 
 func _queue_audio_event_with_pan100(event_name: String, pan100: float) -> void:
-	_audio_event_queue.queue_event_with_pan100(event_name, pan100)
+	gameplay_state.audio_event_queue.queue_event_with_pan100(event_name, pan100)
 
 
 func _queue_audio_event_payload(event_payload: Dictionary) -> void:
-	_audio_event_queue.queue_payload(event_payload)
+	gameplay_state.audio_event_queue.queue_payload(event_payload)

@@ -1,15 +1,21 @@
 extends RefCounted
 class_name KrakoutBallSystem
 
+const GameplayStateScript := preload("res://src/gameplay/krakout_gameplay_state.gd")
 const BallRulesScript := preload("res://src/gameplay/rules/krakout_ball_rules.gd")
 
 var balls: Array[Dictionary]
 var animation_rng
 
 
-func _init(shared_balls: Array[Dictionary] = [], animation_rng_source = null) -> void:
-	balls = shared_balls
-	animation_rng = animation_rng_source
+func _init(shared_balls = [], animation_rng_source = null) -> void:
+	if shared_balls is GameplayStateScript:
+		var state = shared_balls
+		balls = state.balls
+		animation_rng = state.ball_animation_rng
+	else:
+		balls = shared_balls
+		animation_rng = animation_rng_source
 
 
 func clear() -> void:

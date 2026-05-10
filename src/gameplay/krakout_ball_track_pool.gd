@@ -1,6 +1,8 @@
 extends RefCounted
 class_name KrakoutBallTrackPool
 
+const GameplayStateScript := preload("res://src/gameplay/krakout_gameplay_state.gd")
+
 const BALL_TRACK_SLOT_COUNT := 50
 const BALL_TRACK_FRAME_COUNT := 12
 const BALL_TRACK_SPAWN_SECONDS := 0.03
@@ -14,10 +16,17 @@ var rng
 var enabled := true
 
 
-func _init(shared_tracks: Array, shared_spawn_elapsed: Array, rng_source) -> void:
-	tracks = shared_tracks
-	spawn_elapsed = shared_spawn_elapsed
-	rng = rng_source
+func _init(shared_tracks, shared_spawn_elapsed = null, rng_source = null) -> void:
+	if shared_tracks is GameplayStateScript:
+		var state = shared_tracks
+		tracks = state.ball_tracks
+		spawn_elapsed = state.ball_track_spawn_elapsed
+		rng = state.ball_track_rng
+		enabled = state.ball_tracks_enabled
+	else:
+		tracks = shared_tracks
+		spawn_elapsed = shared_spawn_elapsed
+		rng = rng_source
 
 
 func set_enabled(is_enabled: bool) -> void:

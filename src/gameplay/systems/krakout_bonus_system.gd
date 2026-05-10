@@ -1,15 +1,21 @@
 extends RefCounted
 class_name KrakoutBonusSystem
 
+const GameplayStateScript := preload("res://src/gameplay/krakout_gameplay_state.gd")
 const BonusCatalogScript := preload("res://src/gameplay/rules/krakout_bonus_catalog.gd")
 
 var falling_bonuses: Array[Dictionary]
 var bonus_stack: Array[Dictionary]
 
 
-func _init(shared_falling_bonuses: Array[Dictionary] = [], shared_bonus_stack: Array[Dictionary] = []) -> void:
-	falling_bonuses = shared_falling_bonuses
-	bonus_stack = shared_bonus_stack
+func _init(shared_falling_bonuses = [], shared_bonus_stack: Array[Dictionary] = []) -> void:
+	if shared_falling_bonuses is GameplayStateScript:
+		var state = shared_falling_bonuses
+		falling_bonuses = state.falling_bonuses
+		bonus_stack = state.bonus_stack
+	else:
+		falling_bonuses = shared_falling_bonuses
+		bonus_stack = shared_bonus_stack
 
 
 func clear_falling() -> void:

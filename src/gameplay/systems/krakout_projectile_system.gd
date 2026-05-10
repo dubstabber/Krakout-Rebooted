@@ -1,6 +1,8 @@
 extends RefCounted
 class_name KrakoutProjectileSystem
 
+const GameplayStateScript := preload("res://src/gameplay/krakout_gameplay_state.gd")
+
 const MAX_PROJECTILES := 10
 const PROJECTILE_FIRE_COOLDOWN_SECONDS := 0.25
 const PROJECTILE_STEP_X := 7.0
@@ -18,8 +20,11 @@ var projectiles: Array[Dictionary] = []
 var _fire_cooldown := 0.0
 
 
-func _init(projectile_store: Array[Dictionary] = []) -> void:
-	projectiles = projectile_store
+func _init(projectile_store = []) -> void:
+	if projectile_store is GameplayStateScript:
+		projectiles = projectile_store.projectiles
+	else:
+		projectiles = projectile_store
 
 
 func reset() -> void:

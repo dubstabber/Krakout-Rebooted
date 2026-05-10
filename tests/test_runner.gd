@@ -16,6 +16,7 @@ const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantic
 const BoardStateScript := preload("res://src/gameplay/krakout_board_state.gd")
 const GameSessionScript := preload("res://src/gameplay/krakout_game_session.gd")
 const RandomScript := preload("res://src/gameplay/krakout_random.gd")
+const GameplayStateScript := preload("res://src/gameplay/krakout_gameplay_state.gd")
 const AudioEventQueueScript := preload("res://src/gameplay/krakout_audio_event_queue.gd")
 const BallTrackPoolScript := preload("res://src/gameplay/krakout_ball_track_pool.gd")
 const BallRulesScript := preload("res://src/gameplay/rules/krakout_ball_rules.gd")
@@ -529,6 +530,46 @@ func _validate_session_helper_modules() -> void:
 	var context_session = GameSessionScript.new()
 	var gameplay_context = GameplayContextScript.new(context_session)
 	_assert(gameplay_context.racket_segment_count() == GameSessionScript.RACKET_DEFAULT_SEGMENTS, "gameplay context exposes typed session ports")
+
+	var gameplay_state = GameplayStateScript.new()
+	var state_ball_system = BallSystemScript.new(gameplay_state)
+	_assert(
+		state_ball_system.add_ball(Vector2(15, 25), Vector2.ZERO, true, GameSessionScript.BALL_SIZE, GameSessionScript.BALL_TYPE_STANDARD, 2.0, 0.0),
+		"ball system binds directly to typed gameplay state"
+	)
+	_assert(gameplay_state.balls.size() == 1 and state_ball_system.active_count() == 1, "typed gameplay state owns ball storage")
+	var state_bonus_system = BonusSystemScript.new(gameplay_state)
+	_assert(state_bonus_system.push_stack(GameSessionScript.BONUS_EXTRA_LIFE), "bonus system binds directly to typed gameplay state")
+	_assert(gameplay_state.bonus_stack.size() == 1, "typed gameplay state owns bonus-stack storage")
+	var state_projectile_system = ProjectileSystemScript.new(gameplay_state)
+	_assert(
+		state_projectile_system.spawn_projectile(ProjectileSystemScript.PROJECTILE_TYPE_STRONG, Vector2(120, 220)),
+		"projectile system binds directly to typed gameplay state"
+	)
+	_assert(gameplay_state.projectiles.size() == 1, "typed gameplay state owns projectile storage")
+	var state_audio_queue = AudioEventQueueScript.new(gameplay_state)
+	state_audio_queue.queue_event(GameSessionScript.SFX_EVENT_BRICK_CLEAR)
+	_assert(gameplay_state.audio_events.size() == 1, "audio queue binds directly to typed gameplay state")
+	var state_racket_system = RacketSystemScript.new(gameplay_state)
+	state_racket_system.start_hit_recoil()
+	state_racket_system.sync_to_state(gameplay_state)
+	_assert(
+		gameplay_state.racket_hit_recoil_offset_x == GameSessionScript.RACKET_HIT_RECOIL_PIXELS,
+		"racket system syncs directly to typed gameplay state"
+	)
+	var facade_racket_system = RacketSystemScript.new()
+	context_session.gameplay_state.racket_hit_recoil_offset_x = GameSessionScript.RACKET_HIT_RECOIL_PIXELS
+	facade_racket_system.sync_from_facade(context_session)
+	_assert(
+		facade_racket_system.current_x() == GameSessionScript.RACKET_X + GameSessionScript.RACKET_HIT_RECOIL_PIXELS,
+		"racket system facade sync routes through typed gameplay state"
+	)
+	facade_racket_system.clear_hit_recoil()
+	facade_racket_system.sync_to_facade(context_session)
+	_assert(
+		context_session.gameplay_state.racket_hit_recoil_offset_x == 0.0,
+		"racket system facade write sync routes through typed gameplay state"
+	)
 
 	var shared_balls: Array[Dictionary] = []
 	var ball_system = BallSystemScript.new(shared_balls, RandomScript.new(1))

@@ -1,6 +1,7 @@
 extends RefCounted
 class_name KrakoutRacketSystem
 
+const GameplayStateScript := preload("res://src/gameplay/krakout_gameplay_state.gd")
 const RacketRulesScript := preload("res://src/gameplay/rules/krakout_racket_rules.gd")
 
 var y := RacketRulesScript.RACKET_READY_DEFAULT_Y
@@ -21,8 +22,62 @@ var _hit_recoil_offset_x := 0.0
 var _hit_recoil_elapsed := 0.0
 
 
+func _init(initial_state = null) -> void:
+	if initial_state is GameplayStateScript:
+		sync_from_state(initial_state)
+
+
+func sync_from_state(state) -> void:
+	if state == null:
+		return
+	y = float(state.racket_y)
+	segment_count = int(state.racket_segment_count)
+	visual_mode = int(state.racket_visual_mode)
+	visual_frame = int(state.racket_visual_frame)
+	visual_target_mode = int(state.racket_visual_target_mode)
+	double_paddle_active = bool(state.double_paddle_active)
+	double_paddle_x = float(state.double_paddle_x)
+	magnet_paddle_active = bool(state.magnet_paddle_active)
+	drunk_time_remaining = float(state.drunk_paddle_time_remaining)
+	last_input_y = float(state.last_racket_input_y)
+	last_input_x = float(state.last_racket_input_x)
+	has_last_input = bool(state.has_last_racket_input)
+	has_last_x_input = bool(state.has_last_racket_x_input)
+	_visual_elapsed = float(state.racket_visual_elapsed)
+	_hit_recoil_offset_x = float(state.racket_hit_recoil_offset_x)
+	_hit_recoil_elapsed = float(state.racket_hit_recoil_elapsed)
+
+
+func sync_to_state(state) -> void:
+	if state == null:
+		return
+	state.racket_y = y
+	state.racket_segment_count = segment_count
+	state.racket_visual_mode = visual_mode
+	state.racket_visual_frame = visual_frame
+	state.racket_visual_target_mode = visual_target_mode
+	state.double_paddle_active = double_paddle_active
+	state.double_paddle_x = double_paddle_x
+	state.magnet_paddle_active = magnet_paddle_active
+	state.drunk_paddle_time_remaining = drunk_time_remaining
+	state.last_racket_input_y = last_input_y
+	state.last_racket_input_x = last_input_x
+	state.has_last_racket_input = has_last_input
+	state.has_last_racket_x_input = has_last_x_input
+	state.racket_visual_elapsed = _visual_elapsed
+	state.racket_hit_recoil_offset_x = _hit_recoil_offset_x
+	state.racket_hit_recoil_elapsed = _hit_recoil_elapsed
+
+
 func sync_from_facade(session) -> void:
 	if session == null:
+		return
+	if session is GameplayStateScript:
+		sync_from_state(session)
+		return
+	var state = session.get("gameplay_state")
+	if state is GameplayStateScript:
+		sync_from_state(state)
 		return
 	y = float(session.racket_y)
 	segment_count = int(session.racket_segment_count)
@@ -44,6 +99,13 @@ func sync_from_facade(session) -> void:
 
 func sync_to_facade(session) -> void:
 	if session == null:
+		return
+	if session is GameplayStateScript:
+		sync_to_state(session)
+		return
+	var state = session.get("gameplay_state")
+	if state is GameplayStateScript:
+		sync_to_state(state)
 		return
 	session.racket_y = y
 	session.racket_segment_count = segment_count

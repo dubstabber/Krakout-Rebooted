@@ -1,6 +1,8 @@
 extends RefCounted
 class_name KrakoutTransientVfxPool
 
+const GameplayStateScript := preload("res://src/gameplay/krakout_gameplay_state.gd")
+
 const MAX_IMPACT_EFFECTS := 100
 const IMPACT_EFFECT_FRAME_SECONDS := 0.05
 const IMPACT_EFFECT_FRAME_COUNT := 11
@@ -16,9 +18,14 @@ var impact_effects: Array
 var score_popups: Array
 
 
-func _init(shared_impact_effects: Array, shared_score_popups: Array) -> void:
-	impact_effects = shared_impact_effects
-	score_popups = shared_score_popups
+func _init(shared_impact_effects, shared_score_popups = null) -> void:
+	if shared_impact_effects is GameplayStateScript:
+		var state = shared_impact_effects
+		impact_effects = state.impact_effects
+		score_popups = state.score_popups
+	else:
+		impact_effects = shared_impact_effects
+		score_popups = shared_score_popups
 
 
 func visible_impact_effects() -> Array[Dictionary]:

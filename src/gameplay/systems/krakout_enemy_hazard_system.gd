@@ -1,6 +1,7 @@
 extends RefCounted
 class_name KrakoutEnemyHazardSystem
 
+const GameplayStateScript := preload("res://src/gameplay/krakout_gameplay_state.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 const BallRulesScript := preload("res://src/gameplay/rules/krakout_ball_rules.gd")
 const RacketRulesScript := preload("res://src/gameplay/rules/krakout_racket_rules.gd")
@@ -102,17 +103,25 @@ var _snake_update_elapsed := 0.0
 
 
 func _init(
-	shared_monsters: Array[Dictionary] = [],
+	shared_monsters = [],
 	shared_bees: Array[Dictionary] = [],
 	shared_snake_segments: Array[Dictionary] = [],
 	monster_rng_source = null,
 	collision_rng_source = null
 ) -> void:
-	monsters = shared_monsters
-	bees = shared_bees
-	snake_segments = shared_snake_segments
-	monster_rng = monster_rng_source
-	collision_rng = collision_rng_source
+	if shared_monsters is GameplayStateScript:
+		var state = shared_monsters
+		monsters = state.monsters
+		bees = state.bees
+		snake_segments = state.snake_segments
+		monster_rng = state.monster_rng
+		collision_rng = state.collision_rng
+	else:
+		monsters = shared_monsters
+		bees = shared_bees
+		snake_segments = shared_snake_segments
+		monster_rng = monster_rng_source
+		collision_rng = collision_rng_source
 
 
 static func monster_trait_for_type(type_id: int) -> Dictionary:

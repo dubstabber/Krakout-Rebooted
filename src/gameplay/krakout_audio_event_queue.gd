@@ -1,6 +1,8 @@
 extends RefCounted
 class_name KrakoutAudioEventQueue
 
+const GameplayStateScript := preload("res://src/gameplay/krakout_gameplay_state.gd")
+
 const SFX_PAN_SOURCE_SCALE := 0.3125
 const SFX_PAN_SOURCE_OFFSET := -100.0
 const SFX_PAN_MIN := -100.0
@@ -9,8 +11,11 @@ const SFX_PAN_MAX := 100.0
 var events: Array
 
 
-func _init(shared_events: Array) -> void:
-	events = shared_events
+func _init(shared_events) -> void:
+	if shared_events is GameplayStateScript:
+		events = shared_events.audio_events
+	else:
+		events = shared_events
 
 
 static func sfx_pan100_for_source_x(source_x: float) -> float:
