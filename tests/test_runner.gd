@@ -592,6 +592,81 @@ func _validate_session_helper_modules() -> void:
 	_assert(int(bonus_system.remove_stack_entry(0).get("type_id", -1)) == GameSessionScript.BONUS_EXTRA_LIFE, "bonus system removes requested stack entries")
 	bonus_system.push_stack(GameSessionScript.BONUS_ADD_FIREBALL)
 	_assert(bonus_system.clear_stack() == 1 and shared_bonus_stack.is_empty(), "bonus system clears shared stack storage")
+	var bonus_state = GameplayStateScript.new()
+	var owning_bonus_system = BonusSystemScript.new(bonus_state)
+	var owned_bonus_level = _make_level_from_rows([[1]], _make_bonus_tail([1]))
+	var owned_bonus_board = BoardStateScript.new()
+	owned_bonus_board.load_level(owned_bonus_level)
+	owning_bonus_system.load_stock_from_level(owned_bonus_level)
+	_assert(bonus_state.remaining_bonus_stock == 1 and bonus_state.bonus_stock_counts[0] == 1, "bonus system owns level-tail stock loading")
+	bonus_state.bonus_rng.set_seed(17)
+	owning_bonus_system.force_drop_ready()
+	var owned_drop_result: Dictionary = owning_bonus_system.resolve_drop_for_hit(0, 0, 1, owned_bonus_board)
+	_assert(String(owned_drop_result.get("action", "")) == "spawn", "bonus system resolves original stock-weighted drops")
+	_assert(int(owned_drop_result.get("type_id", -1)) == GameSessionScript.BONUS_ADD_STANDARD_BALL, "bonus system maps stock id to visible bonus type")
+	_assert(bonus_state.remaining_bonus_stock == 0 and bonus_state.bonus_stock_counts[0] == 0, "bonus system consumes stock on spawn")
+	var chain_bonus_state = GameplayStateScript.new()
+	var chain_bonus_system = BonusSystemScript.new(chain_bonus_state)
+	var chain_bonus_level = _make_level_from_rows([[1]], _make_bonus_tail([1]))
+	var chain_bonus_board = BoardStateScript.new()
+	chain_bonus_board.load_level(chain_bonus_level)
+	chain_bonus_system.load_stock_from_level(chain_bonus_level)
+	chain_bonus_state.bonus_rng.set_seed(23)
+	chain_bonus_system.force_drop_ready()
+	var chain_drop_result: Dictionary = chain_bonus_system.resolve_drop_for_hit(0, 0, 1, chain_bonus_board)
+	_assert(String(chain_drop_result.get("action", "")) == "chain", "bonus system owns random chain-selector conversion")
+	_assert(chain_bonus_board.tile_at(0, 0) == 68, "bonus system applies the original chain selector tile")
+	var falling_bonus_state = GameplayStateScript.new()
+	var falling_bonus_system = BonusSystemScript.new(falling_bonus_state)
+	falling_bonus_state.falling_bonuses.append({
+		"active": true,
+		"type_id": GameSessionScript.BONUS_NON_STRICKED_BALLS,
+		"position": Vector2(100, 100),
+		"base_y": 100.0,
+		"angle": 0,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+	})
+	falling_bonus_system.update_falling(0.1)
+	var owned_falling: Array[Dictionary] = falling_bonus_system.visible_falling()
+	_assert(owned_falling.size() == 1, "bonus system keeps active falling bonuses visible")
+	if owned_falling.size() == 1:
+		_assert(is_equal_approx(owned_falling[0]["position"].x, 122.5), "bonus system advances falling bonus x motion")
+		_assert(int(owned_falling[0]["angle"]) == 45, "bonus system advances falling bonus wave angle")
+		_assert(int(owned_falling[0]["frame"]) == 1, "bonus system advances falling bonus animation frame")
+	var collect_bonus_state = GameplayStateScript.new()
+	var collect_bonus_system = BonusSystemScript.new(collect_bonus_state)
+	collect_bonus_state.falling_bonuses.append({
+		"active": true,
+		"type_id": GameSessionScript.BONUS_DECREASE_BALL_SIZE,
+		"position": Vector2(100, 100),
+		"base_y": 100.0,
+		"angle": 0,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+	})
+	var collect_events: Array[Dictionary] = collect_bonus_system.update_falling(0.01, Callable(self, "_accept_bonus_collection_for_test"))
+	_assert(collect_bonus_system.visible_falling().is_empty(), "bonus system removes collected falling bonuses")
+	_assert(collect_bonus_system.stack_entries().size() == 1, "bonus system pushes collected bonuses into the stack")
+	_assert(String(collect_events[0].get("action", "")) == "collect", "bonus system reports collection events to the facade")
+	collect_bonus_system.update_stack(GameSessionScript.BONUS_STACK_FRAME_SECONDS + 0.001)
+	_assert(int(collect_bonus_system.stack_entries()[0].get("frame", -1)) == 1, "bonus system owns stack-entry animation")
+	_assert(collect_bonus_state.bonus_pointer_frame == 1, "bonus system owns stack pointer animation")
+	var full_bonus_state = GameplayStateScript.new()
+	var full_bonus_system = BonusSystemScript.new(full_bonus_state)
+	for full_bonus_index in range(GameSessionScript.MAX_STACKED_BONUSES):
+		full_bonus_system.push_stack(full_bonus_index % GameSessionScript.BONUS_TYPE_COUNT)
+	full_bonus_state.falling_bonuses.append({
+		"active": true,
+		"type_id": GameSessionScript.BONUS_DECREASE_BALL_SPEED,
+		"position": Vector2(100, 100),
+		"base_y": 100.0,
+		"angle": 0,
+		"frame": 0,
+		"frame_elapsed": 0.0,
+	})
+	_assert(full_bonus_system.update_falling(0.01, Callable(self, "_accept_bonus_collection_for_test")).is_empty(), "bonus system leaves collection silent when the stack is full")
+	_assert(full_bonus_system.visible_falling().size() == 1, "bonus system keeps falling bonuses active when stack is full")
 
 	var queued_audio_events: Array[Dictionary] = []
 	var audio_queue = AudioEventQueueScript.new(queued_audio_events)
@@ -5553,6 +5628,10 @@ func _stack_bonus(session, type_id: int) -> void:
 		"frame": 0,
 		"frame_elapsed": 0.0,
 	})
+
+
+func _accept_bonus_collection_for_test(_bonus: Dictionary) -> bool:
+	return true
 
 
 func _active_ball(

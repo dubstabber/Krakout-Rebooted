@@ -829,11 +829,7 @@ func visible_ball_tracks() -> Array[Dictionary]:
 
 
 func visible_falling_bonuses() -> Array[Dictionary]:
-	var visible: Array[Dictionary] = []
-	for bonus: Dictionary in falling_bonuses:
-		if bool(bonus.get("active", false)):
-			visible.append(bonus.duplicate())
-	return visible
+	return gameplay_state.bonus_system.visible_falling()
 
 
 func visible_projectiles() -> Array[Dictionary]:
@@ -1252,7 +1248,7 @@ func set_ball_track_rng_seed(seed_value: int) -> void:
 
 
 func force_bonus_drop_ready() -> void:
-	gameplay_state.bonus_drop_cooldown = 0.0
+	gameplay_state.bonus_system.force_drop_ready()
 
 
 func force_monster_spawn_ready() -> void:
@@ -1859,45 +1855,7 @@ func _resolve_regular_brick_hit(column: int, row: int, tile_id: int) -> Dictiona
 
 
 func _try_resolve_bonus_drop(column: int, row: int, tile_id: int) -> Dictionary:
-	if not BrickSemanticsScript.can_spawn_bonus(tile_id):
-		return {"action": "clear"}
-	if gameplay_state.bonus_drop_cooldown > 0.0:
-		return {"action": "clear"}
-
-	_reset_bonus_drop_gate()
-	if remaining_bonus_stock <= 0:
-		return {"action": "clear"}
-	if board_state == null or board_state.remaining_required_bricks <= 0:
-		return {"action": "clear"}
-
-	var chance_denominator: int = int((2 * board_state.remaining_required_bricks) / remaining_bonus_stock)
-	if chance_denominator <= 0:
-		return {"action": "clear"}
-	if gameplay_state.bonus_rng.next_mod(chance_denominator) != 0:
-		return {"action": "clear"}
-
-	var selector: int = gameplay_state.bonus_rng.next_mod(BONUS_SELECTOR_COUNT)
-	var attempts := BONUS_SELECTOR_COUNT
-	while attempts > 0:
-		if selector >= BONUS_TYPE_COUNT:
-			var tile_selector: int = gameplay_state.bonus_rng.next_mod(CHAIN_SELECTOR_TILE_IDS.size())
-			var chain_tile_id := int(CHAIN_SELECTOR_TILE_IDS[tile_selector])
-			if board_state.convert_to_chain_explosion_tile(column, row, chain_tile_id):
-				return {"action": "chain"}
-			return {"action": "clear"}
-
-		if selector < bonus_stock_counts.size() and int(bonus_stock_counts[selector]) > 0:
-			bonus_stock_counts[selector] = int(bonus_stock_counts[selector]) - 1
-			remaining_bonus_stock -= 1
-			return {
-				"action": "spawn",
-				"type_id": _visible_bonus_type_for_stock_id(selector),
-			}
-
-		selector = (selector + 1) % BONUS_TYPE_COUNT
-		attempts -= 1
-
-	return {"action": "clear"}
+	return gameplay_state.bonus_system.resolve_drop_for_hit(column, row, tile_id, board_state)
 
 
 func _first_board_hit(rect: Rect2) -> Dictionary:
@@ -1937,29 +1895,12 @@ func _reflect_from_tile(ball: Dictionary, previous_position: Vector2, tile_rect:
 
 
 func _load_bonus_stock_from_level(level: KrakoutLevelData) -> void:
-	bonus_stock_counts.clear()
-	remaining_bonus_stock = 0
-	if level == null:
-		for index in range(BONUS_TYPE_COUNT):
-			bonus_stock_counts.append(0)
-		return
-
-	var source_counts: Array[int] = level.bonus_stock_counts()
-	for index in range(BONUS_TYPE_COUNT):
-		var count := 0
-		if index < source_counts.size():
-			count = max(0, int(source_counts[index]))
-		bonus_stock_counts.append(count)
-		remaining_bonus_stock += count
+	gameplay_state.bonus_system.load_stock_from_level(level)
 
 
 func _clear_bonus_run_state() -> void:
-	gameplay_state.bonus_system.clear_falling()
-	gameplay_state.bonus_system.clear_stack()
-	bonus_pointer_frame = 0
-	gameplay_state.bonus_pointer_elapsed = 0.0
+	gameplay_state.bonus_system.reset_run_state()
 	_clear_timed_bonus_state()
-	_reset_bonus_drop_gate()
 
 
 func _reset_bonus_effect_state() -> void:
@@ -1976,7 +1917,7 @@ func _reset_bonus_effect_state() -> void:
 
 
 func _reset_bonus_drop_gate() -> void:
-	gameplay_state.bonus_drop_cooldown = BONUS_DROP_GATE_SECONDS
+	gameplay_state.bonus_system.reset_drop_gate()
 
 
 func _clear_timed_bonus_state() -> void:
@@ -1990,8 +1931,7 @@ func _clear_timed_bonus_state() -> void:
 
 
 func _update_bonus_timers(delta: float) -> void:
-	if gameplay_state.bonus_drop_cooldown > 0.0:
-		gameplay_state.bonus_drop_cooldown = maxf(0.0, gameplay_state.bonus_drop_cooldown - delta)
+	gameplay_state.bonus_system.update_drop_gate(delta)
 	if back_wall_time_remaining > 0.0:
 		back_wall_time_remaining = maxf(0.0, back_wall_time_remaining - delta)
 	gameplay_state.enemy_hazard_system.update_racket_stun(delta)
@@ -2229,72 +2169,32 @@ func _bonus_intersects_any_racket(bonus: Dictionary) -> bool:
 
 
 func _spawn_falling_bonus(type_id: int, position: Vector2) -> bool:
-	if falling_bonuses.size() >= MAX_FALLING_BONUSES:
-		return false
-
-	falling_bonuses.append({
-		"active": true,
-		"type_id": clampi(type_id, 0, BONUS_TYPE_COUNT - 1),
-		"position": position,
-		"base_y": position.y,
-		"angle": 0,
-		"frame": gameplay_state.bonus_animation_rng.next_mod(BONUS_ANIMATION_FRAME_COUNT),
-		"frame_elapsed": 0.0,
-		"substep_accumulator": 0.0,
-	})
-	return true
+	return gameplay_state.bonus_system.spawn_falling(type_id, position)
 
 
 func _update_falling_bonuses(delta: float) -> void:
-	for index in range(falling_bonuses.size()):
-		var bonus := falling_bonuses[index]
-		if not bool(bonus.get("active", false)):
-			continue
-
-		_advance_falling_bonus(bonus, delta)
-		if _bonus_intersects_any_racket(bonus) and _push_bonus_stack(int(bonus.get("type_id", 0))):
-			var bonus_position: Vector2 = bonus.get("position", Vector2.ZERO)
-			bonus["active"] = false
-			_queue_audio_event_at_x(SFX_EVENT_BONUS_COLLECT, bonus_position.x)
-
-		falling_bonuses[index] = bonus
-
-	_compact_falling_bonuses()
+	var bonus_events: Array[Dictionary] = gameplay_state.bonus_system.update_falling(
+		delta,
+		Callable(self, "_bonus_intersects_any_racket")
+	)
+	_queue_bonus_system_events(bonus_events)
 
 
 func _advance_falling_bonus(bonus: Dictionary, delta: float) -> void:
-	var position: Vector2 = bonus.get("position", Vector2.ZERO)
-	var next_x := position.x
-	var next_y := position.y
-	var next_angle := int(bonus.get("angle", 0))
-	var base_y := float(bonus.get("base_y", position.y))
-	var substep_accumulator := float(bonus.get("substep_accumulator", 0.0)) \
-		+ maxf(delta, 0.0) * ORIGINAL_BONUS_SUBSTEP_HZ
-	var substep_count := int(floorf(substep_accumulator))
-	substep_accumulator -= float(substep_count)
+	var bonus_event: Dictionary = gameplay_state.bonus_system.advance_falling_bonus(bonus, delta)
+	if not bonus_event.is_empty():
+		_queue_bonus_system_events([bonus_event])
 
-	for _step in range(substep_count):
-		next_x += BONUS_STEP_X
-		next_angle = (next_angle + BONUS_ANGLE_STEP) % 360
-		next_y = base_y + next_x * BONUS_WAVE_SCALE * cos(deg_to_rad(float(next_angle)))
-		next_y = clampf(next_y, BONUS_MIN_Y, BONUS_MAX_Y)
-		if next_x > BONUS_EXPIRE_X:
-			bonus["active"] = false
-			_queue_audio_event_at_x(SFX_EVENT_BONUS_EXPIRE, next_x)
-			substep_accumulator = 0.0
-			break
 
-	var frame_elapsed := float(bonus.get("frame_elapsed", 0.0)) + delta
-	var frame := int(bonus.get("frame", 0))
-	while frame_elapsed >= BONUS_FALLING_FRAME_SECONDS:
-		frame = (frame + 1) % BONUS_ANIMATION_FRAME_COUNT
-		frame_elapsed -= BONUS_FALLING_FRAME_SECONDS
-
-	bonus["position"] = Vector2(next_x, next_y)
-	bonus["angle"] = next_angle
-	bonus["frame"] = frame
-	bonus["frame_elapsed"] = frame_elapsed
-	bonus["substep_accumulator"] = substep_accumulator
+func _queue_bonus_system_events(events: Array) -> void:
+	for event: Dictionary in events:
+		var action := String(event.get("action", ""))
+		var source_x := float(event.get("source_x", 0.0))
+		match action:
+			"expire":
+				_queue_audio_event_at_x(SFX_EVENT_BONUS_EXPIRE, source_x)
+			"collect":
+				_queue_audio_event_at_x(SFX_EVENT_BONUS_COLLECT, source_x)
 
 
 func _update_projectile_fire(delta: float) -> void:
@@ -2490,15 +2390,11 @@ func _compact_projectiles() -> void:
 
 
 func _compact_falling_bonuses() -> void:
-	var compacted: Array[Dictionary] = []
-	for bonus: Dictionary in falling_bonuses:
-		if bool(bonus.get("active", false)):
-			compacted.append(bonus)
-	falling_bonuses = compacted
+	gameplay_state.bonus_system.compact_falling()
 
 
 func bonus_rect(bonus: Dictionary) -> Rect2:
-	return Rect2(bonus.get("position", Vector2.ZERO), Vector2(BONUS_SIZE, BONUS_SIZE))
+	return gameplay_state.bonus_system.bonus_rect(bonus)
 
 
 func _push_bonus_stack(type_id: int) -> bool:
@@ -2510,32 +2406,11 @@ func _consume_next_bonus() -> void:
 
 
 func _update_bonus_stack(delta: float) -> void:
-	if bonus_stack.is_empty():
-		bonus_pointer_frame = 0
-		gameplay_state.bonus_pointer_elapsed = 0.0
-		return
-
-	gameplay_state.bonus_pointer_elapsed += delta
-	while gameplay_state.bonus_pointer_elapsed >= BONUS_POINTER_FRAME_SECONDS:
-		bonus_pointer_frame = (bonus_pointer_frame + 1) % BONUS_ANIMATION_FRAME_COUNT
-		gameplay_state.bonus_pointer_elapsed -= BONUS_POINTER_FRAME_SECONDS
-
-	for index in range(bonus_stack.size()):
-		var entry := bonus_stack[index]
-		var frame_elapsed := float(entry.get("frame_elapsed", 0.0)) + delta
-		var frame := int(entry.get("frame", 0))
-		while frame_elapsed >= BONUS_STACK_FRAME_SECONDS:
-			frame = (frame + 1) % BONUS_ANIMATION_FRAME_COUNT
-			frame_elapsed -= BONUS_STACK_FRAME_SECONDS
-		entry["frame"] = frame
-		entry["frame_elapsed"] = frame_elapsed
-		bonus_stack[index] = entry
+	gameplay_state.bonus_system.update_stack(delta)
 
 
 func _visible_bonus_type_for_stock_id(stock_id: int) -> int:
-	if BONUS_DISPLAY_INCREMENT_IDS.has(stock_id):
-		return (stock_id + 1) % BONUS_TYPE_COUNT
-	return stock_id
+	return gameplay_state.bonus_system.visible_bonus_type_for_stock_id(stock_id)
 
 
 func _apply_bonus_effect(type_id: int) -> Dictionary:
