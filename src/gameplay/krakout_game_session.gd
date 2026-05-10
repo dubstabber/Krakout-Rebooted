@@ -6,6 +6,7 @@ const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantic
 const RandomScript := preload("res://src/gameplay/krakout_random.gd")
 const AudioEventQueueScript := preload("res://src/gameplay/krakout_audio_event_queue.gd")
 const BallTrackPoolScript := preload("res://src/gameplay/krakout_ball_track_pool.gd")
+const EnemyHazardSystemScript := preload("res://src/gameplay/systems/krakout_enemy_hazard_system.gd")
 const ProjectileSystemScript := preload("res://src/gameplay/systems/krakout_projectile_system.gd")
 const TransientVfxPoolScript := preload("res://src/gameplay/krakout_transient_vfx_pool.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
@@ -448,8 +449,6 @@ var _monster_rng = RandomScript.new(31415)
 var _collision_rng = RandomScript.new(31415)
 var _ball_track_rng = RandomScript.new(31415)
 var _bonus_drop_cooldown := BONUS_DROP_GATE_SECONDS
-var _bee_spawn_delay_remaining := BEE_SPAWN_DELAY_MAX_SECONDS
-var _racket_stun_time_remaining := 0.0
 var _bonus_pointer_elapsed := 0.0
 var _shooting_paddle_mode := PROJECTILE_MODE_DISABLED
 var racket_visual_mode := RACKET_VISUAL_MODE_NORMAL
@@ -466,7 +465,6 @@ var _last_racket_input_y := RACKET_READY_CENTER_Y
 var _last_racket_input_x := RACKET_X
 var _has_last_racket_input := false
 var _has_last_racket_x_input := false
-var _monster_spawn_cooldown := MONSTER_SPAWN_INTERVAL_SECONDS
 var _level_ready_animation_time_remaining := 0.0
 var _level_ready_roller_offset := 0.0
 var _level_ready_roller_frame := 0
@@ -474,10 +472,10 @@ var _level_ready_roller_step_elapsed := 0.0
 var _level_ready_auto_launch_pending := false
 var _low_block_timer_started := false
 var _ball_track_spawn_elapsed: Array[float] = []
-var _snake_update_elapsed := 0.0
 var _audio_events: Array[Dictionary] = []
 var _audio_event_queue
 var _ball_track_pool
+var _enemy_hazard_system
 var _projectile_system
 var _transient_vfx_pool
 
@@ -485,6 +483,7 @@ var _transient_vfx_pool
 func _init() -> void:
 	_audio_event_queue = AudioEventQueueScript.new(_audio_events)
 	_ball_track_pool = BallTrackPoolScript.new(ball_tracks, _ball_track_spawn_elapsed, _ball_track_rng)
+	_enemy_hazard_system = EnemyHazardSystemScript.new(monsters, bees, snake_segments, _monster_rng, _collision_rng)
 	_projectile_system = ProjectileSystemScript.new(projectiles)
 	_transient_vfx_pool = TransientVfxPoolScript.new(impact_effects, score_popups)
 	_bonus_rng.set_seed(Time.get_ticks_msec())
@@ -771,29 +770,15 @@ func visible_projectiles() -> Array[Dictionary]:
 
 
 func visible_monsters() -> Array[Dictionary]:
-	var visible: Array[Dictionary] = []
-	for monster: Dictionary in monsters:
-		if bool(monster.get("active", false)):
-			visible.append(monster.duplicate())
-	return visible
+	return _enemy_hazard_system.visible_monsters()
 
 
 func visible_bees() -> Array[Dictionary]:
-	var visible: Array[Dictionary] = []
-	for bee: Dictionary in bees:
-		if bool(bee.get("active", false)):
-			visible.append(bee.duplicate())
-	return visible
+	return _enemy_hazard_system.visible_bees()
 
 
 func visible_snake_segments() -> Array[Dictionary]:
-	var visible: Array[Dictionary] = []
-	for segment: Dictionary in snake_segments:
-		if bool(segment.get("active", false)):
-			visible.append(segment.duplicate())
-		else:
-			break
-	return visible
+	return _enemy_hazard_system.visible_snake_segments()
 
 
 func visible_impact_effects() -> Array[Dictionary]:
@@ -921,7 +906,7 @@ func active_bonus_indicators() -> Array[Dictionary]:
 	if is_racket_stunned():
 		indicators.append({
 			"icon_index": RACKET_STUN_STATUS_ICON_INDEX,
-			"value": ceili(_racket_stun_time_remaining),
+			"value": ceili(_enemy_hazard_system.racket_stun_time_remaining),
 		})
 	if is_low_block_timer_active():
 		indicators.append({
@@ -1026,7 +1011,7 @@ func magnet_attached_ball_count() -> int:
 
 
 func is_racket_stunned() -> bool:
-	return _racket_stun_time_remaining > 0.0
+	return _enemy_hazard_system.is_racket_stunned()
 
 
 func current_racket_visual_mode() -> int:
@@ -1135,56 +1120,43 @@ static func bonus_type_name(type_id: int) -> String:
 
 
 static func monster_trait_for_type(type_id: int) -> Dictionary:
-	var monster_trait := MONSTER_DEFAULT_TRAIT.duplicate()
-	if MONSTER_TRAITS.has(type_id):
-		monster_trait.merge(MONSTER_TRAITS[type_id], true)
-	return monster_trait
+	return EnemyHazardSystemScript.monster_trait_for_type(type_id)
 
 
 static func monster_spawn_pool() -> Array[int]:
-	var spawn_pool: Array[int] = []
-	for type_id in range(MONSTER_TYPE_COUNT):
-		if monster_type_is_original_spawned(type_id):
-			spawn_pool.append(type_id)
-	return spawn_pool
+	return EnemyHazardSystemScript.monster_spawn_pool()
 
 
 static func monster_frame_count_for_type(type_id: int) -> int:
-	return int(_monster_trait_value(type_id, "frame_count", MONSTER_DEFAULT_TRAIT["frame_count"]))
+	return EnemyHazardSystemScript.monster_frame_count_for_type(type_id)
 
 
 static func monster_motion_mode_for_type(type_id: int) -> String:
-	return String(_monster_trait_value(type_id, "motion_mode", MONSTER_MOTION_ANGLE))
+	return EnemyHazardSystemScript.monster_motion_mode_for_type(type_id)
 
 
 static func monster_collision_offset_for_type(type_id: int) -> Vector2:
-	return _monster_trait_value(type_id, "collision_offset", MONSTER_COLLISION_OFFSET) as Vector2
+	return EnemyHazardSystemScript.monster_collision_offset_for_type(type_id)
 
 
 static func monster_collision_size_for_type(type_id: int) -> Vector2:
-	return _monster_trait_value(type_id, "collision_size", MONSTER_COLLISION_SIZE) as Vector2
+	return EnemyHazardSystemScript.monster_collision_size_for_type(type_id)
 
 
 static func monster_stuns_racket(type_id: int) -> bool:
-	return bool(_monster_trait_value(type_id, "stuns_racket", false))
+	return EnemyHazardSystemScript.monster_stuns_racket(type_id)
 
 
 static func monster_type_is_original_spawned(type_id: int) -> bool:
-	return bool(_monster_trait_value(type_id, "natural_spawn", false))
+	return EnemyHazardSystemScript.monster_type_is_original_spawned(type_id)
 
 
 static func _monster_score_mode_for_type(type_id: int, contact_key: String) -> String:
-	return String(_monster_trait_value(type_id, contact_key, MONSTER_SCORE_MODE_DEFAULT))
+	return EnemyHazardSystemScript._monster_score_mode_for_type(type_id, contact_key)
 
 
 static func _monster_trait_value(type_id: int, key: String, default_value):
-	if MONSTER_TRAITS.has(type_id):
-		var monster_trait: Dictionary = MONSTER_TRAITS[type_id]
-		if monster_trait.has(key):
-			return monster_trait[key]
-	if MONSTER_DEFAULT_TRAIT.has(key):
-		return MONSTER_DEFAULT_TRAIT[key]
-	return default_value
+	return EnemyHazardSystemScript._monster_trait_value(type_id, key, default_value)
 
 
 func set_bonus_rng_seed(seed_value: int) -> void:
@@ -1192,7 +1164,7 @@ func set_bonus_rng_seed(seed_value: int) -> void:
 
 
 func set_monster_rng_seed(seed_value: int) -> void:
-	_monster_rng.set_seed(seed_value)
+	_enemy_hazard_system.set_monster_rng_seed(seed_value)
 
 
 func active_monster_spawn_pool() -> Array[int]:
@@ -1200,7 +1172,7 @@ func active_monster_spawn_pool() -> Array[int]:
 
 
 func set_collision_rng_seed(seed_value: int) -> void:
-	_collision_rng.set_seed(seed_value)
+	_enemy_hazard_system.set_collision_rng_seed(seed_value)
 
 
 func set_ball_track_rng_seed(seed_value: int) -> void:
@@ -1212,11 +1184,11 @@ func force_bonus_drop_ready() -> void:
 
 
 func force_monster_spawn_ready() -> void:
-	_monster_spawn_cooldown = 0.0
+	_enemy_hazard_system.force_monster_spawn_ready()
 
 
 func force_bee_spawn_ready() -> void:
-	_bee_spawn_delay_remaining = 0.0
+	_enemy_hazard_system.force_bee_spawn_ready()
 
 
 func set_projectile_fire_cooldown_for_test(seconds: float) -> void:
@@ -1232,20 +1204,15 @@ func clear_projectiles_for_test() -> void:
 
 
 func set_monster_spawn_cooldown_for_test(seconds: float) -> void:
-	_monster_spawn_cooldown = maxf(0.0, seconds)
+	_enemy_hazard_system.set_monster_spawn_cooldown_for_test(seconds)
 
 
 func set_bee_spawn_delay_for_test(seconds: float) -> void:
-	_bee_spawn_delay_remaining = maxf(0.0, seconds)
+	_enemy_hazard_system.set_bee_spawn_delay_for_test(seconds)
 
 
 func set_monster_age_for_test(index: int, age: float) -> bool:
-	if index < 0 or index >= monsters.size():
-		return false
-	var monster := monsters[index]
-	monster["age"] = maxf(0.0, age)
-	monsters[index] = monster
-	return true
+	return _enemy_hazard_system.set_monster_age_for_test(index, age)
 
 
 func active_ball_count() -> int:
@@ -1257,15 +1224,15 @@ func active_projectile_count() -> int:
 
 
 func active_monster_count() -> int:
-	return visible_monsters().size()
+	return _enemy_hazard_system.active_monster_count()
 
 
 func active_bee_count() -> int:
-	return visible_bees().size()
+	return _enemy_hazard_system.active_bee_count()
 
 
 func active_snake_segment_count() -> int:
-	return visible_snake_segments().size()
+	return _enemy_hazard_system.active_snake_segment_count()
 
 
 func current_racket_height() -> float:
@@ -1301,19 +1268,15 @@ func projectile_rect(projectile: Dictionary) -> Rect2:
 
 
 func monster_rect(monster: Dictionary) -> Rect2:
-	var type_id := int(monster.get("type_id", 0))
-	return Rect2(
-		monster.get("position", Vector2.ZERO) + monster_collision_offset_for_type(type_id),
-		monster_collision_size_for_type(type_id)
-	)
+	return EnemyHazardSystemScript.monster_rect(monster)
 
 
 func bee_rect(bee: Dictionary) -> Rect2:
-	return Rect2(bee.get("position", Vector2.ZERO) + BEE_COLLISION_OFFSET, BEE_COLLISION_SIZE)
+	return EnemyHazardSystemScript.bee_rect(bee)
 
 
 func snake_rect(segment: Dictionary) -> Rect2:
-	return Rect2(segment.get("position", Vector2.ZERO), SNAKE_SEGMENT_SIZE)
+	return EnemyHazardSystemScript.snake_rect(segment)
 
 
 func first_ball_position() -> Vector2:
@@ -1363,39 +1326,21 @@ func force_ball(position: Vector2, velocity: Vector2, size: float = BALL_SIZE, t
 
 
 func force_monster(position: Vector2, type_id: int = 3, angle: int = 0) -> bool:
-	if monsters.size() >= MAX_MONSTERS:
-		return false
-	monsters.append(_new_monster(position, type_id, angle))
-	state = STATE_PLAYING
-	return true
+	var forced: bool = _enemy_hazard_system.force_monster(position, type_id, angle)
+	if forced:
+		state = STATE_PLAYING
+	return forced
 
 
 func force_bee(position: Vector2, frame: int = 0) -> bool:
-	if bees.size() >= 1:
-		return false
-	bees.append(_new_bee(position, frame))
-	state = STATE_PLAYING
-	return true
+	var forced: bool = _enemy_hazard_system.force_bee(position, frame)
+	if forced:
+		state = STATE_PLAYING
+	return forced
 
 
 func force_snake_vfx_segments_for_test(segments: Array) -> int:
-	_clear_snake_state()
-	for segment in segments:
-		if snake_segments.size() >= MAX_SNAKE_SEGMENTS:
-			break
-		if typeof(segment) != TYPE_DICTIONARY:
-			continue
-		var entry: Dictionary = segment
-		var position := Vector2.ZERO
-		var raw_position = entry.get("position", Vector2.ZERO)
-		if raw_position is Vector2:
-			position = raw_position
-		snake_segments.append({
-			"active": bool(entry.get("active", true)),
-			"position": position,
-			"kind": clampi(int(entry.get("kind", 0)), 0, SNAKE_KIND_COUNT - 1),
-		})
-	return snake_segments.size()
+	return _enemy_hazard_system.force_snake_vfx_segments_for_test(segments)
 
 
 func _add_ready_ball() -> void:
@@ -1538,6 +1483,7 @@ func _advance_ball(ball: Dictionary, delta: float) -> void:
 			fireball_wall_impact_side = FIREBALL_WALL_IMPACT_BACK
 	elif position.x > BALL_LOST_X:
 		_spawn_fireball_wall_impact_if_needed(ball, fireball_wall_impact_side)
+		_queue_audio_event_at_x(SFX_EVENT_LIFE_LOST, BALL_LOST_X)
 		ball["active"] = false
 		return
 
@@ -2023,8 +1969,7 @@ func _update_bonus_timers(delta: float) -> void:
 		_bonus_drop_cooldown = maxf(0.0, _bonus_drop_cooldown - delta)
 	if back_wall_time_remaining > 0.0:
 		back_wall_time_remaining = maxf(0.0, back_wall_time_remaining - delta)
-	if _racket_stun_time_remaining > 0.0:
-		_racket_stun_time_remaining = maxf(0.0, _racket_stun_time_remaining - delta)
+	_enemy_hazard_system.update_racket_stun(delta)
 	if _drunk_paddle_time_remaining > 0.0:
 		_drunk_paddle_time_remaining = maxf(0.0, _drunk_paddle_time_remaining - delta)
 	_update_non_stricked_balls(delta)
@@ -2425,343 +2370,59 @@ func _collide_projectile_with_board(projectile: Dictionary) -> bool:
 	return true
 
 
-func _clear_monster_state() -> void:
-	if _has_active_bee():
-		_queue_audio_event(SFX_EVENT_BEE_STOP)
-	monsters.clear()
-	bees.clear()
-	_clear_snake_state()
-	impact_effects.clear()
-	_monster_spawn_cooldown = MONSTER_SPAWN_INTERVAL_SECONDS
-	_bee_spawn_delay_remaining = BEE_SPAWN_DELAY_MAX_SECONDS
-	_racket_stun_time_remaining = 0.0
-
-
-func _clear_snake_state() -> void:
-	snake_segments.clear()
-	_snake_update_elapsed = 0.0
-
-
-func _update_snake_segments(delta: float) -> void:
-	if delta <= 0.0 or not _has_active_snake_segments():
-		return
-
-	_snake_update_elapsed += delta
-	while _snake_update_elapsed > SNAKE_UPDATE_SECONDS and _has_active_snake_segments():
-		_snake_update_elapsed -= SNAKE_UPDATE_SECONDS
-		_step_snake_segments()
-
-
-func _step_snake_segments() -> void:
-	for index in range(snake_segments.size()):
-		var segment := snake_segments[index]
-		if not bool(segment.get("active", false)):
-			break
-		var position: Vector2 = segment.get("position", Vector2.ZERO)
-		segment["position"] = position + _snake_direction_for_kind(int(segment.get("kind", 0))) * SNAKE_STEP_PIXELS
-		snake_segments[index] = segment
-
-
-func _snake_direction_for_kind(kind: int) -> Vector2:
-	match posmod(kind, 4):
-		SNAKE_KIND_UP:
-			return Vector2(0, -1)
-		SNAKE_KIND_DOWN:
-			return Vector2(0, 1)
-		SNAKE_KIND_LEFT:
-			return Vector2(-1, 0)
-		SNAKE_KIND_RIGHT:
-			return Vector2(1, 0)
-	return Vector2.ZERO
-
-
-func _collide_ball_with_snake(ball: Dictionary) -> bool:
-	return _truncate_snake_at_rect(ball_rect(ball))
-
-
-func _collide_projectile_with_snake(projectile: Dictionary) -> bool:
-	return _truncate_snake_at_rect(projectile_rect(projectile))
-
-
-func _truncate_snake_at_rect(hit_rect: Rect2) -> bool:
-	for index in range(snake_segments.size()):
-		var segment: Dictionary = snake_segments[index]
-		if not bool(segment.get("active", false)):
-			break
-		if snake_rect(segment).intersects(hit_rect):
-			_spawn_impact_effect(segment.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_SNAKE_HIT)
-			_truncate_snake_at_index(index)
-			return true
-	return false
-
-
-func _truncate_snake_at_index(hit_index: int) -> void:
-	if hit_index < 0 or hit_index >= snake_segments.size():
-		return
-
-	if hit_index > 0:
-		var terminal_source_index := maxi(0, hit_index - 2)
-		var terminal_target_index := hit_index - 1
-		var terminal_source: Dictionary = snake_segments[terminal_source_index]
-		var terminal_target: Dictionary = snake_segments[terminal_target_index]
-		terminal_target["kind"] = _terminal_snake_kind_for_previous_kind(int(terminal_source.get("kind", 0)))
-		snake_segments[terminal_target_index] = terminal_target
-
-	for index in range(hit_index, snake_segments.size()):
-		var segment := snake_segments[index]
-		segment["active"] = false
-		snake_segments[index] = segment
-
-
-func _terminal_snake_kind_for_previous_kind(kind: int) -> int:
-	match clampi(kind, 0, SNAKE_KIND_COUNT - 1):
-		4, 11, 14:
-			return SNAKE_TERMINAL_UP
-		5, 10, 15:
-			return SNAKE_TERMINAL_DOWN
-		6, 8, 13:
-			return SNAKE_TERMINAL_LEFT
-		7, 9, 12:
-			return SNAKE_TERMINAL_RIGHT
-	match posmod(kind, 4):
-		SNAKE_KIND_UP:
-			return SNAKE_TERMINAL_UP
-		SNAKE_KIND_DOWN:
-			return SNAKE_TERMINAL_DOWN
-		SNAKE_KIND_LEFT:
-			return SNAKE_TERMINAL_LEFT
-		SNAKE_KIND_RIGHT:
-			return SNAKE_TERMINAL_RIGHT
-	return SNAKE_TERMINAL_LEFT
-
-
-func _has_active_snake_segments() -> bool:
-	for segment: Dictionary in snake_segments:
-		if bool(segment.get("active", false)):
-			return true
-		break
-	return false
-
-
-func _update_monsters(delta: float) -> void:
-	for index in range(monsters.size()):
-		var monster := monsters[index]
-		if not bool(monster.get("active", false)):
-			continue
-		_advance_monster(monster, delta)
-		if bool(monster.get("active", false)) and _collide_monster_with_racket(index, monster):
-			continue
-		monsters[index] = monster
-
-	_compact_monsters()
-
-	_monster_spawn_cooldown = maxf(0.0, _monster_spawn_cooldown - delta)
-	if _monster_spawn_cooldown > 0.0:
-		return
-
-	_spawn_next_monster()
-	_monster_spawn_cooldown = MONSTER_SPAWN_INTERVAL_SECONDS
-
-
-func _spawn_next_monster() -> bool:
-	if monsters.size() >= MAX_MONSTERS:
-		return false
-
-	var type_id := _next_monster_type()
-	var position := Vector2(
-		260.0 + float(_monster_rng.next_mod(200)),
-		100.0 + float(_monster_rng.next_mod(320))
-	)
-	var angle_seed := _monster_rng.next_mod(4)
-	var angle := 0
-	if angle_seed >= 2:
-		angle = 330 + _monster_rng.next_mod(60)
-	else:
-		angle = 150 + _monster_rng.next_mod(60)
-
-	monsters.append(_new_monster(position, type_id, angle))
-	_spawn_impact_effect(position, IMPACT_EFFECT_KIND_MONSTER_SPAWN)
-	_queue_audio_event_at_x(SFX_EVENT_MONSTER_SPAWN, position.x)
-	return true
-
-
-func _next_monster_type() -> int:
-	return int(_monster_rng.next_mod(MONSTER_TYPE_COUNT))
-
-
-func _new_monster(position: Vector2, type_id: int, angle: int) -> Dictionary:
+func _enemy_hazard_ports() -> Dictionary:
 	return {
-		"active": true,
-		"type_id": type_id,
-		"position": position,
-		"frame": 0,
-		"frame_elapsed": 0.0,
-		"angle": float(posmod(angle, 360)),
-		"speed": MONSTER_DEFAULT_SPEED,
-		"age": 0.0,
+		"racket_rect": Callable(self, "racket_rect"),
+		"racket_segment_count": Callable(self, "_current_racket_segment_count"),
+		"projectile_rect": Callable(self, "projectile_rect"),
+		"target_speed_for_ball": Callable(self, "_target_speed_for_ball"),
+		"award_score_with_popup": Callable(self, "_award_score_with_popup"),
+		"spawn_impact_effect": Callable(self, "_spawn_impact_effect"),
+		"queue_audio_event": Callable(self, "_queue_audio_event"),
+		"queue_audio_event_at_x": Callable(self, "_queue_audio_event_at_x"),
+		"queue_audio_event_with_pan100": Callable(self, "_queue_audio_event_with_pan100"),
 	}
 
 
-func _advance_monster(monster: Dictionary, delta: float) -> void:
-	var age := float(monster.get("age", 0.0)) + delta
-	monster["age"] = age
-	if age >= MONSTER_LIFETIME_SECONDS:
-		var expire_position: Vector2 = monster.get("position", Vector2.ZERO)
-		monster["active"] = false
-		_spawn_impact_effect(monster.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_MONSTER_TIMEOUT)
-		_queue_audio_event_at_x(SFX_EVENT_MONSTER_EXPIRE, expire_position.x)
-		return
-
-	var type_id := int(monster.get("type_id", 0))
-	var frame_elapsed := float(monster.get("frame_elapsed", 0.0)) + delta
-	var frame := int(monster.get("frame", 0))
-	var frame_count := _frame_count_for_monster_type(type_id)
-	while frame_elapsed >= MONSTER_FRAME_SECONDS:
-		frame = (frame + 1) % frame_count
-		frame_elapsed -= MONSTER_FRAME_SECONDS
-	monster["frame"] = frame
-	monster["frame_elapsed"] = frame_elapsed
-
-	var position: Vector2 = monster.get("position", Vector2.ZERO)
-	var speed := float(monster.get("speed", MONSTER_DEFAULT_SPEED))
-	var tick_scale := ORIGINAL_ENEMY_UPDATE_HZ * delta
-	var distance := speed * tick_scale
-	var angle := float(monster.get("angle", 0.0))
-	match monster_motion_mode_for_type(type_id):
-		MONSTER_MOTION_PADDLE_FOLLOW:
-			if distance > 0.0:
-				var horizontal_limit := MONSTER_TYPE3_RIGHT_LIMIT + speed
-				if position.x <= MONSTER_TYPE3_RIGHT_LIMIT:
-					position.x = minf(position.x + distance, horizontal_limit)
-
-				var jitter := float(_monster_rng.next_mod(MONSTER_TYPE3_VERTICAL_JITTER_RANGE))
-				var probe_y := position.y + MONSTER_SIZE.y * 0.5 + MONSTER_TYPE3_VERTICAL_JITTER_BASE + jitter
-				if racket_rect().get_center().y > probe_y:
-					position.y += distance
-					angle = 270.0
-				else:
-					position.y -= distance
-					angle = 90.0
-			else:
-				position += _monster_motion_vector(angle, distance)
-		MONSTER_MOTION_BALL_TRACK:
-			angle = _tracking_angle_for_monster(monster, angle, tick_scale)
-			position += _monster_motion_vector(angle, distance)
-		_:
-			position += _monster_motion_vector(angle, distance)
-
-	monster["position"] = position
-	monster["angle"] = angle
-	_collide_monster_with_boundaries(monster)
+func _current_racket_segment_count() -> int:
+	return racket_segment_count
 
 
-func _collide_monster_with_boundaries(monster: Dictionary) -> bool:
-	var position: Vector2 = monster.get("position", Vector2.ZERO)
-	var type_id := int(monster.get("type_id", 0))
-	var rect := Rect2(position, MONSTER_SIZE)
-	var hit_horizontal := false
-	var hit_vertical := false
-
-	if rect.position.x < PlayfieldSpecScript.WALL_INNER_LEFT_X:
-		position.x = PlayfieldSpecScript.WALL_INNER_LEFT_X
-		hit_horizontal = true
-	elif rect.end.x > PlayfieldSpecScript.WALL_INNER_RIGHT_X:
-		position.x = PlayfieldSpecScript.WALL_INNER_RIGHT_X - MONSTER_SIZE.x
-		hit_horizontal = true
-
-	if rect.position.y < PlayfieldSpecScript.WALL_INNER_TOP_Y:
-		position.y = PlayfieldSpecScript.WALL_INNER_TOP_Y
-		hit_vertical = true
-	elif rect.end.y > PlayfieldSpecScript.WALL_INNER_BOTTOM_Y:
-		position.y = PlayfieldSpecScript.WALL_INNER_BOTTOM_Y - MONSTER_SIZE.y
-		hit_vertical = true
-
-	if not hit_horizontal and not hit_vertical:
-		return false
-
-	monster["position"] = position
-	if type_id != 10:
-		var angle := float(monster.get("angle", 0.0))
-		if hit_horizontal:
-			angle = fposmod(180.0 - angle, 360.0)
-		if hit_vertical:
-			angle = fposmod(360.0 - angle, 360.0)
-		monster["angle"] = angle
-	return true
+func _clear_monster_state() -> void:
+	_enemy_hazard_system.clear(Callable(self, "_queue_audio_event"))
+	impact_effects.clear()
 
 
-func _frame_count_for_monster_type(type_id: int) -> int:
-	return monster_frame_count_for_type(type_id)
+func _clear_snake_state() -> void:
+	_enemy_hazard_system.clear_snake_state()
 
 
-func _tracking_angle_for_monster(monster: Dictionary, current_angle: float, tick_scale: float) -> float:
-	var monster_center := Vector2(monster.get("position", Vector2.ZERO)) + MONSTER_SIZE * 0.5
-	var target_position := _nearest_trackable_ball_center(monster_center)
-	if target_position == Vector2.INF:
-		return current_angle
-
-	var target_delta := target_position - monster_center
-	if target_delta.is_zero_approx():
-		return current_angle
-
-	var target_angle := fposmod(rad_to_deg(atan2(-target_delta.y, target_delta.x)), 360.0)
-	var difference := fposmod(target_angle - current_angle + 540.0, 360.0) - 180.0
-	var turn_step := MONSTER_TRACKING_TURN_STEP_DEGREES * tick_scale
-	if difference > 0:
-		current_angle += minf(turn_step, difference)
-	elif difference < 0:
-		current_angle -= minf(turn_step, -difference)
-	return fposmod(current_angle, 360.0)
+func _update_snake_segments(delta: float) -> void:
+	_enemy_hazard_system.update_snake_segments(delta, _enemy_hazard_ports())
 
 
-func _nearest_trackable_ball_center(monster_center: Vector2) -> Vector2:
-	var nearest_position := Vector2.INF
-	var nearest_distance := INF
-	for ball: Dictionary in balls:
-		if not bool(ball.get("active", false)):
-			continue
-		if _ball_type(ball) == BALL_TYPE_NON_STRICKED:
-			continue
-		var ball_center := ball_rect(ball).get_center()
-		var distance := monster_center.distance_to(ball_center)
-		if distance < nearest_distance:
-			nearest_distance = distance
-			nearest_position = ball_center
-	return nearest_position
+func _collide_ball_with_snake(ball: Dictionary) -> bool:
+	return _enemy_hazard_system.collide_ball_with_snake(ball, _enemy_hazard_ports())
 
 
-func _monster_motion_vector(angle: float, speed: float) -> Vector2:
-	var radians := deg_to_rad(fposmod(angle, 360.0))
-	return Vector2(cos(radians) * speed, -sin(radians) * speed)
+func _collide_projectile_with_snake(projectile: Dictionary) -> bool:
+	return _enemy_hazard_system.collide_projectile_with_snake(projectile, _enemy_hazard_ports())
+
+
+func _has_active_snake_segments() -> bool:
+	return _enemy_hazard_system.has_active_snake_segments()
+
+
+func _update_monsters(delta: float) -> void:
+	_enemy_hazard_system.update_monsters(delta, balls, _enemy_hazard_ports())
 
 
 func _collide_ball_with_monsters(ball: Dictionary) -> bool:
-	for index in range(monsters.size()):
-		var monster: Dictionary = monsters[index]
-		if not bool(monster.get("active", false)):
-			continue
-		if _ball_intersects_enemy_circle(ball, monster.get("position", Vector2.ZERO), MONSTER_BALL_COLLISION_RADIUS):
-			var type_id := int(monster.get("type_id", 0))
-			var score_value := _score_for_monster_ball_contact(monster)
-			if _monster_survives_ball_contact(monster):
-				_award_score_with_popup(score_value, monster.get("position", Vector2.ZERO))
-			else:
-				_kill_monster_at_index(index, score_value)
-			_apply_ball_enemy_response(ball, type_id)
-			return true
-	return false
+	return _enemy_hazard_system.collide_ball_with_monsters(ball, balls, _enemy_hazard_ports())
 
 
 func _collide_ball_with_bees(ball: Dictionary) -> bool:
-	for index in range(bees.size()):
-		var bee: Dictionary = bees[index]
-		if not bool(bee.get("active", false)):
-			continue
-		if _ball_intersects_enemy_circle(ball, bee.get("position", Vector2.ZERO), BEE_BALL_COLLISION_RADIUS):
-			_kill_bee_at_index(index, BEE_BALL_HIT_SCORE)
-			_apply_ball_enemy_response(ball, -1)
-			return true
-	return false
+	return _enemy_hazard_system.collide_ball_with_bees(ball, _enemy_hazard_ports())
 
 
 func _ball_intersects_enemy_circle(ball: Dictionary, enemy_position: Vector2, enemy_radius: float) -> bool:
@@ -2771,184 +2432,15 @@ func _ball_intersects_enemy_circle(ball: Dictionary, enemy_position: Vector2, en
 
 
 func _collide_projectile_with_monsters(projectile: Dictionary) -> bool:
-	var rect := projectile_rect(projectile)
-	for index in range(monsters.size()):
-		var monster: Dictionary = monsters[index]
-		if not bool(monster.get("active", false)):
-			continue
-		if rect.intersects(monster_rect(monster)):
-			_kill_monster_at_index(index, _score_for_monster_paddle_contact(monster))
-			_queue_audio_event_at_x(SFX_EVENT_PROJECTILE_HIT, projectile_rect(projectile).position.x)
-			return true
-	return false
-
-
-func _collide_monster_with_racket(index: int, monster: Dictionary) -> bool:
-	if not monster_rect(monster).intersects(racket_rect()):
-		return false
-
-	_kill_monster_at_index(index, _score_for_monster_paddle_contact(monster))
-	if monster_stuns_racket(int(monster.get("type_id", 0))):
-		_apply_racket_stun()
-	return true
-
-
-func _kill_monster_at_index(index: int, score_value: int = -1) -> void:
-	if index < 0 or index >= monsters.size():
-		return
-	var monster := monsters[index]
-	monster["active"] = false
-	monsters[index] = monster
-	var final_score := score_value if score_value >= 0 else _score_for_monster_paddle_contact(monster)
-	_award_score_with_popup(final_score, monster.get("position", Vector2.ZERO))
-	_spawn_impact_effect(monster.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_MONSTER_HIT)
-	var hit_position: Vector2 = monster.get("position", Vector2.ZERO)
-	_queue_audio_event_at_x(SFX_EVENT_MONSTER_HIT, hit_position.x)
-
-
-func _score_for_monster_paddle_contact(monster: Dictionary) -> int:
-	match _monster_score_mode_for_type(int(monster.get("type_id", 0)), "paddle_score_mode"):
-		MONSTER_SCORE_MODE_RANDOM_TYPE6:
-			return MONSTER_TYPE6_SCORE_STEP * (_monster_rng.next_mod(MONSTER_TYPE6_SCORE_VARIANTS) + 1)
-		MONSTER_SCORE_MODE_STUN_TYPE9:
-			return MONSTER_TYPE9_STUN_SCORE
-		_:
-			return MONSTER_SCORE
-
-
-func _score_for_monster_ball_contact(monster: Dictionary) -> int:
-	match _monster_score_mode_for_type(int(monster.get("type_id", 0)), "ball_score_mode"):
-		MONSTER_SCORE_MODE_RANDOM_TYPE6:
-			return MONSTER_TYPE6_SCORE_STEP * (_collision_rng.next_mod(MONSTER_TYPE6_SCORE_VARIANTS) + 1)
-		_:
-			return MONSTER_BALL_HIT_SCORE
-
-
-func _monster_survives_ball_contact(monster: Dictionary) -> bool:
-	return int(monster.get("type_id", 0)) == 1
-
-
-func _apply_ball_enemy_response(ball: Dictionary, enemy_type_id: int) -> void:
-	if enemy_type_id == 1:
-		_rotate_ball_from_enemy_contact(ball, MONSTER_TYPE1_BALL_ROTATION_DEGREES, 0)
-	elif _ball_type(ball) == BALL_TYPE_STANDARD:
-		_rotate_ball_from_enemy_contact(ball)
-
-
-func _rotate_ball_from_enemy_contact(
-	ball: Dictionary,
-	minimum_degrees: int = MONSTER_BALL_HIT_MIN_ROTATION_DEGREES,
-	random_degrees: int = MONSTER_BALL_HIT_RANDOM_ROTATION_DEGREES
-) -> void:
-	var velocity: Vector2 = ball.get("velocity", Vector2.ZERO)
-	var speed := _target_speed_for_ball(ball)
-
-	var current_angle := 0
-	if not velocity.is_zero_approx():
-		current_angle = posmod(int(roundi(rad_to_deg(atan2(-velocity.y, velocity.x)))), 360)
-	var rotation_degrees := minimum_degrees
-	if random_degrees > 0:
-		rotation_degrees += _collision_rng.next_mod(random_degrees)
-	var next_angle := posmod(current_angle + rotation_degrees, 360)
-	ball["velocity"] = _monster_motion_vector(next_angle, speed)
-	ball["target_speed"] = speed
-
-
-func _compact_monsters() -> void:
-	var compacted: Array[Dictionary] = []
-	for monster: Dictionary in monsters:
-		if bool(monster.get("active", false)):
-			compacted.append(monster)
-	monsters = compacted
+	return _enemy_hazard_system.collide_projectile_with_monsters(projectile, _enemy_hazard_ports())
 
 
 func _update_bees(delta: float) -> void:
-	for index in range(bees.size()):
-		var bee := bees[index]
-		if not bool(bee.get("active", false)):
-			continue
-		_advance_bee(bee, delta)
-		if bool(bee.get("active", false)) and bee_rect(bee).intersects(racket_rect()):
-			_resolve_bee_racket_hit(index, bee)
-			continue
-		bees[index] = bee
-
-	_compact_bees()
-
-	if _bee_spawn_delay_remaining > 0.0:
-		_bee_spawn_delay_remaining = maxf(0.0, _bee_spawn_delay_remaining - delta)
-	if _bee_spawn_delay_remaining > 0.0 or not bees.is_empty():
-		return
-
-	if _spawn_next_bee():
-		_reset_bee_spawn_delay()
-
-
-func _spawn_next_bee() -> bool:
-	if not bees.is_empty():
-		return false
-
-	bees.append(_new_bee(_bee_spawn_position()))
-	_queue_audio_event_with_pan100(SFX_EVENT_BEE_SPAWN, SFX_BEE_SPAWN_PAN100)
-	return true
-
-
-func _new_bee(position: Vector2, frame: int = 0) -> Dictionary:
-	return {
-		"active": true,
-		"position": position,
-		"frame": posmod(frame, BEE_FRAME_COUNT),
-		"frame_elapsed": 0.0,
-	}
-
-
-func _bee_spawn_position() -> Vector2:
-	var y := racket_y + floorf((RACKET_SEGMENT_PIXEL_STEP * float(racket_segment_count) - 24.0) * 0.5)
-	return Vector2(BEE_SPAWN_X, y)
-
-
-func _advance_bee(bee: Dictionary, delta: float) -> void:
-	var position: Vector2 = bee.get("position", Vector2.ZERO)
-	position.x += BEE_STEP_X * ORIGINAL_ENEMY_UPDATE_HZ * delta
-	bee["position"] = position
-	if position.x >= BEE_EXPIRE_X:
-		bee["active"] = false
-		_queue_audio_event(SFX_EVENT_BEE_STOP)
-		return
-
-	var frame_elapsed := float(bee.get("frame_elapsed", 0.0)) + delta
-	var frame := int(bee.get("frame", 0))
-	while frame_elapsed >= BEE_FRAME_SECONDS:
-		frame = (frame + 1) % BEE_FRAME_COUNT
-		frame_elapsed -= BEE_FRAME_SECONDS
-	bee["frame"] = frame
-	bee["frame_elapsed"] = frame_elapsed
-
-
-func _resolve_bee_racket_hit(index: int, bee: Dictionary) -> void:
-	_kill_bee_at_index(index, BEE_STUN_SCORE)
-	_apply_racket_stun()
-
-
-func _kill_bee_at_index(index: int, score_value: int) -> void:
-	if index < 0 or index >= bees.size():
-		return
-	var bee := bees[index]
-	bee["active"] = false
-	bees[index] = bee
-	_award_score_with_popup(score_value, bee.get("position", Vector2.ZERO))
-	_spawn_impact_effect(bee.get("position", Vector2.ZERO), IMPACT_EFFECT_KIND_MONSTER_HIT)
-	_queue_audio_event(SFX_EVENT_BEE_STOP)
-	var hit_position: Vector2 = bee.get("position", Vector2.ZERO)
-	_queue_audio_event_at_x(SFX_EVENT_MONSTER_HIT, hit_position.x)
+	_enemy_hazard_system.update_bees(delta, _enemy_hazard_ports())
 
 
 func _apply_racket_stun() -> void:
-	_racket_stun_time_remaining += RACKET_STUN_DURATION_SECONDS
-
-
-func _reset_bee_spawn_delay() -> void:
-	_bee_spawn_delay_remaining = BEE_SPAWN_DELAY_MAX_SECONDS - float(_collision_rng.next_mod(10))
+	_enemy_hazard_system.apply_racket_stun()
 
 
 func _update_impact_effects(delta: float) -> void:
@@ -3003,19 +2495,8 @@ func _spawn_fireball_wall_impact_if_needed(ball: Dictionary, impact_side: int) -
 	)
 
 
-func _compact_bees() -> void:
-	var compacted: Array[Dictionary] = []
-	for bee: Dictionary in bees:
-		if bool(bee.get("active", false)):
-			compacted.append(bee)
-	bees = compacted
-
-
 func _has_active_bee() -> bool:
-	for bee: Dictionary in bees:
-		if bool(bee.get("active", false)):
-			return true
-	return false
+	return _enemy_hazard_system.has_active_bee()
 
 
 func _compact_impact_effects() -> void:
@@ -3398,7 +2879,6 @@ func _handle_round_lost() -> void:
 		_queue_audio_event(SFX_EVENT_GAME_OVER)
 		return
 
-	_queue_audio_event_at_x(SFX_EVENT_LIFE_LOST, BALL_LOST_X)
 	reset_round()
 	start_level_ready_sequence(false)
 

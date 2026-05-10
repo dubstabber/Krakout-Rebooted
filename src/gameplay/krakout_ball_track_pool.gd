@@ -36,6 +36,7 @@ func update(delta: float, balls: Array, fallback_ball_size: float) -> void:
 
 	ensure_slots(balls.size())
 	for index in range(balls.size()):
+		_ensure_min_slots(index + 1)
 		var ball: Dictionary = balls[index]
 		if not bool(ball.get("active", false)):
 			clear_slots(index)
@@ -69,6 +70,10 @@ func ensure_slots(ball_count: int) -> void:
 		tracks.pop_back()
 	while spawn_elapsed.size() > ball_count:
 		spawn_elapsed.pop_back()
+	_ensure_min_slots(ball_count)
+
+
+func _ensure_min_slots(ball_count: int) -> void:
 	while tracks.size() < ball_count:
 		tracks.append(new_track_slots())
 	while spawn_elapsed.size() < ball_count:
@@ -129,7 +134,7 @@ func advance_slots(ball_index: int, delta: float) -> void:
 func spawn_track(ball_index: int, ball: Dictionary, fallback_ball_size: float) -> bool:
 	if ball_index < 0:
 		return false
-	ensure_slots(ball_index + 1)
+	_ensure_min_slots(ball_index + 1)
 	if ball_index >= tracks.size():
 		return false
 

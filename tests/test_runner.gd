@@ -18,6 +18,7 @@ const GameSessionScript := preload("res://src/gameplay/krakout_game_session.gd")
 const RandomScript := preload("res://src/gameplay/krakout_random.gd")
 const AudioEventQueueScript := preload("res://src/gameplay/krakout_audio_event_queue.gd")
 const BallTrackPoolScript := preload("res://src/gameplay/krakout_ball_track_pool.gd")
+const EnemyHazardSystemScript := preload("res://src/gameplay/systems/krakout_enemy_hazard_system.gd")
 const ProjectileSystemScript := preload("res://src/gameplay/systems/krakout_projectile_system.gd")
 const TransientVfxPoolScript := preload("res://src/gameplay/krakout_transient_vfx_pool.gd")
 const RacketRendererScript := preload("res://src/render/racket_renderer.gd")
@@ -517,6 +518,52 @@ func _validate_session_helper_modules() -> void:
 	audio_queue.queue_event("")
 	_assert(audio_queue.pop_event_names().is_empty(), "audio event queue ignores empty semantic event names")
 
+	var shared_monsters: Array[Dictionary] = []
+	var shared_bees: Array[Dictionary] = []
+	var shared_snake_segments: Array[Dictionary] = []
+	var enemy_system = EnemyHazardSystemScript.new(
+		shared_monsters,
+		shared_bees,
+		shared_snake_segments,
+		RandomScript.new(1),
+		RandomScript.new(1)
+	)
+	_assert(
+		EnemyHazardSystemScript.monster_frame_count_for_type(3) == GameSessionScript.monster_frame_count_for_type(3),
+		"enemy hazard helper preserves facade monster trait lookup"
+	)
+	_assert(
+		EnemyHazardSystemScript.monster_spawn_pool() == GameSessionScript.monster_spawn_pool(),
+		"enemy hazard helper owns the registered monster spawn pool"
+	)
+	_assert(
+		enemy_system.force_monster(Vector2(200, 200), 9, 0),
+		"enemy hazard helper spawns monsters into shared storage"
+	)
+	_assert(shared_monsters.size() == 1 and enemy_system.active_monster_count() == 1, "enemy hazard helper exposes active monsters from shared storage")
+	_assert(
+		enemy_system.set_monster_age_for_test(0, GameSessionScript.MONSTER_LIFETIME_SECONDS - 0.1),
+		"enemy hazard helper can mutate monster age through its test seam"
+	)
+	_assert(
+		enemy_system.force_bee(Vector2(GameSessionScript.BEE_SPAWN_X, 100), 5),
+		"enemy hazard helper spawns the Bee hazard into shared storage"
+	)
+	_assert(enemy_system.active_bee_count() == 1, "enemy hazard helper exposes active Bees")
+	_assert(
+		enemy_system.force_snake_vfx_segments_for_test([
+			{"position": Vector2(100, 100), "kind": GameSessionScript.SNAKE_KIND_LEFT},
+			{"position": Vector2(110, 100), "kind": 99},
+		]) == 2,
+		"enemy hazard helper owns the Snake VFX test seam"
+	)
+	_assert(
+		enemy_system.visible_snake_segments()[1]["kind"] == GameSessionScript.SNAKE_KIND_COUNT - 1,
+		"enemy hazard helper clamps Snake kinds to the original atlas range"
+	)
+	enemy_system.clear()
+	_assert(shared_monsters.is_empty() and shared_bees.is_empty() and shared_snake_segments.is_empty(), "enemy hazard helper clears shared enemy storage")
+
 	var shared_tracks: Array = []
 	var shared_track_elapsed: Array[float] = []
 	var track_pool = BallTrackPoolScript.new(shared_tracks, shared_track_elapsed, RandomScript.new(1))
@@ -547,6 +594,34 @@ func _validate_session_helper_modules() -> void:
 	}]
 	track_pool.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS + 0.001, non_stricked_balls, GameSessionScript.BALL_SIZE)
 	_assert(track_pool.visible_tracks().is_empty(), "ball-track helper suppresses non-stricked ball tracks")
+
+	var multi_shared_tracks: Array = []
+	var multi_shared_track_elapsed: Array[float] = []
+	var multi_track_pool = BallTrackPoolScript.new(multi_shared_tracks, multi_shared_track_elapsed, RandomScript.new(1))
+	var multi_track_balls: Array[Dictionary] = [
+		{
+			"active": true,
+			"position": Vector2(300, 200),
+			"size": GameSessionScript.BALL_SIZE,
+			"type_id": GameSessionScript.BALL_TYPE_STANDARD,
+		},
+		{
+			"active": true,
+			"position": Vector2(550, 200),
+			"size": GameSessionScript.BALL_SIZE,
+			"type_id": GameSessionScript.BALL_TYPE_FIREBALL,
+		},
+	]
+	multi_track_pool.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS + 0.001, multi_track_balls, GameSessionScript.BALL_SIZE)
+	_assert(
+		_has_ball_track_at_or_after_x(multi_track_pool.visible_tracks(), GameSessionScript.BALL_TYPE_FIREBALL, 520.0),
+		"ball-track helper spawns particles for later active balls"
+	)
+	multi_track_pool.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS, multi_track_balls, GameSessionScript.BALL_SIZE)
+	_assert(
+		_has_ball_track_at_or_after_x(multi_track_pool.visible_tracks(), GameSessionScript.BALL_TYPE_FIREBALL, 520.0),
+		"ball-track helper keeps later ball particles when earlier balls emit again"
+	)
 
 	var shared_impacts: Array = []
 	var shared_popups: Array = []
@@ -988,6 +1063,26 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(missed_session.state == GameSessionScript.STATE_PLAYING, "spare-ball ready timeout automatically relaunches the ball")
 	_assert(not missed_session.is_level_ready_sequence_active(), "spare-ball automatic relaunch clears the ready countdown")
 	_assert(missed_session.first_ball_velocity().x < 0.0, "spare-ball automatic relaunch uses the normal launch vector")
+
+	var multi_ball_loss_session = _playing_session_from_level(_make_level_from_rows([[1]]))
+	_stack_bonus(multi_ball_loss_session, GameSessionScript.BONUS_ADD_STANDARD_BALL)
+	multi_ball_loss_session.activate_next_bonus()
+	multi_ball_loss_session.pop_audio_events()
+	var lost_added_ball: Dictionary = multi_ball_loss_session.balls[1]
+	lost_added_ball["position"] = Vector2(GameSessionScript.BALL_LOST_X + 1.0, 350)
+	lost_added_ball["velocity"] = Vector2(120, 0)
+	multi_ball_loss_session.balls[1] = lost_added_ball
+	multi_ball_loss_session.update(0.0)
+	_assert(multi_ball_loss_session.state == GameSessionScript.STATE_PLAYING, "losing one of several balls keeps the round active")
+	_assert(multi_ball_loss_session.active_ball_count() == 1, "losing one of several balls leaves the remaining ball active")
+	_assert(multi_ball_loss_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_LIFE_LOST], "losing one of several balls queues lost-ball SFX event")
+	var lost_remaining_ball: Dictionary = multi_ball_loss_session.balls[0]
+	lost_remaining_ball["position"] = Vector2(GameSessionScript.BALL_LOST_X + 1.0, 350)
+	lost_remaining_ball["velocity"] = Vector2(120, 0)
+	multi_ball_loss_session.balls[0] = lost_remaining_ball
+	multi_ball_loss_session.update(0.0)
+	_assert(multi_ball_loss_session.state == GameSessionScript.STATE_READY, "losing the last remaining ball still resets the round")
+	_assert(multi_ball_loss_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_LIFE_LOST], "losing the last remaining ball queues one lost-ball SFX event")
 	for miss_index in range(GameSessionScript.INITIAL_LIVES):
 		missed_session.force_ball(Vector2(GameSessionScript.BALL_LOST_X + 1.0, 350), Vector2(120, 0))
 		missed_session.update(0.01)
@@ -2103,6 +2198,18 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 	_assert(_payload_events(add_ball_audio_payloads) == [GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY], "standard-ball bonus queues add-ball apply SFX event")
 	if add_ball_audio_payloads.size() == 1:
 		_assert(is_equal_approx(float(add_ball_audio_payloads[0].get("source_x", -1.0)), float(add_ball_result.get("source_x", -2.0))), "standard-ball bonus SFX payload follows the added ball source x")
+	var standard_added_ball_track_min_x := float(add_ball_result.get("source_x", 0.0)) - 30.0
+	add_ball_session.set_ball_track_rng_seed(1)
+	add_ball_session.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS + 0.001)
+	_assert(
+		_has_ball_track_at_or_after_x(add_ball_session.visible_ball_tracks(), GameSessionScript.BALL_TYPE_STANDARD, standard_added_ball_track_min_x),
+		"standard-ball bonus spawns ball-track particles for the added ball"
+	)
+	add_ball_session.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS)
+	_assert(
+		_has_ball_track_at_or_after_x(add_ball_session.visible_ball_tracks(), GameSessionScript.BALL_TYPE_STANDARD, standard_added_ball_track_min_x),
+		"standard-ball bonus keeps added-ball particles when the initial ball emits again"
+	)
 
 	var fireball_session = _playing_session_from_level(_make_level_from_rows([[1]]))
 	_stack_bonus(fireball_session, GameSessionScript.BONUS_ADD_FIREBALL)
@@ -2116,6 +2223,18 @@ func _validate_game_session(default_level: KrakoutLevelData) -> void:
 			fireball_count += 1
 	_assert(fireball_count == 1, "fireball bonus marks exactly one added ball as fireball")
 	_assert(fireball_session.pop_audio_events() == [GameSessionScript.SFX_EVENT_BONUS_ADD_BALL_APPLY], "fireball bonus queues add-ball apply SFX event")
+	var fireball_added_ball_track_min_x := float(fireball_result.get("source_x", 0.0)) - 30.0
+	fireball_session.set_ball_track_rng_seed(1)
+	fireball_session.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS + 0.001)
+	_assert(
+		_has_ball_track_at_or_after_x(fireball_session.visible_ball_tracks(), GameSessionScript.BALL_TYPE_FIREBALL, fireball_added_ball_track_min_x),
+		"fireball bonus spawns fireball-colored particles for the added ball"
+	)
+	fireball_session.update(GameSessionScript.BALL_TRACK_SPAWN_SECONDS)
+	_assert(
+		_has_ball_track_at_or_after_x(fireball_session.visible_ball_tracks(), GameSessionScript.BALL_TYPE_FIREBALL, fireball_added_ball_track_min_x),
+		"fireball bonus keeps added fireball particles when the initial ball emits again"
+	)
 	while fireball_session.active_ball_count() < GameSessionScript.MAX_BALLS:
 		_stack_bonus(fireball_session, GameSessionScript.BONUS_ADD_FIREBALL)
 		fireball_session.activate_next_bonus()
@@ -5533,6 +5652,17 @@ func _payload_events(payloads: Array) -> Array[String]:
 		else:
 			events.append(String(payload))
 	return events
+
+
+func _has_ball_track_at_or_after_x(tracks: Array, type_id: int, min_x: float) -> bool:
+	for track: Variant in tracks:
+		if not track is Dictionary:
+			continue
+		var track_dict: Dictionary = track
+		var track_position: Vector2 = track_dict.get("position", Vector2.ZERO)
+		if int(track_dict.get("type_id", -1)) == type_id and track_position.x >= min_x:
+			return true
+	return false
 
 
 func _assert(condition: bool, message: String) -> void:
