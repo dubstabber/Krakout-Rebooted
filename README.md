@@ -29,6 +29,14 @@ the Godot-ready textures, audio, level JSON, and a normalized manifest with
   board state: mouse-following right-side racket, ready/launch/play/lost/complete
   states, original get-ready launch-skip behavior, wall/racket/brick collision,
   and redraw signaling.
+- Gameplay constants and small system responsibilities are being split out behind
+  that session facade. `KrakoutBallRules`, `KrakoutRacketRules`,
+  `KrakoutBonusCatalog`, `KrakoutEnemyRules`, and `KrakoutGameplayEvents` own
+  stable original-backed contracts, `KrakoutGameplayContext` replaces ad-hoc
+  callback bundles for helper systems, and the session delegates low-risk
+  mutable slices to `KrakoutBallSystem`, `KrakoutBonusSystem`, and
+  `KrakoutRacketSystem` while preserving the existing API for screens,
+  renderers, debug tools, and tests.
 - `KrakoutGameSession` now consumes the first 22 level-tail bytes as original
   bonus stock, uses the original RNG constants, applies the 3-second drop gate
   and stock-weighted drop chance, spawns falling bonuses with the original

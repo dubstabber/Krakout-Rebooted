@@ -1,6 +1,8 @@
 extends RefCounted
 class_name KrakoutAudioCueCatalog
 
+const GameplayEventsScript := preload("res://src/gameplay/rules/krakout_gameplay_events.gd")
+
 const CONTEXT_MAIN_MENU := "main_menu"
 const CONTEXT_RULES := "rules"
 const CONTEXT_HIGH_SCORE := "high_score"
@@ -15,30 +17,30 @@ const SFX_EVENT_MAIN_MENU_SELECT := "main_menu_select"
 const SFX_EVENT_MAIN_MENU_ACTIVATE := "main_menu_activate"
 const SFX_EVENT_EPISODE_SELECT := "episode_select"
 const SFX_EVENT_EPISODE_ACTIVATE := "episode_activate"
-const SFX_EVENT_BALL_LAUNCH := "ball_launch"
-const SFX_EVENT_RACKET_BOUNCE := "racket_bounce"
-const SFX_EVENT_BACK_WALL_BOUNCE := "back_wall_bounce"
-const SFX_EVENT_BRICK_CLEAR := "brick_clear"
-const SFX_EVENT_HARD_BRICK_HIT := "hard_brick_hit"
-const SFX_EVENT_CHAIN_EXPLOSION := "chain_explosion"
-const SFX_EVENT_BONUS_SPAWN := "bonus_spawn"
-const SFX_EVENT_BONUS_EXPIRE := "bonus_expire"
-const SFX_EVENT_BONUS_COLLECT := "bonus_collect"
-const SFX_EVENT_BONUS_APPLY := "bonus_apply"
-const SFX_EVENT_BONUS_ADD_BALL_APPLY := "bonus_add_ball_apply"
-const SFX_EVENT_BONUS_DESTROY_BALL_APPLY := "bonus_destroy_ball_apply"
-const SFX_EVENT_BONUS_JUMP_LEVEL_APPLY := "bonus_jump_level_apply"
-const SFX_EVENT_PROJECTILE_FIRE := "projectile_fire"
-const SFX_EVENT_PROJECTILE_HIT := "projectile_hit"
-const SFX_EVENT_MONSTER_SPAWN := "monster_spawn"
-const SFX_EVENT_MONSTER_EXPIRE := "monster_expire"
-const SFX_EVENT_MONSTER_HIT := "monster_hit"
-const SFX_EVENT_BEE_SPAWN := "bee_spawn"
-const SFX_EVENT_BEE_STOP := "bee_stop"
-const SFX_EVENT_LIFE_LOST := "life_lost"
-const SFX_EVENT_LEVEL_READY := "level_ready"
-const SFX_EVENT_LEVEL_COMPLETE := "level_complete"
-const SFX_EVENT_GAME_OVER := "game_over"
+const SFX_EVENT_BALL_LAUNCH := GameplayEventsScript.SFX_EVENT_BALL_LAUNCH
+const SFX_EVENT_RACKET_BOUNCE := GameplayEventsScript.SFX_EVENT_RACKET_BOUNCE
+const SFX_EVENT_BACK_WALL_BOUNCE := GameplayEventsScript.SFX_EVENT_BACK_WALL_BOUNCE
+const SFX_EVENT_BRICK_CLEAR := GameplayEventsScript.SFX_EVENT_BRICK_CLEAR
+const SFX_EVENT_HARD_BRICK_HIT := GameplayEventsScript.SFX_EVENT_HARD_BRICK_HIT
+const SFX_EVENT_CHAIN_EXPLOSION := GameplayEventsScript.SFX_EVENT_CHAIN_EXPLOSION
+const SFX_EVENT_BONUS_SPAWN := GameplayEventsScript.SFX_EVENT_BONUS_SPAWN
+const SFX_EVENT_BONUS_EXPIRE := GameplayEventsScript.SFX_EVENT_BONUS_EXPIRE
+const SFX_EVENT_BONUS_COLLECT := GameplayEventsScript.SFX_EVENT_BONUS_COLLECT
+const SFX_EVENT_BONUS_APPLY := GameplayEventsScript.SFX_EVENT_BONUS_APPLY
+const SFX_EVENT_BONUS_ADD_BALL_APPLY := GameplayEventsScript.SFX_EVENT_BONUS_ADD_BALL_APPLY
+const SFX_EVENT_BONUS_DESTROY_BALL_APPLY := GameplayEventsScript.SFX_EVENT_BONUS_DESTROY_BALL_APPLY
+const SFX_EVENT_BONUS_JUMP_LEVEL_APPLY := GameplayEventsScript.SFX_EVENT_BONUS_JUMP_LEVEL_APPLY
+const SFX_EVENT_PROJECTILE_FIRE := GameplayEventsScript.SFX_EVENT_PROJECTILE_FIRE
+const SFX_EVENT_PROJECTILE_HIT := GameplayEventsScript.SFX_EVENT_PROJECTILE_HIT
+const SFX_EVENT_MONSTER_SPAWN := GameplayEventsScript.SFX_EVENT_MONSTER_SPAWN
+const SFX_EVENT_MONSTER_EXPIRE := GameplayEventsScript.SFX_EVENT_MONSTER_EXPIRE
+const SFX_EVENT_MONSTER_HIT := GameplayEventsScript.SFX_EVENT_MONSTER_HIT
+const SFX_EVENT_BEE_SPAWN := GameplayEventsScript.SFX_EVENT_BEE_SPAWN
+const SFX_EVENT_BEE_STOP := GameplayEventsScript.SFX_EVENT_BEE_STOP
+const SFX_EVENT_LIFE_LOST := GameplayEventsScript.SFX_EVENT_LIFE_LOST
+const SFX_EVENT_LEVEL_READY := GameplayEventsScript.SFX_EVENT_LEVEL_READY
+const SFX_EVENT_LEVEL_COMPLETE := GameplayEventsScript.SFX_EVENT_LEVEL_COMPLETE
+const SFX_EVENT_GAME_OVER := GameplayEventsScript.SFX_EVENT_GAME_OVER
 
 const MUSIC_CONTEXTS := {
 	CONTEXT_MAIN_MENU: "Abnormal",

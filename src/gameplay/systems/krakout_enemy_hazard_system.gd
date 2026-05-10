@@ -2,130 +2,93 @@ extends RefCounted
 class_name KrakoutEnemyHazardSystem
 
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
+const BallRulesScript := preload("res://src/gameplay/rules/krakout_ball_rules.gd")
+const RacketRulesScript := preload("res://src/gameplay/rules/krakout_racket_rules.gd")
+const EnemyRulesScript := preload("res://src/gameplay/rules/krakout_enemy_rules.gd")
+const GameplayEventsScript := preload("res://src/gameplay/rules/krakout_gameplay_events.gd")
 
-const BALL_SIZE := 18.0
-const BALL_TYPE_STANDARD := 0
-const BALL_TYPE_FIREBALL := 1
-const BALL_TYPE_NON_STRICKED := 2
-const ORIGINAL_UPDATE_HZ := 50.0
-const ORIGINAL_ENEMY_STEPS_PER_UPDATE := 3.0
-const ORIGINAL_ENEMY_UPDATE_HZ := ORIGINAL_UPDATE_HZ * ORIGINAL_ENEMY_STEPS_PER_UPDATE
+const BALL_SIZE := BallRulesScript.BALL_SIZE
+const BALL_TYPE_STANDARD := BallRulesScript.BALL_TYPE_STANDARD
+const BALL_TYPE_FIREBALL := BallRulesScript.BALL_TYPE_FIREBALL
+const BALL_TYPE_NON_STRICKED := BallRulesScript.BALL_TYPE_NON_STRICKED
+const ORIGINAL_UPDATE_HZ := BallRulesScript.ORIGINAL_UPDATE_HZ
+const ORIGINAL_ENEMY_STEPS_PER_UPDATE := EnemyRulesScript.ORIGINAL_ENEMY_STEPS_PER_UPDATE
+const ORIGINAL_ENEMY_UPDATE_HZ := EnemyRulesScript.ORIGINAL_ENEMY_UPDATE_HZ
 
-const RACKET_SEGMENT_PIXEL_STEP := 5.0
-const MONSTER_SIZE := Vector2(32, 32)
-const MAX_MONSTERS := 5
-const MONSTER_TYPE_COUNT := 11
-const MONSTER_COLLISION_SIZE := Vector2(26, 26)
-const MONSTER_COLLISION_OFFSET := Vector2(3, 3)
-const MONSTER_TYPE9_COLLISION_SIZE := Vector2(32, 32)
-const MONSTER_TYPE9_COLLISION_OFFSET := Vector2.ZERO
-const MONSTER_BALL_COLLISION_RADIUS := 16.0
-const MONSTER_LIFETIME_SECONDS := 6.5
-const MONSTER_SPAWN_INTERVAL_SECONDS := 4.5
-const MONSTER_FRAME_SECONDS := 0.07
-const MONSTER_DEFAULT_SPEED := 1.0
-const MONSTER_TYPE3_RIGHT_LIMIT := 510.0
-const MONSTER_TYPE3_VERTICAL_JITTER_BASE := -5.0
-const MONSTER_TYPE3_VERTICAL_JITTER_RANGE := 10
-const MONSTER_TRACKING_TURN_STEP_DEGREES := 2.0
-const MONSTER_SCORE := 15
-const MONSTER_BALL_HIT_SCORE := 25
-const MONSTER_TYPE6_SCORE_STEP := 10
-const MONSTER_TYPE6_SCORE_VARIANTS := 6
-const MONSTER_TYPE9_STUN_SCORE := 30
-const MONSTER_BALL_HIT_MIN_ROTATION_DEGREES := 90
-const MONSTER_BALL_HIT_RANDOM_ROTATION_DEGREES := 90
-const MONSTER_TYPE1_BALL_ROTATION_DEGREES := 18
-const MONSTER_MOTION_ANGLE := "angle"
-const MONSTER_MOTION_PADDLE_FOLLOW := "paddle_follow"
-const MONSTER_MOTION_BALL_TRACK := "ball_track"
-const MONSTER_SCORE_MODE_DEFAULT := "default"
-const MONSTER_SCORE_MODE_RANDOM_TYPE6 := "random_type6"
-const MONSTER_SCORE_MODE_STUN_TYPE9 := "stun_type9"
-const MONSTER_DEFAULT_TRAIT := {
-	"frame_count": 11,
-	"motion_mode": MONSTER_MOTION_ANGLE,
-	"paddle_score_mode": MONSTER_SCORE_MODE_DEFAULT,
-	"ball_score_mode": MONSTER_SCORE_MODE_DEFAULT,
-	"collision_offset": MONSTER_COLLISION_OFFSET,
-	"collision_size": MONSTER_COLLISION_SIZE,
-	"stuns_racket": false,
-	"natural_spawn": false,
-}
-const MONSTER_TRAITS := {
-	0: {"frame_count": 20, "natural_spawn": true},
-	1: {"frame_count": 20, "natural_spawn": true},
-	2: {"frame_count": 20, "natural_spawn": true},
-	3: {
-		"frame_count": 20,
-		"motion_mode": MONSTER_MOTION_PADDLE_FOLLOW,
-		"natural_spawn": true,
-	},
-	4: {"frame_count": 20, "natural_spawn": true},
-	5: {"frame_count": 20, "natural_spawn": true},
-	6: {
-		"frame_count": 20,
-		"paddle_score_mode": MONSTER_SCORE_MODE_RANDOM_TYPE6,
-		"ball_score_mode": MONSTER_SCORE_MODE_RANDOM_TYPE6,
-		"natural_spawn": true,
-	},
-	7: {"frame_count": 11, "natural_spawn": true},
-	8: {"frame_count": 10, "natural_spawn": true},
-	9: {
-		"frame_count": 20,
-		"paddle_score_mode": MONSTER_SCORE_MODE_STUN_TYPE9,
-		"collision_offset": MONSTER_TYPE9_COLLISION_OFFSET,
-		"collision_size": MONSTER_TYPE9_COLLISION_SIZE,
-		"stuns_racket": true,
-		"natural_spawn": true,
-	},
-	10: {
-		"frame_count": 11,
-		"motion_mode": MONSTER_MOTION_BALL_TRACK,
-		"natural_spawn": true,
-	},
-}
+const RACKET_SEGMENT_PIXEL_STEP := RacketRulesScript.RACKET_SEGMENT_PIXEL_STEP
+const MONSTER_SIZE := EnemyRulesScript.MONSTER_SIZE
+const MAX_MONSTERS := EnemyRulesScript.MAX_MONSTERS
+const MONSTER_TYPE_COUNT := EnemyRulesScript.MONSTER_TYPE_COUNT
+const MONSTER_COLLISION_SIZE := EnemyRulesScript.MONSTER_COLLISION_SIZE
+const MONSTER_COLLISION_OFFSET := EnemyRulesScript.MONSTER_COLLISION_OFFSET
+const MONSTER_TYPE9_COLLISION_SIZE := EnemyRulesScript.MONSTER_TYPE9_COLLISION_SIZE
+const MONSTER_TYPE9_COLLISION_OFFSET := EnemyRulesScript.MONSTER_TYPE9_COLLISION_OFFSET
+const MONSTER_BALL_COLLISION_RADIUS := EnemyRulesScript.MONSTER_BALL_COLLISION_RADIUS
+const MONSTER_LIFETIME_SECONDS := EnemyRulesScript.MONSTER_LIFETIME_SECONDS
+const MONSTER_SPAWN_INTERVAL_SECONDS := EnemyRulesScript.MONSTER_SPAWN_INTERVAL_SECONDS
+const MONSTER_FRAME_SECONDS := EnemyRulesScript.MONSTER_FRAME_SECONDS
+const MONSTER_DEFAULT_SPEED := EnemyRulesScript.MONSTER_DEFAULT_SPEED
+const MONSTER_TYPE3_RIGHT_LIMIT := EnemyRulesScript.MONSTER_TYPE3_RIGHT_LIMIT
+const MONSTER_TYPE3_VERTICAL_JITTER_BASE := EnemyRulesScript.MONSTER_TYPE3_VERTICAL_JITTER_BASE
+const MONSTER_TYPE3_VERTICAL_JITTER_RANGE := EnemyRulesScript.MONSTER_TYPE3_VERTICAL_JITTER_RANGE
+const MONSTER_TRACKING_TURN_STEP_DEGREES := EnemyRulesScript.MONSTER_TRACKING_TURN_STEP_DEGREES
+const MONSTER_SCORE := EnemyRulesScript.MONSTER_SCORE
+const MONSTER_BALL_HIT_SCORE := EnemyRulesScript.MONSTER_BALL_HIT_SCORE
+const MONSTER_TYPE6_SCORE_STEP := EnemyRulesScript.MONSTER_TYPE6_SCORE_STEP
+const MONSTER_TYPE6_SCORE_VARIANTS := EnemyRulesScript.MONSTER_TYPE6_SCORE_VARIANTS
+const MONSTER_TYPE9_STUN_SCORE := EnemyRulesScript.MONSTER_TYPE9_STUN_SCORE
+const MONSTER_BALL_HIT_MIN_ROTATION_DEGREES := EnemyRulesScript.MONSTER_BALL_HIT_MIN_ROTATION_DEGREES
+const MONSTER_BALL_HIT_RANDOM_ROTATION_DEGREES := EnemyRulesScript.MONSTER_BALL_HIT_RANDOM_ROTATION_DEGREES
+const MONSTER_TYPE1_BALL_ROTATION_DEGREES := EnemyRulesScript.MONSTER_TYPE1_BALL_ROTATION_DEGREES
+const MONSTER_MOTION_ANGLE := EnemyRulesScript.MONSTER_MOTION_ANGLE
+const MONSTER_MOTION_PADDLE_FOLLOW := EnemyRulesScript.MONSTER_MOTION_PADDLE_FOLLOW
+const MONSTER_MOTION_BALL_TRACK := EnemyRulesScript.MONSTER_MOTION_BALL_TRACK
+const MONSTER_SCORE_MODE_DEFAULT := EnemyRulesScript.MONSTER_SCORE_MODE_DEFAULT
+const MONSTER_SCORE_MODE_RANDOM_TYPE6 := EnemyRulesScript.MONSTER_SCORE_MODE_RANDOM_TYPE6
+const MONSTER_SCORE_MODE_STUN_TYPE9 := EnemyRulesScript.MONSTER_SCORE_MODE_STUN_TYPE9
+const MONSTER_DEFAULT_TRAIT := EnemyRulesScript.MONSTER_DEFAULT_TRAIT
+const MONSTER_TRAITS := EnemyRulesScript.MONSTER_TRAITS
 
-const BEE_SIZE := Vector2(48, 40)
-const BEE_COLLISION_SIZE := Vector2(36, 36)
-const BEE_COLLISION_OFFSET := Vector2(6, 6)
-const BEE_FRAME_COUNT := 6
-const BEE_FRAME_SECONDS := 0.005
-const BEE_STEP_X := 3.0
-const BEE_SPAWN_X := 50.0
-const BEE_EXPIRE_X := 640.0
-const BEE_SPAWN_DELAY_MAX_SECONDS := 30.0
+const BEE_SIZE := EnemyRulesScript.BEE_SIZE
+const BEE_COLLISION_SIZE := EnemyRulesScript.BEE_COLLISION_SIZE
+const BEE_COLLISION_OFFSET := EnemyRulesScript.BEE_COLLISION_OFFSET
+const BEE_FRAME_COUNT := EnemyRulesScript.BEE_FRAME_COUNT
+const BEE_FRAME_SECONDS := EnemyRulesScript.BEE_FRAME_SECONDS
+const BEE_STEP_X := EnemyRulesScript.BEE_STEP_X
+const BEE_SPAWN_X := EnemyRulesScript.BEE_SPAWN_X
+const BEE_EXPIRE_X := EnemyRulesScript.BEE_EXPIRE_X
+const BEE_SPAWN_DELAY_MAX_SECONDS := EnemyRulesScript.BEE_SPAWN_DELAY_MAX_SECONDS
 const BEE_BALL_HIT_SCORE := MONSTER_BALL_HIT_SCORE
 const BEE_STUN_SCORE := MONSTER_TYPE9_STUN_SCORE
-const BEE_BALL_COLLISION_RADIUS := 24.0
-const RACKET_STUN_DURATION_SECONDS := 3.0
+const BEE_BALL_COLLISION_RADIUS := EnemyRulesScript.BEE_BALL_COLLISION_RADIUS
+const RACKET_STUN_DURATION_SECONDS := EnemyRulesScript.RACKET_STUN_DURATION_SECONDS
 
-const MAX_SNAKE_SEGMENTS := 100
-const SNAKE_KIND_COUNT := 20
-const SNAKE_SEGMENT_SIZE := Vector2(10, 10)
-const SNAKE_UPDATE_SECONDS := 0.05
-const SNAKE_STEP_PIXELS := 10.0
-const SNAKE_KIND_UP := 0
-const SNAKE_KIND_DOWN := 1
-const SNAKE_KIND_LEFT := 2
-const SNAKE_KIND_RIGHT := 3
-const SNAKE_TERMINAL_UP := 16
-const SNAKE_TERMINAL_DOWN := 17
-const SNAKE_TERMINAL_LEFT := 18
-const SNAKE_TERMINAL_RIGHT := 19
+const MAX_SNAKE_SEGMENTS := EnemyRulesScript.MAX_SNAKE_SEGMENTS
+const SNAKE_KIND_COUNT := EnemyRulesScript.SNAKE_KIND_COUNT
+const SNAKE_SEGMENT_SIZE := EnemyRulesScript.SNAKE_SEGMENT_SIZE
+const SNAKE_UPDATE_SECONDS := EnemyRulesScript.SNAKE_UPDATE_SECONDS
+const SNAKE_STEP_PIXELS := EnemyRulesScript.SNAKE_STEP_PIXELS
+const SNAKE_KIND_UP := EnemyRulesScript.SNAKE_KIND_UP
+const SNAKE_KIND_DOWN := EnemyRulesScript.SNAKE_KIND_DOWN
+const SNAKE_KIND_LEFT := EnemyRulesScript.SNAKE_KIND_LEFT
+const SNAKE_KIND_RIGHT := EnemyRulesScript.SNAKE_KIND_RIGHT
+const SNAKE_TERMINAL_UP := EnemyRulesScript.SNAKE_TERMINAL_UP
+const SNAKE_TERMINAL_DOWN := EnemyRulesScript.SNAKE_TERMINAL_DOWN
+const SNAKE_TERMINAL_LEFT := EnemyRulesScript.SNAKE_TERMINAL_LEFT
+const SNAKE_TERMINAL_RIGHT := EnemyRulesScript.SNAKE_TERMINAL_RIGHT
 
 const IMPACT_EFFECT_KIND_MONSTER_SPAWN := 0
 const IMPACT_EFFECT_KIND_MONSTER_TIMEOUT := 1
 const IMPACT_EFFECT_KIND_SNAKE_HIT := IMPACT_EFFECT_KIND_MONSTER_TIMEOUT
 const IMPACT_EFFECT_KIND_EXPLOSION := 2
 const IMPACT_EFFECT_KIND_MONSTER_HIT := IMPACT_EFFECT_KIND_EXPLOSION
-const SFX_EVENT_PROJECTILE_HIT := "projectile_hit"
-const SFX_EVENT_MONSTER_SPAWN := "monster_spawn"
-const SFX_EVENT_MONSTER_EXPIRE := "monster_expire"
-const SFX_EVENT_MONSTER_HIT := "monster_hit"
-const SFX_EVENT_BEE_SPAWN := "bee_spawn"
-const SFX_EVENT_BEE_STOP := "bee_stop"
-const SFX_BEE_SPAWN_PAN100 := -100.0
+const SFX_EVENT_PROJECTILE_HIT := GameplayEventsScript.SFX_EVENT_PROJECTILE_HIT
+const SFX_EVENT_MONSTER_SPAWN := GameplayEventsScript.SFX_EVENT_MONSTER_SPAWN
+const SFX_EVENT_MONSTER_EXPIRE := GameplayEventsScript.SFX_EVENT_MONSTER_EXPIRE
+const SFX_EVENT_MONSTER_HIT := GameplayEventsScript.SFX_EVENT_MONSTER_HIT
+const SFX_EVENT_BEE_SPAWN := GameplayEventsScript.SFX_EVENT_BEE_SPAWN
+const SFX_EVENT_BEE_STOP := GameplayEventsScript.SFX_EVENT_BEE_STOP
+const SFX_BEE_SPAWN_PAN100 := GameplayEventsScript.SFX_BEE_SPAWN_PAN100
 
 var monsters: Array[Dictionary]
 var bees: Array[Dictionary]
@@ -153,67 +116,55 @@ func _init(
 
 
 static func monster_trait_for_type(type_id: int) -> Dictionary:
-	var monster_trait := MONSTER_DEFAULT_TRAIT.duplicate()
-	if MONSTER_TRAITS.has(type_id):
-		monster_trait.merge(MONSTER_TRAITS[type_id], true)
-	return monster_trait
+	return EnemyRulesScript.monster_trait_for_type(type_id)
 
 
 static func monster_spawn_pool() -> Array[int]:
-	var spawn_pool: Array[int] = []
-	for type_id in range(MONSTER_TYPE_COUNT):
-		if monster_type_is_original_spawned(type_id):
-			spawn_pool.append(type_id)
-	return spawn_pool
+	return EnemyRulesScript.monster_spawn_pool()
 
 
 static func monster_frame_count_for_type(type_id: int) -> int:
-	return int(_monster_trait_value(type_id, "frame_count", MONSTER_DEFAULT_TRAIT["frame_count"]))
+	return EnemyRulesScript.monster_frame_count_for_type(type_id)
 
 
 static func monster_motion_mode_for_type(type_id: int) -> String:
-	return String(_monster_trait_value(type_id, "motion_mode", MONSTER_MOTION_ANGLE))
+	return EnemyRulesScript.monster_motion_mode_for_type(type_id)
 
 
 static func monster_collision_offset_for_type(type_id: int) -> Vector2:
-	return _monster_trait_value(type_id, "collision_offset", MONSTER_COLLISION_OFFSET) as Vector2
+	return EnemyRulesScript.monster_collision_offset_for_type(type_id)
 
 
 static func monster_collision_size_for_type(type_id: int) -> Vector2:
-	return _monster_trait_value(type_id, "collision_size", MONSTER_COLLISION_SIZE) as Vector2
+	return EnemyRulesScript.monster_collision_size_for_type(type_id)
 
 
 static func monster_stuns_racket(type_id: int) -> bool:
-	return bool(_monster_trait_value(type_id, "stuns_racket", false))
+	return EnemyRulesScript.monster_stuns_racket(type_id)
 
 
 static func monster_type_is_original_spawned(type_id: int) -> bool:
-	return bool(_monster_trait_value(type_id, "natural_spawn", false))
+	return EnemyRulesScript.monster_type_is_original_spawned(type_id)
 
 
 static func monster_motion_vector(angle: float, speed: float) -> Vector2:
-	var radians := deg_to_rad(fposmod(angle, 360.0))
-	return Vector2(cos(radians) * speed, -sin(radians) * speed)
+	return EnemyRulesScript.monster_motion_vector(angle, speed)
 
 
 static func monster_rect(monster: Dictionary) -> Rect2:
-	var type_id := int(monster.get("type_id", 0))
-	return Rect2(
-		monster.get("position", Vector2.ZERO) + monster_collision_offset_for_type(type_id),
-		monster_collision_size_for_type(type_id)
-	)
+	return EnemyRulesScript.monster_rect(monster)
 
 
 static func bee_rect(bee: Dictionary) -> Rect2:
-	return Rect2(bee.get("position", Vector2.ZERO) + BEE_COLLISION_OFFSET, BEE_COLLISION_SIZE)
+	return EnemyRulesScript.bee_rect(bee)
 
 
 static func snake_rect(segment: Dictionary) -> Rect2:
-	return Rect2(segment.get("position", Vector2.ZERO), SNAKE_SEGMENT_SIZE)
+	return EnemyRulesScript.snake_rect(segment)
 
 
 static func _monster_score_mode_for_type(type_id: int, contact_key: String) -> String:
-	return String(_monster_trait_value(type_id, contact_key, MONSTER_SCORE_MODE_DEFAULT))
+	return EnemyRulesScript.monster_score_mode_for_type(type_id, contact_key)
 
 
 static func _monster_trait_value(type_id: int, key: String, default_value):

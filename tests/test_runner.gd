@@ -18,8 +18,17 @@ const GameSessionScript := preload("res://src/gameplay/krakout_game_session.gd")
 const RandomScript := preload("res://src/gameplay/krakout_random.gd")
 const AudioEventQueueScript := preload("res://src/gameplay/krakout_audio_event_queue.gd")
 const BallTrackPoolScript := preload("res://src/gameplay/krakout_ball_track_pool.gd")
+const BallRulesScript := preload("res://src/gameplay/rules/krakout_ball_rules.gd")
+const RacketRulesScript := preload("res://src/gameplay/rules/krakout_racket_rules.gd")
+const BonusCatalogScript := preload("res://src/gameplay/rules/krakout_bonus_catalog.gd")
+const GameplayEventsScript := preload("res://src/gameplay/rules/krakout_gameplay_events.gd")
+const EnemyRulesScript := preload("res://src/gameplay/rules/krakout_enemy_rules.gd")
+const GameplayContextScript := preload("res://src/gameplay/krakout_gameplay_context.gd")
+const BallSystemScript := preload("res://src/gameplay/systems/krakout_ball_system.gd")
+const BonusSystemScript := preload("res://src/gameplay/systems/krakout_bonus_system.gd")
 const EnemyHazardSystemScript := preload("res://src/gameplay/systems/krakout_enemy_hazard_system.gd")
 const ProjectileSystemScript := preload("res://src/gameplay/systems/krakout_projectile_system.gd")
+const RacketSystemScript := preload("res://src/gameplay/systems/krakout_racket_system.gd")
 const TransientVfxPoolScript := preload("res://src/gameplay/krakout_transient_vfx_pool.gd")
 const RacketRendererScript := preload("res://src/render/racket_renderer.gd")
 const BallRendererScript := preload("res://src/render/ball_renderer.gd")
@@ -500,6 +509,49 @@ func _validate_board_state(default_level: KrakoutLevelData) -> void:
 
 
 func _validate_session_helper_modules() -> void:
+	_assert(BallRulesScript.BALL_SIZE == GameSessionScript.BALL_SIZE, "ball rules own the facade ball-size contract")
+	_assert(BallRulesScript.DEFAULT_BALL_VELOCITY == GameSessionScript.DEFAULT_BALL_VELOCITY, "ball rules own original launch velocity")
+	_assert(RacketRulesScript.RACKET_HEIGHT == GameSessionScript.RACKET_HEIGHT, "racket rules own the default paddle height")
+	_assert(RacketRulesScript.ready_top_y() == GameSessionScript.RACKET_READY_DEFAULT_Y, "racket rules own the ready-position math")
+	_assert(BonusCatalogScript.bonus_type_name(GameSessionScript.BONUS_JUMP_TO_NEXT_LEVEL) == "Jump to Next Level", "bonus catalog owns original bonus names")
+	_assert(BonusCatalogScript.SUPPORTED_BONUS_EFFECTS.has(GameSessionScript.BONUS_DESTROY_ONE_BALL), "bonus catalog owns supported-effect flags")
+	_assert(GameplayEventsScript.SFX_EVENT_RACKET_BOUNCE == GameSessionScript.SFX_EVENT_RACKET_BOUNCE, "gameplay events own semantic SFX names")
+	_assert(is_equal_approx(GameplayEventsScript.pan100_for_source_x(320.0), 0.0), "gameplay events own source-x pan formula")
+	_assert(EnemyRulesScript.monster_spawn_pool() == GameSessionScript.monster_spawn_pool(), "enemy rules own registered monster spawn traits")
+
+	var racket_system = RacketSystemScript.new()
+	_assert(racket_system.current_height() == GameSessionScript.RACKET_HEIGHT, "racket system exposes default racket height")
+	racket_system.start_hit_recoil()
+	_assert(racket_system.current_x() == GameSessionScript.RACKET_X + GameSessionScript.RACKET_HIT_RECOIL_PIXELS, "racket system owns hit recoil offset")
+	racket_system.update_hit_recoil(GameSessionScript.RACKET_HIT_RECOIL_STEP_SECONDS * 2.0)
+	_assert(racket_system.current_x() < GameSessionScript.RACKET_X + GameSessionScript.RACKET_HIT_RECOIL_PIXELS, "racket system advances recoil toward rest")
+
+	var context_session = GameSessionScript.new()
+	var gameplay_context = GameplayContextScript.new(context_session)
+	_assert(gameplay_context.racket_segment_count() == GameSessionScript.RACKET_DEFAULT_SEGMENTS, "gameplay context exposes typed session ports")
+
+	var shared_balls: Array[Dictionary] = []
+	var ball_system = BallSystemScript.new(shared_balls, RandomScript.new(1))
+	_assert(
+		ball_system.add_ball(Vector2(10, 20), Vector2.ZERO, true, GameSessionScript.BALL_SIZE, GameSessionScript.BALL_TYPE_STANDARD, 2.0, 0.0),
+		"ball system appends into shared ball storage"
+	)
+	_assert(shared_balls.size() == 1 and ball_system.active_count() == 1, "ball system exposes active shared balls")
+	var ball_system_initial_frame := int(shared_balls[0].get("frame", 0))
+	ball_system.update_animation(GameSessionScript.BALL_FRAME_SECONDS)
+	_assert(int(shared_balls[0].get("frame", -1)) == (ball_system_initial_frame + 1) % GameSessionScript.BALL_FRAME_COUNT, "ball system advances active ball animation frames")
+	ball_system.force_ball(Vector2(30, 40), Vector2(1, 0), GameSessionScript.BALL_SIZE, GameSessionScript.BALL_TYPE_FIREBALL, 2.0, 150.0)
+	_assert(shared_balls.size() == 1 and int(shared_balls[0].get("type_id", -1)) == GameSessionScript.BALL_TYPE_FIREBALL, "ball system force helper preserves shared storage identity")
+
+	var shared_falling_bonuses: Array[Dictionary] = []
+	var shared_bonus_stack: Array[Dictionary] = []
+	var bonus_system = BonusSystemScript.new(shared_falling_bonuses, shared_bonus_stack)
+	_assert(bonus_system.push_stack(GameSessionScript.BONUS_EXTRA_LIFE), "bonus system pushes stack entries into shared storage")
+	_assert(bonus_system.stack_entries().size() == 1, "bonus system exposes duplicate stack entries")
+	_assert(int(bonus_system.remove_stack_entry(0).get("type_id", -1)) == GameSessionScript.BONUS_EXTRA_LIFE, "bonus system removes requested stack entries")
+	bonus_system.push_stack(GameSessionScript.BONUS_ADD_FIREBALL)
+	_assert(bonus_system.clear_stack() == 1 and shared_bonus_stack.is_empty(), "bonus system clears shared stack storage")
+
 	var queued_audio_events: Array[Dictionary] = []
 	var audio_queue = AudioEventQueueScript.new(queued_audio_events)
 	audio_queue.queue_event_at_x(GameSessionScript.SFX_EVENT_RACKET_BOUNCE, 320.0)

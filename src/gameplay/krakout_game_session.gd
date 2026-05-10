@@ -6,8 +6,17 @@ const BrickSemanticsScript := preload("res://src/gameplay/krakout_brick_semantic
 const RandomScript := preload("res://src/gameplay/krakout_random.gd")
 const AudioEventQueueScript := preload("res://src/gameplay/krakout_audio_event_queue.gd")
 const BallTrackPoolScript := preload("res://src/gameplay/krakout_ball_track_pool.gd")
+const BallRulesScript := preload("res://src/gameplay/rules/krakout_ball_rules.gd")
+const RacketRulesScript := preload("res://src/gameplay/rules/krakout_racket_rules.gd")
+const BonusCatalogScript := preload("res://src/gameplay/rules/krakout_bonus_catalog.gd")
+const GameplayEventsScript := preload("res://src/gameplay/rules/krakout_gameplay_events.gd")
+const EnemyRulesScript := preload("res://src/gameplay/rules/krakout_enemy_rules.gd")
+const GameplayContextScript := preload("res://src/gameplay/krakout_gameplay_context.gd")
+const BallSystemScript := preload("res://src/gameplay/systems/krakout_ball_system.gd")
+const BonusSystemScript := preload("res://src/gameplay/systems/krakout_bonus_system.gd")
 const EnemyHazardSystemScript := preload("res://src/gameplay/systems/krakout_enemy_hazard_system.gd")
 const ProjectileSystemScript := preload("res://src/gameplay/systems/krakout_projectile_system.gd")
+const RacketSystemScript := preload("res://src/gameplay/systems/krakout_racket_system.gd")
 const TransientVfxPoolScript := preload("res://src/gameplay/krakout_transient_vfx_pool.gd")
 const PlayfieldSpecScript := preload("res://src/playfield/krakout_playfield_spec.gd")
 
@@ -17,111 +26,108 @@ const STATE_BALL_LOST := "ball_lost"
 const STATE_LEVEL_COMPLETE := "level_complete"
 const STATE_GAME_OVER := "game_over"
 
-const MAX_BALLS := 5
+const MAX_BALLS := BallRulesScript.MAX_BALLS
 const INITIAL_LIVES := 3
 const NORMAL_BRICK_SCORE := 5
 const CHAIN_BRICK_SCORE := 15
 const HARD_BRICK_FORCE_SCORE := 30
 const BRICK_SCORE := CHAIN_BRICK_SCORE
 const EXTRA_LIFE_SCORE_STEP := 20000
-const RACKET_X := 570.0
-const RACKET_WIDTH := 16.0
-const RACKET_HEIGHT := 74.0
+const RACKET_X := RacketRulesScript.RACKET_X
+const RACKET_WIDTH := RacketRulesScript.RACKET_WIDTH
+const RACKET_HEIGHT := RacketRulesScript.RACKET_HEIGHT
 # sub_4012D0 writes racket x = 575 on primary-paddle contact; sub_40DAF0
 # walks it back to 570 one pixel at a strict 15 ms gate.
-const RACKET_HIT_RECOIL_PIXELS := 5.0
-const RACKET_HIT_RECOIL_STEP_SECONDS := 0.015
-const RACKET_HIT_RECOIL_STEP_PIXELS := 1.0
-const RACKET_SEGMENT_PIXEL_STEP := 5.0
-const RACKET_SEGMENT_MARGIN := 24.0
-const RACKET_DEFAULT_SEGMENTS := 10
-const RACKET_MIN_SEGMENTS := 1
-const RACKET_SHRINK_LIMIT_SEGMENTS := 3
-const RACKET_EXPAND_LIMIT_SEGMENTS := 36
-const RACKET_MAX_SEGMENTS := 37
-const RACKET_BONUS_STEP_SEGMENTS := 3
-const RACKET_MIN_Y := PlayfieldSpecScript.WALL_INNER_TOP_Y
-const RACKET_MAX_BOTTOM := PlayfieldSpecScript.WALL_INNER_BOTTOM_Y
+const RACKET_HIT_RECOIL_PIXELS := RacketRulesScript.RACKET_HIT_RECOIL_PIXELS
+const RACKET_HIT_RECOIL_STEP_SECONDS := RacketRulesScript.RACKET_HIT_RECOIL_STEP_SECONDS
+const RACKET_HIT_RECOIL_STEP_PIXELS := RacketRulesScript.RACKET_HIT_RECOIL_STEP_PIXELS
+const RACKET_SEGMENT_PIXEL_STEP := RacketRulesScript.RACKET_SEGMENT_PIXEL_STEP
+const RACKET_SEGMENT_MARGIN := RacketRulesScript.RACKET_SEGMENT_MARGIN
+const RACKET_DEFAULT_SEGMENTS := RacketRulesScript.RACKET_DEFAULT_SEGMENTS
+const RACKET_MIN_SEGMENTS := RacketRulesScript.RACKET_MIN_SEGMENTS
+const RACKET_SHRINK_LIMIT_SEGMENTS := RacketRulesScript.RACKET_SHRINK_LIMIT_SEGMENTS
+const RACKET_EXPAND_LIMIT_SEGMENTS := RacketRulesScript.RACKET_EXPAND_LIMIT_SEGMENTS
+const RACKET_MAX_SEGMENTS := RacketRulesScript.RACKET_MAX_SEGMENTS
+const RACKET_BONUS_STEP_SEGMENTS := RacketRulesScript.RACKET_BONUS_STEP_SEGMENTS
+const RACKET_MIN_Y := RacketRulesScript.RACKET_MIN_Y
+const RACKET_MAX_BOTTOM := RacketRulesScript.RACKET_MAX_BOTTOM
 # sub_40E580 stores racket top y = 221 for the default 74 px racket, centered
 # inside the original 63..453 playfield span.
-const RACKET_READY_CENTER_Y := (PlayfieldSpecScript.WALL_INNER_TOP_Y + PlayfieldSpecScript.WALL_INNER_BOTTOM_Y) * 0.5
-const RACKET_READY_DEFAULT_Y := RACKET_READY_CENTER_Y - RACKET_HEIGHT * 0.5
-const BALL_SIZE := 18.0
-const BALL_MIN_SIZE := 10.0
-const BALL_MAX_SIZE := 42.0
-const BALL_SIZE_STEP := 8.0
-const BALL_FRAME_COUNT := 10
-const BALL_TYPE_STANDARD := 0
-const BALL_TYPE_FIREBALL := 1
-const BALL_TYPE_NON_STRICKED := 2
-const BALL_DEFAULT_SPEED_SCALE := 2.0
-const BALL_MIN_SPEED_SCALE := 2.0
-const BALL_MAX_SPEED_SCALE := 6.0
-const BALL_SPEED_STEP := 1.0
-const NON_STRICKED_DURATION_SECONDS := 8.0
-const BALL_TOP_Y := PlayfieldSpecScript.WALL_INNER_TOP_Y
-const BALL_BOTTOM_Y := PlayfieldSpecScript.WALL_INNER_BOTTOM_Y
-const BALL_LEFT_X := PlayfieldSpecScript.WALL_INNER_LEFT_X
-const BALL_LOST_X := 640.0
-const BACK_WALL_BOUNCE_X := PlayfieldSpecScript.WALL_INNER_RIGHT_X
+const RACKET_READY_CENTER_Y := RacketRulesScript.RACKET_READY_CENTER_Y
+const RACKET_READY_DEFAULT_Y := RacketRulesScript.RACKET_READY_DEFAULT_Y
+const BALL_SIZE := BallRulesScript.BALL_SIZE
+const BALL_MIN_SIZE := BallRulesScript.BALL_MIN_SIZE
+const BALL_MAX_SIZE := BallRulesScript.BALL_MAX_SIZE
+const BALL_SIZE_STEP := BallRulesScript.BALL_SIZE_STEP
+const BALL_FRAME_COUNT := BallRulesScript.BALL_FRAME_COUNT
+const BALL_TYPE_STANDARD := BallRulesScript.BALL_TYPE_STANDARD
+const BALL_TYPE_FIREBALL := BallRulesScript.BALL_TYPE_FIREBALL
+const BALL_TYPE_NON_STRICKED := BallRulesScript.BALL_TYPE_NON_STRICKED
+const BALL_DEFAULT_SPEED_SCALE := BallRulesScript.BALL_DEFAULT_SPEED_SCALE
+const BALL_MIN_SPEED_SCALE := BallRulesScript.BALL_MIN_SPEED_SCALE
+const BALL_MAX_SPEED_SCALE := BallRulesScript.BALL_MAX_SPEED_SCALE
+const BALL_SPEED_STEP := BallRulesScript.BALL_SPEED_STEP
+const NON_STRICKED_DURATION_SECONDS := BallRulesScript.NON_STRICKED_DURATION_SECONDS
+const BALL_TOP_Y := BallRulesScript.BALL_TOP_Y
+const BALL_BOTTOM_Y := BallRulesScript.BALL_BOTTOM_Y
+const BALL_LEFT_X := BallRulesScript.BALL_LEFT_X
+const BALL_LOST_X := BallRulesScript.BALL_LOST_X
+const BACK_WALL_BOUNCE_X := BallRulesScript.BACK_WALL_BOUNCE_X
 # sub_40E580 creates the ready ball at racket_x - 20 with a 20 px ball crop.
-const READY_BALL_GAP := 2.0
-const ORIGINAL_UPDATE_HZ := 50.0
+const READY_BALL_GAP := BallRulesScript.READY_BALL_GAP
+const ORIGINAL_UPDATE_HZ := BallRulesScript.ORIGINAL_UPDATE_HZ
 # sub_4012D0 gates Balls.tga frame changes on timeGetTime() + 100 ms.
-const BALL_FRAME_SECONDS := 0.1
-const BALL_TRACK_SLOT_COUNT := 50
-const BALL_TRACK_FRAME_COUNT := 12
-const BALL_TRACK_SPAWN_SECONDS := 0.03
-const BALL_TRACK_FRAME_SECONDS := 0.03
-const ORIGINAL_BALL_STEPS_PER_UPDATE := 3.0
+const BALL_FRAME_SECONDS := BallRulesScript.BALL_FRAME_SECONDS
+const BALL_TRACK_SLOT_COUNT := BallRulesScript.BALL_TRACK_SLOT_COUNT
+const BALL_TRACK_FRAME_COUNT := BallRulesScript.BALL_TRACK_FRAME_COUNT
+const BALL_TRACK_SPAWN_SECONDS := BallRulesScript.BALL_TRACK_SPAWN_SECONDS
+const BALL_TRACK_FRAME_SECONDS := BallRulesScript.BALL_TRACK_FRAME_SECONDS
+const ORIGINAL_BALL_STEPS_PER_UPDATE := BallRulesScript.ORIGINAL_BALL_STEPS_PER_UPDATE
 # sub_40DAF0 invokes the original enemy updater three times per gameplay step.
 const ORIGINAL_ENEMY_STEPS_PER_UPDATE := 3.0
 const ORIGINAL_ENEMY_UPDATE_HZ := ORIGINAL_UPDATE_HZ * ORIGINAL_ENEMY_STEPS_PER_UPDATE
-const ORIGINAL_DEFAULT_BALL_SPEED_PER_TICK := 2.5
+const ORIGINAL_DEFAULT_BALL_SPEED_PER_TICK := BallRulesScript.ORIGINAL_DEFAULT_BALL_SPEED_PER_TICK
 # sub_401A30 initializes the ready ball at table index 250. sub_401000 stores cos at
 # +15 and sin at +375, and sub_4012D0 moves balls with x += sin(index), y -= cos(index).
-const DEFAULT_BALL_LAUNCH_TABLE_INDEX := 250
-const DEFAULT_BALL_LAUNCH_DIRECTION := Vector2(-0.93969262, 0.34202015)
-const ORIGINAL_BALL_SPEEDUP_HIT_LIMIT := 100
-const ORIGINAL_BALL_SPEEDUP_PER_TICK := 0.3
-const ORIGINAL_BALL_MAX_SPEED_PER_TICK := 6.0
-const DEFAULT_BALL_VELOCITY := DEFAULT_BALL_LAUNCH_DIRECTION \
-	* ORIGINAL_DEFAULT_BALL_SPEED_PER_TICK \
-	* ORIGINAL_BALL_STEPS_PER_UPDATE \
-	* ORIGINAL_UPDATE_HZ
-const RACKET_BOUNCE_MAX_Y_SPEED := 180.0
-const BONUS_TYPE_COUNT := 22
-const BONUS_SELECTOR_COUNT := 23
-const MAX_FALLING_BONUSES := 20
-const MAX_STACKED_BONUSES := 16
-const BONUS_DROP_GATE_SECONDS := 3.0
-const BONUS_SIZE := 32.0
-const ORIGINAL_BONUS_STEPS_PER_UPDATE := 3.0
-const ORIGINAL_BONUS_SUBSTEP_HZ := ORIGINAL_UPDATE_HZ * ORIGINAL_BONUS_STEPS_PER_UPDATE
+const DEFAULT_BALL_LAUNCH_TABLE_INDEX := BallRulesScript.DEFAULT_BALL_LAUNCH_TABLE_INDEX
+const DEFAULT_BALL_LAUNCH_DIRECTION := BallRulesScript.DEFAULT_BALL_LAUNCH_DIRECTION
+const ORIGINAL_BALL_SPEEDUP_HIT_LIMIT := BallRulesScript.ORIGINAL_BALL_SPEEDUP_HIT_LIMIT
+const ORIGINAL_BALL_SPEEDUP_PER_TICK := BallRulesScript.ORIGINAL_BALL_SPEEDUP_PER_TICK
+const ORIGINAL_BALL_MAX_SPEED_PER_TICK := BallRulesScript.ORIGINAL_BALL_MAX_SPEED_PER_TICK
+const DEFAULT_BALL_VELOCITY := BallRulesScript.DEFAULT_BALL_VELOCITY
+const RACKET_BOUNCE_MAX_Y_SPEED := RacketRulesScript.RACKET_BOUNCE_MAX_Y_SPEED
+const BONUS_TYPE_COUNT := BonusCatalogScript.BONUS_TYPE_COUNT
+const BONUS_SELECTOR_COUNT := BonusCatalogScript.BONUS_SELECTOR_COUNT
+const MAX_FALLING_BONUSES := BonusCatalogScript.MAX_FALLING_BONUSES
+const MAX_STACKED_BONUSES := BonusCatalogScript.MAX_STACKED_BONUSES
+const BONUS_DROP_GATE_SECONDS := BonusCatalogScript.BONUS_DROP_GATE_SECONDS
+const BONUS_SIZE := BonusCatalogScript.BONUS_SIZE
+const ORIGINAL_BONUS_STEPS_PER_UPDATE := BonusCatalogScript.ORIGINAL_BONUS_STEPS_PER_UPDATE
+const ORIGINAL_BONUS_SUBSTEP_HZ := BonusCatalogScript.ORIGINAL_BONUS_SUBSTEP_HZ
 # sub_402D10 advances falling bonuses by 1.5 px and 3 degrees per call; sub_40DAF0
 # calls it three times per original 50 Hz gameplay step.
-const BONUS_STEP_X := 1.5
-const BONUS_WAVE_SCALE := 1.0 / 12.0
-const BONUS_ANGLE_STEP := 3
-const BONUS_MIN_Y := 10.0
-const BONUS_MAX_Y := 438.0
-const BONUS_EXPIRE_X := 600.0
-const BONUS_ANIMATION_FRAME_COUNT := 10
-const BONUS_FALLING_FRAME_SECONDS := 0.1
-const BONUS_STACK_FRAME_SECONDS := 0.07
-const BONUS_POINTER_FRAME_SECONDS := 0.05
-const BACK_WALL_DURATION_SECONDS := 30.0
-const BACK_WALL_STATUS_ICON_INDEX := 3
-const LEVEL_READY_SEQUENCE_SECONDS := 30.0
-const LEVEL_READY_STATUS_ICON_INDEX := 2
-const RACKET_STUN_STATUS_ICON_INDEX := 1
-const LOW_BLOCK_TIMER_TRIGGER_REQUIRED_BRICKS := 3
-const LOW_BLOCK_TIMER_SECONDS := 30.0
-const LOW_BLOCK_TIMER_STATUS_ICON_INDEX := 4
-const LOW_BLOCK_TIMER_CHAIN_TILE_ID := 43
+const BONUS_STEP_X := BonusCatalogScript.BONUS_STEP_X
+const BONUS_WAVE_SCALE := BonusCatalogScript.BONUS_WAVE_SCALE
+const BONUS_ANGLE_STEP := BonusCatalogScript.BONUS_ANGLE_STEP
+const BONUS_MIN_Y := BonusCatalogScript.BONUS_MIN_Y
+const BONUS_MAX_Y := BonusCatalogScript.BONUS_MAX_Y
+const BONUS_EXPIRE_X := BonusCatalogScript.BONUS_EXPIRE_X
+const BONUS_ANIMATION_FRAME_COUNT := BonusCatalogScript.BONUS_ANIMATION_FRAME_COUNT
+const BONUS_FALLING_FRAME_SECONDS := BonusCatalogScript.BONUS_FALLING_FRAME_SECONDS
+const BONUS_STACK_FRAME_SECONDS := BonusCatalogScript.BONUS_STACK_FRAME_SECONDS
+const BONUS_POINTER_FRAME_SECONDS := BonusCatalogScript.BONUS_POINTER_FRAME_SECONDS
+const BACK_WALL_DURATION_SECONDS := BonusCatalogScript.BACK_WALL_DURATION_SECONDS
+const BACK_WALL_STATUS_ICON_INDEX := BonusCatalogScript.BACK_WALL_STATUS_ICON_INDEX
+const LEVEL_READY_SEQUENCE_SECONDS := BonusCatalogScript.LEVEL_READY_SEQUENCE_SECONDS
+const LEVEL_READY_STATUS_ICON_INDEX := BonusCatalogScript.LEVEL_READY_STATUS_ICON_INDEX
+const RACKET_STUN_STATUS_ICON_INDEX := BonusCatalogScript.RACKET_STUN_STATUS_ICON_INDEX
+const LOW_BLOCK_TIMER_TRIGGER_REQUIRED_BRICKS := BonusCatalogScript.LOW_BLOCK_TIMER_TRIGGER_REQUIRED_BRICKS
+const LOW_BLOCK_TIMER_SECONDS := BonusCatalogScript.LOW_BLOCK_TIMER_SECONDS
+const LOW_BLOCK_TIMER_STATUS_ICON_INDEX := BonusCatalogScript.LOW_BLOCK_TIMER_STATUS_ICON_INDEX
+const LOW_BLOCK_TIMER_CHAIN_TILE_ID := BonusCatalogScript.LOW_BLOCK_TIMER_CHAIN_TILE_ID
 # sub_40DAF0 rewrites the last eligible bricks to tile 43 and stores a 100-count
 # tile timer; sub_40F940 decrements those tile timers on its 30 ms gate.
-const LOW_BLOCK_TIMER_CHAIN_DELAY_SECONDS := 100.0 * BoardStateScript.CHAIN_EXPLOSION_DELAY_SECONDS
+const LOW_BLOCK_TIMER_CHAIN_DELAY_SECONDS := BonusCatalogScript.LOW_BLOCK_TIMER_CHAIN_DELAY_SECONDS
 # sub_40F940 draws Roller.tga as a 20x390 strip at x = 47 + reveal_offset
 # and advances ten source frames while revealing the 20 board columns.
 const LEVEL_READY_ROLLER_FRAME_COUNT := 10
@@ -146,20 +152,20 @@ const PROJECTILE_TYPE_STRONG := ProjectileSystemScript.PROJECTILE_TYPE_STRONG
 const PROJECTILE_TYPE_CONTINUOUS := ProjectileSystemScript.PROJECTILE_TYPE_CONTINUOUS
 const PROJECTILE_MODE_DISABLED := 0
 const PROJECTILE_MODE_CONTINUOUS := 1
-const RACKET_VISUAL_MODE_NORMAL := 0
-const RACKET_VISUAL_MODE_SHOOTING_CONTINUOUS := 1
-const RACKET_VISUAL_MODE_SHOOTING_ONE_SHOT := 2
-const RACKET_VISUAL_MODE_MAGNET := 3
-const RACKET_VISUAL_FRAME_SECONDS := 0.05
-const RACKET_VISUAL_MAX_FRAME := 4
-const RACKET_MAGNET_VISUAL_FRAME_COUNT := 20
-const MAGNET_ATTACHED_Y_STEP_PER_UPDATE := 1.0
-const MAGNET_ATTACHED_X_PULL_LEFT_STEP_PER_UPDATE := 2.0
-const MAGNET_ATTACHED_X_PULL_RIGHT_STEP_PER_UPDATE := 1.0
-const DOUBLE_PADDLE_OFFSET_X := -20.0
-const DOUBLE_PADDLE_MIN_X := 77.0
-const DOUBLE_PADDLE_MOUSE_X_MULTIPLIER := 2.0
-const DRUNK_PADDLE_DURATION_SECONDS := 30.0
+const RACKET_VISUAL_MODE_NORMAL := RacketRulesScript.RACKET_VISUAL_MODE_NORMAL
+const RACKET_VISUAL_MODE_SHOOTING_CONTINUOUS := RacketRulesScript.RACKET_VISUAL_MODE_SHOOTING_CONTINUOUS
+const RACKET_VISUAL_MODE_SHOOTING_ONE_SHOT := RacketRulesScript.RACKET_VISUAL_MODE_SHOOTING_ONE_SHOT
+const RACKET_VISUAL_MODE_MAGNET := RacketRulesScript.RACKET_VISUAL_MODE_MAGNET
+const RACKET_VISUAL_FRAME_SECONDS := RacketRulesScript.RACKET_VISUAL_FRAME_SECONDS
+const RACKET_VISUAL_MAX_FRAME := RacketRulesScript.RACKET_VISUAL_MAX_FRAME
+const RACKET_MAGNET_VISUAL_FRAME_COUNT := RacketRulesScript.RACKET_MAGNET_VISUAL_FRAME_COUNT
+const MAGNET_ATTACHED_Y_STEP_PER_UPDATE := RacketRulesScript.MAGNET_ATTACHED_Y_STEP_PER_UPDATE
+const MAGNET_ATTACHED_X_PULL_LEFT_STEP_PER_UPDATE := RacketRulesScript.MAGNET_ATTACHED_X_PULL_LEFT_STEP_PER_UPDATE
+const MAGNET_ATTACHED_X_PULL_RIGHT_STEP_PER_UPDATE := RacketRulesScript.MAGNET_ATTACHED_X_PULL_RIGHT_STEP_PER_UPDATE
+const DOUBLE_PADDLE_OFFSET_X := RacketRulesScript.DOUBLE_PADDLE_OFFSET_X
+const DOUBLE_PADDLE_MIN_X := RacketRulesScript.DOUBLE_PADDLE_MIN_X
+const DOUBLE_PADDLE_MOUSE_X_MULTIPLIER := RacketRulesScript.DOUBLE_PADDLE_MOUSE_X_MULTIPLIER
+const DRUNK_PADDLE_DURATION_SECONDS := RacketRulesScript.DRUNK_PADDLE_DURATION_SECONDS
 const MAX_MONSTERS := 5
 const MONSTER_TYPE_COUNT := 11
 const MONSTER_SIZE := Vector2(32, 32)
@@ -299,117 +305,61 @@ const FIREBALL_WALL_IMPACT_OFFSET := Vector2(-16, -16)
 const IMPACT_EFFECT_FRAME_SECONDS := 0.05
 const IMPACT_EFFECT_FRAME_COUNT := 11
 const IMPACT_EFFECT_DURATION_SECONDS := IMPACT_EFFECT_FRAME_SECONDS * IMPACT_EFFECT_FRAME_COUNT
-const BONUS_ADD_STANDARD_BALL := 0
-const BONUS_ADD_FIREBALL := 1
-const BONUS_NON_STRICKED_BALLS := 2
-const BONUS_DECREASE_BALL_SIZE := 3
-const BONUS_INCREASE_BALL_SIZE := 4
-const BONUS_INCREASE_BALL_SPEED := 5
-const BONUS_DECREASE_BALL_SPEED := 6
-const BONUS_SHOOTING_PADDLE_TIMED := 7
-const BONUS_SHOOTING_PADDLE_CONTINUOUS := 8
-const BONUS_SHRINK_PADDLE := 9
-const BONUS_EXPAND_PADDLE := 10
-const BONUS_DOUBLE_PADDLE := 11
-const BONUS_MAGNET_PADDLE := 12
-const BONUS_BACK_WALL := 13
-const BONUS_EXTRA_LIFE := 14
-const BONUS_DESTROY_ONE_BALL := 15
-const BONUS_RANDOM_BONUS := 16
-const BONUS_ONE_STRIKE_BRICKS := 17
-const BONUS_DRUNK_PADDLE := 18
-const BONUS_EXPAND_EXPLODING := 19
-const BONUS_JUMP_TO_NEXT_LEVEL := 20
-const BONUS_EXPLODE_ALL_EXPLODINGS := 21
-const BONUS_TYPE_NAMES := [
-	"Add standard Ball",
-	"Add FireBall",
-	"All Balls non stricked (8 sec)",
-	"Decrease all Ball size",
-	"Increase all Ball size",
-	"Increase all Ball speed",
-	"Decrease all Ball speed",
-	"Shooting Paddle (on time shoot)",
-	"Shooting Paddle (continiously)",
-	"Shrink Paddle size",
-	"Expand Paddle size",
-	"Double Paddle",
-	"Magnet Paddle",
-	"Back Wall (30 sec)",
-	"Extra Life",
-	"Destroy one Ball",
-	"Random Bonus",
-	"All Bricks destroy by one strike",
-	"Drunk Paddle",
-	"Expand Exploding",
-	"Jump to Next Level",
-	"Explode all Explodings",
-]
-const SUPPORTED_BONUS_EFFECTS := {
-	BONUS_ADD_STANDARD_BALL: true,
-	BONUS_ADD_FIREBALL: true,
-	BONUS_NON_STRICKED_BALLS: true,
-	BONUS_DECREASE_BALL_SIZE: true,
-	BONUS_INCREASE_BALL_SIZE: true,
-	BONUS_INCREASE_BALL_SPEED: true,
-	BONUS_DECREASE_BALL_SPEED: true,
-	BONUS_SHOOTING_PADDLE_TIMED: true,
-	BONUS_SHOOTING_PADDLE_CONTINUOUS: true,
-	BONUS_SHRINK_PADDLE: true,
-	BONUS_EXPAND_PADDLE: true,
-	BONUS_DOUBLE_PADDLE: true,
-	BONUS_MAGNET_PADDLE: true,
-	BONUS_BACK_WALL: true,
-	BONUS_EXTRA_LIFE: true,
-	BONUS_DESTROY_ONE_BALL: true,
-	BONUS_RANDOM_BONUS: true,
-	BONUS_ONE_STRIKE_BRICKS: true,
-	BONUS_DRUNK_PADDLE: true,
-	BONUS_EXPAND_EXPLODING: true,
-	BONUS_JUMP_TO_NEXT_LEVEL: true,
-	BONUS_EXPLODE_ALL_EXPLODINGS: true,
-}
-const CHAIN_SELECTOR_TILE_IDS := [68, 43]
-const BONUS_DISPLAY_INCREMENT_IDS := {
-	1: true,
-	11: true,
-	14: true,
-	16: true,
-	17: true,
-	18: true,
-	19: true,
-	20: true,
-	21: true,
-}
-const SFX_EVENT_BALL_LAUNCH := "ball_launch"
-const SFX_EVENT_RACKET_BOUNCE := "racket_bounce"
-const SFX_EVENT_BACK_WALL_BOUNCE := "back_wall_bounce"
-const SFX_EVENT_BRICK_CLEAR := "brick_clear"
-const SFX_EVENT_HARD_BRICK_HIT := "hard_brick_hit"
-const SFX_EVENT_CHAIN_EXPLOSION := "chain_explosion"
-const SFX_EVENT_BONUS_SPAWN := "bonus_spawn"
-const SFX_EVENT_BONUS_EXPIRE := "bonus_expire"
-const SFX_EVENT_BONUS_COLLECT := "bonus_collect"
-const SFX_EVENT_BONUS_APPLY := "bonus_apply"
-const SFX_EVENT_BONUS_ADD_BALL_APPLY := "bonus_add_ball_apply"
-const SFX_EVENT_BONUS_DESTROY_BALL_APPLY := "bonus_destroy_ball_apply"
-const SFX_EVENT_BONUS_JUMP_LEVEL_APPLY := "bonus_jump_level_apply"
-const SFX_EVENT_PROJECTILE_FIRE := "projectile_fire"
-const SFX_EVENT_PROJECTILE_HIT := "projectile_hit"
-const SFX_EVENT_MONSTER_SPAWN := "monster_spawn"
-const SFX_EVENT_MONSTER_EXPIRE := "monster_expire"
-const SFX_EVENT_MONSTER_HIT := "monster_hit"
-const SFX_EVENT_BEE_SPAWN := "bee_spawn"
-const SFX_EVENT_BEE_STOP := "bee_stop"
-const SFX_EVENT_LIFE_LOST := "life_lost"
-const SFX_EVENT_LEVEL_READY := "level_ready"
-const SFX_EVENT_LEVEL_COMPLETE := "level_complete"
-const SFX_EVENT_GAME_OVER := "game_over"
-const SFX_PAN_SOURCE_SCALE := 0.3125
-const SFX_PAN_SOURCE_OFFSET := -100.0
-const SFX_PAN_MIN := -100.0
-const SFX_PAN_MAX := 100.0
-const SFX_BEE_SPAWN_PAN100 := -100.0
+const BONUS_ADD_STANDARD_BALL := BonusCatalogScript.BONUS_ADD_STANDARD_BALL
+const BONUS_ADD_FIREBALL := BonusCatalogScript.BONUS_ADD_FIREBALL
+const BONUS_NON_STRICKED_BALLS := BonusCatalogScript.BONUS_NON_STRICKED_BALLS
+const BONUS_DECREASE_BALL_SIZE := BonusCatalogScript.BONUS_DECREASE_BALL_SIZE
+const BONUS_INCREASE_BALL_SIZE := BonusCatalogScript.BONUS_INCREASE_BALL_SIZE
+const BONUS_INCREASE_BALL_SPEED := BonusCatalogScript.BONUS_INCREASE_BALL_SPEED
+const BONUS_DECREASE_BALL_SPEED := BonusCatalogScript.BONUS_DECREASE_BALL_SPEED
+const BONUS_SHOOTING_PADDLE_TIMED := BonusCatalogScript.BONUS_SHOOTING_PADDLE_TIMED
+const BONUS_SHOOTING_PADDLE_CONTINUOUS := BonusCatalogScript.BONUS_SHOOTING_PADDLE_CONTINUOUS
+const BONUS_SHRINK_PADDLE := BonusCatalogScript.BONUS_SHRINK_PADDLE
+const BONUS_EXPAND_PADDLE := BonusCatalogScript.BONUS_EXPAND_PADDLE
+const BONUS_DOUBLE_PADDLE := BonusCatalogScript.BONUS_DOUBLE_PADDLE
+const BONUS_MAGNET_PADDLE := BonusCatalogScript.BONUS_MAGNET_PADDLE
+const BONUS_BACK_WALL := BonusCatalogScript.BONUS_BACK_WALL
+const BONUS_EXTRA_LIFE := BonusCatalogScript.BONUS_EXTRA_LIFE
+const BONUS_DESTROY_ONE_BALL := BonusCatalogScript.BONUS_DESTROY_ONE_BALL
+const BONUS_RANDOM_BONUS := BonusCatalogScript.BONUS_RANDOM_BONUS
+const BONUS_ONE_STRIKE_BRICKS := BonusCatalogScript.BONUS_ONE_STRIKE_BRICKS
+const BONUS_DRUNK_PADDLE := BonusCatalogScript.BONUS_DRUNK_PADDLE
+const BONUS_EXPAND_EXPLODING := BonusCatalogScript.BONUS_EXPAND_EXPLODING
+const BONUS_JUMP_TO_NEXT_LEVEL := BonusCatalogScript.BONUS_JUMP_TO_NEXT_LEVEL
+const BONUS_EXPLODE_ALL_EXPLODINGS := BonusCatalogScript.BONUS_EXPLODE_ALL_EXPLODINGS
+const BONUS_TYPE_NAMES := BonusCatalogScript.BONUS_TYPE_NAMES
+const SUPPORTED_BONUS_EFFECTS := BonusCatalogScript.SUPPORTED_BONUS_EFFECTS
+const CHAIN_SELECTOR_TILE_IDS := BonusCatalogScript.CHAIN_SELECTOR_TILE_IDS
+const BONUS_DISPLAY_INCREMENT_IDS := BonusCatalogScript.BONUS_DISPLAY_INCREMENT_IDS
+const SFX_EVENT_BALL_LAUNCH := GameplayEventsScript.SFX_EVENT_BALL_LAUNCH
+const SFX_EVENT_RACKET_BOUNCE := GameplayEventsScript.SFX_EVENT_RACKET_BOUNCE
+const SFX_EVENT_BACK_WALL_BOUNCE := GameplayEventsScript.SFX_EVENT_BACK_WALL_BOUNCE
+const SFX_EVENT_BRICK_CLEAR := GameplayEventsScript.SFX_EVENT_BRICK_CLEAR
+const SFX_EVENT_HARD_BRICK_HIT := GameplayEventsScript.SFX_EVENT_HARD_BRICK_HIT
+const SFX_EVENT_CHAIN_EXPLOSION := GameplayEventsScript.SFX_EVENT_CHAIN_EXPLOSION
+const SFX_EVENT_BONUS_SPAWN := GameplayEventsScript.SFX_EVENT_BONUS_SPAWN
+const SFX_EVENT_BONUS_EXPIRE := GameplayEventsScript.SFX_EVENT_BONUS_EXPIRE
+const SFX_EVENT_BONUS_COLLECT := GameplayEventsScript.SFX_EVENT_BONUS_COLLECT
+const SFX_EVENT_BONUS_APPLY := GameplayEventsScript.SFX_EVENT_BONUS_APPLY
+const SFX_EVENT_BONUS_ADD_BALL_APPLY := GameplayEventsScript.SFX_EVENT_BONUS_ADD_BALL_APPLY
+const SFX_EVENT_BONUS_DESTROY_BALL_APPLY := GameplayEventsScript.SFX_EVENT_BONUS_DESTROY_BALL_APPLY
+const SFX_EVENT_BONUS_JUMP_LEVEL_APPLY := GameplayEventsScript.SFX_EVENT_BONUS_JUMP_LEVEL_APPLY
+const SFX_EVENT_PROJECTILE_FIRE := GameplayEventsScript.SFX_EVENT_PROJECTILE_FIRE
+const SFX_EVENT_PROJECTILE_HIT := GameplayEventsScript.SFX_EVENT_PROJECTILE_HIT
+const SFX_EVENT_MONSTER_SPAWN := GameplayEventsScript.SFX_EVENT_MONSTER_SPAWN
+const SFX_EVENT_MONSTER_EXPIRE := GameplayEventsScript.SFX_EVENT_MONSTER_EXPIRE
+const SFX_EVENT_MONSTER_HIT := GameplayEventsScript.SFX_EVENT_MONSTER_HIT
+const SFX_EVENT_BEE_SPAWN := GameplayEventsScript.SFX_EVENT_BEE_SPAWN
+const SFX_EVENT_BEE_STOP := GameplayEventsScript.SFX_EVENT_BEE_STOP
+const SFX_EVENT_LIFE_LOST := GameplayEventsScript.SFX_EVENT_LIFE_LOST
+const SFX_EVENT_LEVEL_READY := GameplayEventsScript.SFX_EVENT_LEVEL_READY
+const SFX_EVENT_LEVEL_COMPLETE := GameplayEventsScript.SFX_EVENT_LEVEL_COMPLETE
+const SFX_EVENT_GAME_OVER := GameplayEventsScript.SFX_EVENT_GAME_OVER
+const SFX_PAN_SOURCE_SCALE := GameplayEventsScript.SFX_PAN_SOURCE_SCALE
+const SFX_PAN_SOURCE_OFFSET := GameplayEventsScript.SFX_PAN_SOURCE_OFFSET
+const SFX_PAN_MIN := GameplayEventsScript.SFX_PAN_MIN
+const SFX_PAN_MAX := GameplayEventsScript.SFX_PAN_MAX
+const SFX_BEE_SPAWN_PAN100 := GameplayEventsScript.SFX_BEE_SPAWN_PAN100
 
 var board_state
 var state := STATE_READY
@@ -474,15 +424,24 @@ var _low_block_timer_started := false
 var _ball_track_spawn_elapsed: Array[float] = []
 var _audio_events: Array[Dictionary] = []
 var _audio_event_queue
+var _ball_system
 var _ball_track_pool
+var _bonus_system
 var _enemy_hazard_system
 var _projectile_system
+var _gameplay_context
+var _racket_system
 var _transient_vfx_pool
 
 
 func _init() -> void:
 	_audio_event_queue = AudioEventQueueScript.new(_audio_events)
+	_ball_system = BallSystemScript.new(balls, _ball_animation_rng)
 	_ball_track_pool = BallTrackPoolScript.new(ball_tracks, _ball_track_spawn_elapsed, _ball_track_rng)
+	_bonus_system = BonusSystemScript.new(falling_bonuses, bonus_stack)
+	_gameplay_context = GameplayContextScript.new(self)
+	_racket_system = RacketSystemScript.new()
+	_racket_system.sync_from_facade(self)
 	_enemy_hazard_system = EnemyHazardSystemScript.new(monsters, bees, snake_segments, _monster_rng, _collision_rng)
 	_projectile_system = ProjectileSystemScript.new(projectiles)
 	_transient_vfx_pool = TransientVfxPoolScript.new(impact_effects, score_popups)
@@ -513,7 +472,7 @@ func start_run(level: KrakoutLevelData, selected_display_level_number: int = 1, 
 
 func advance_to_level(level: KrakoutLevelData, next_display_level_number: int) -> void:
 	display_level_number = max(1, next_display_level_number)
-	falling_bonuses.clear()
+	_bonus_system.clear_falling()
 	_clear_monster_state()
 	_clear_timed_bonus_state()
 	_reset_bonus_drop_gate()
@@ -525,7 +484,7 @@ func set_board_state(state_value) -> void:
 	_audio_event_queue.clear()
 	board_state = state_value
 	_load_bonus_stock_from_level(board_state.source_level if board_state != null else null)
-	falling_bonuses.clear()
+	_bonus_system.clear_falling()
 	_clear_timed_bonus_state()
 	_reset_bonus_drop_gate()
 	reset_round()
@@ -534,9 +493,9 @@ func set_board_state(state_value) -> void:
 func reset_round() -> void:
 	state = STATE_READY
 	board_changed = false
-	balls.clear()
+	_ball_system.clear()
 	_clear_ball_tracks()
-	falling_bonuses.clear()
+	_bonus_system.clear_falling()
 	_clear_monster_state()
 	_clear_score_popups()
 	_clear_timed_bonus_state()
@@ -599,41 +558,47 @@ func _load_board_for_level(level: KrakoutLevelData) -> void:
 
 
 func move_racket_to(mouse_y: float, mouse_x = null) -> void:
+	_racket_system.sync_from_facade(self)
 	if is_racket_stunned():
-		_remember_racket_input(mouse_y, mouse_x)
+		_racket_system.remember_input(mouse_y, mouse_x)
+		_racket_system.sync_to_facade(self)
 		return
 	if is_level_ready_prompt_visible():
-		_remember_racket_input(mouse_y, mouse_x)
+		_racket_system.remember_input(mouse_y, mouse_x)
+		_racket_system.sync_to_facade(self)
 		return
-	var current_height := current_racket_height()
-	var target_center_y := mouse_y
-	var mouse_delta_x := _mouse_delta_x(mouse_x)
+	var current_height: float = _racket_system.current_height()
+	var target_center_y: float = mouse_y
+	var mouse_delta_x: float = _racket_system.mouse_delta_x(mouse_x)
 	if is_drunk_paddle_active():
-		if _has_last_racket_input:
-			target_center_y = racket_y + current_height * 0.5 - (mouse_y - _last_racket_input_y)
+		if _racket_system.has_last_input:
+			target_center_y = _racket_system.y + current_height * 0.5 - (mouse_y - _racket_system.last_input_y)
 		else:
-			target_center_y = racket_y + current_height * 0.5
+			target_center_y = _racket_system.y + current_height * 0.5
 		mouse_delta_x = -mouse_delta_x
-	_update_double_paddle_x(mouse_delta_x)
-	_remember_racket_input(mouse_y, mouse_x)
-	racket_y = clampf(target_center_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
+	_racket_system.update_double_paddle_x(mouse_delta_x)
+	_racket_system.remember_input(mouse_y, mouse_x)
+	_racket_system.y = clampf(target_center_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
+	_racket_system.sync_to_facade(self)
 	if state == STATE_READY or state == STATE_BALL_LOST:
 		_attach_ready_balls()
 
 
 func move_racket_by_mouse_delta(mouse_delta_y: float, mouse_delta_x: float = 0.0) -> void:
+	_racket_system.sync_from_facade(self)
 	if is_racket_stunned():
 		return
 	if is_level_ready_prompt_visible():
 		return
-	var current_height := current_racket_height()
-	var target_center_y := racket_y + current_height * 0.5 + mouse_delta_y
-	var adjusted_mouse_delta_x := mouse_delta_x
+	var current_height: float = _racket_system.current_height()
+	var target_center_y: float = _racket_system.y + current_height * 0.5 + mouse_delta_y
+	var adjusted_mouse_delta_x: float = mouse_delta_x
 	if is_drunk_paddle_active():
-		target_center_y = racket_y + current_height * 0.5 - mouse_delta_y
+		target_center_y = _racket_system.y + current_height * 0.5 - mouse_delta_y
 		adjusted_mouse_delta_x = -adjusted_mouse_delta_x
-	_update_double_paddle_x(adjusted_mouse_delta_x)
-	racket_y = clampf(target_center_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
+	_racket_system.update_double_paddle_x(adjusted_mouse_delta_x)
+	_racket_system.y = clampf(target_center_y - current_height * 0.5, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_height)
+	_racket_system.sync_to_facade(self)
 	if state == STATE_READY or state == STATE_BALL_LOST:
 		_attach_ready_balls()
 
@@ -736,11 +701,7 @@ func consume_board_changed() -> bool:
 
 
 func visible_balls() -> Array[Dictionary]:
-	var visible: Array[Dictionary] = []
-	for ball: Dictionary in balls:
-		if bool(ball.get("active", false)):
-			visible.append(ball)
-	return visible
+	return _ball_system.visible_balls()
 
 
 func set_ball_tracks_enabled(is_enabled: bool) -> void:
@@ -786,10 +747,7 @@ func visible_impact_effects() -> Array[Dictionary]:
 
 
 func bonus_stack_entries() -> Array[Dictionary]:
-	var entries: Array[Dictionary] = []
-	for entry: Dictionary in bonus_stack:
-		entries.append(entry.duplicate())
-	return entries
+	return _bonus_system.stack_entries()
 
 
 func debug_add_bonus_to_stack(type_id: int) -> Dictionary:
@@ -824,8 +782,7 @@ func debug_remove_bonus_from_stack(index: int) -> Dictionary:
 			"index": index,
 			"count": bonus_stack.size(),
 		}
-	var removed_entry: Dictionary = bonus_stack[index].duplicate()
-	bonus_stack.remove_at(index)
+	var removed_entry: Dictionary = _bonus_system.remove_stack_entry(index)
 	var type_id := int(removed_entry.get("type_id", -1))
 	return {
 		"status": "removed",
@@ -837,9 +794,7 @@ func debug_remove_bonus_from_stack(index: int) -> Dictionary:
 
 
 func debug_clear_bonus_stack() -> int:
-	var removed_count := bonus_stack.size()
-	bonus_stack.clear()
-	return removed_count
+	return _bonus_system.clear_stack()
 
 
 static func snake_runtime_activation_evidence() -> Dictionary:
@@ -987,18 +942,22 @@ func is_single_shot_paddle_armed() -> bool:
 
 
 func is_double_paddle_active() -> bool:
+	_racket_system.sync_from_facade(self)
 	return _double_paddle_active
 
 
 func is_magnet_paddle_active() -> bool:
+	_racket_system.sync_from_facade(self)
 	return _magnet_paddle_active
 
 
 func is_drunk_paddle_active() -> bool:
+	_racket_system.sync_from_facade(self)
 	return _drunk_paddle_time_remaining > 0.0
 
 
 func drunk_paddle_time_remaining() -> float:
+	_racket_system.sync_from_facade(self)
 	return _drunk_paddle_time_remaining
 
 
@@ -1015,10 +974,12 @@ func is_racket_stunned() -> bool:
 
 
 func current_racket_visual_mode() -> int:
+	_racket_system.sync_from_facade(self)
 	return racket_visual_mode
 
 
 func current_racket_visual_frame() -> int:
+	_racket_system.sync_from_facade(self)
 	return racket_visual_frame
 
 
@@ -1047,7 +1008,7 @@ func fire_shooting_paddle() -> Dictionary:
 
 
 static func sfx_pan100_for_source_x(source_x: float) -> float:
-	return AudioEventQueueScript.sfx_pan100_for_source_x(source_x)
+	return GameplayEventsScript.pan100_for_source_x(source_x)
 
 
 static func sfx_pan_for_source_x(source_x: float) -> float:
@@ -1114,45 +1075,46 @@ func _should_queue_generic_bonus_apply_event(type_id: int) -> bool:
 
 
 static func bonus_type_name(type_id: int) -> String:
-	if type_id >= 0 and type_id < BONUS_TYPE_NAMES.size():
-		return String(BONUS_TYPE_NAMES[type_id])
-	return "Unknown Bonus"
+	var name := BonusCatalogScript.bonus_type_name(type_id)
+	if name == "Unknown":
+		return "Unknown Bonus"
+	return name
 
 
 static func monster_trait_for_type(type_id: int) -> Dictionary:
-	return EnemyHazardSystemScript.monster_trait_for_type(type_id)
+	return EnemyRulesScript.monster_trait_for_type(type_id)
 
 
 static func monster_spawn_pool() -> Array[int]:
-	return EnemyHazardSystemScript.monster_spawn_pool()
+	return EnemyRulesScript.monster_spawn_pool()
 
 
 static func monster_frame_count_for_type(type_id: int) -> int:
-	return EnemyHazardSystemScript.monster_frame_count_for_type(type_id)
+	return EnemyRulesScript.monster_frame_count_for_type(type_id)
 
 
 static func monster_motion_mode_for_type(type_id: int) -> String:
-	return EnemyHazardSystemScript.monster_motion_mode_for_type(type_id)
+	return EnemyRulesScript.monster_motion_mode_for_type(type_id)
 
 
 static func monster_collision_offset_for_type(type_id: int) -> Vector2:
-	return EnemyHazardSystemScript.monster_collision_offset_for_type(type_id)
+	return EnemyRulesScript.monster_collision_offset_for_type(type_id)
 
 
 static func monster_collision_size_for_type(type_id: int) -> Vector2:
-	return EnemyHazardSystemScript.monster_collision_size_for_type(type_id)
+	return EnemyRulesScript.monster_collision_size_for_type(type_id)
 
 
 static func monster_stuns_racket(type_id: int) -> bool:
-	return EnemyHazardSystemScript.monster_stuns_racket(type_id)
+	return EnemyRulesScript.monster_stuns_racket(type_id)
 
 
 static func monster_type_is_original_spawned(type_id: int) -> bool:
-	return EnemyHazardSystemScript.monster_type_is_original_spawned(type_id)
+	return EnemyRulesScript.monster_type_is_original_spawned(type_id)
 
 
 static func _monster_score_mode_for_type(type_id: int, contact_key: String) -> String:
-	return EnemyHazardSystemScript._monster_score_mode_for_type(type_id, contact_key)
+	return EnemyRulesScript.monster_score_mode_for_type(type_id, contact_key)
 
 
 static func _monster_trait_value(type_id: int, key: String, default_value):
@@ -1216,7 +1178,7 @@ func set_monster_age_for_test(index: int, age: float) -> bool:
 
 
 func active_ball_count() -> int:
-	return visible_balls().size()
+	return _ball_system.active_count()
 
 
 func active_projectile_count() -> int:
@@ -1236,31 +1198,27 @@ func active_snake_segment_count() -> int:
 
 
 func current_racket_height() -> float:
-	return RACKET_SEGMENT_PIXEL_STEP * float(racket_segment_count) + RACKET_SEGMENT_MARGIN
+	_racket_system.sync_from_facade(self)
+	return _racket_system.current_height()
 
 
 func current_racket_x() -> float:
-	return RACKET_X + _racket_hit_recoil_offset_x
+	_racket_system.sync_from_facade(self)
+	return _racket_system.current_x()
 
 
 func racket_rect() -> Rect2:
-	return Rect2(Vector2(current_racket_x(), racket_y), Vector2(RACKET_WIDTH, current_racket_height()))
+	_racket_system.sync_from_facade(self)
+	return _racket_system.primary_rect()
 
 
 func racket_rects() -> Array[Rect2]:
-	var rects: Array[Rect2] = []
-	rects.append(racket_rect())
-	if is_double_paddle_active():
-		rects.append(Rect2(
-			Vector2(_double_paddle_x, racket_y),
-			Vector2(RACKET_WIDTH, current_racket_height())
-		))
-	return rects
+	_racket_system.sync_from_facade(self)
+	return _racket_system.rects()
 
 
 func ball_rect(ball: Dictionary) -> Rect2:
-	var size := float(ball.get("size", BALL_SIZE))
-	return Rect2(ball.get("position", Vector2.ZERO), Vector2(size, size))
+	return _ball_system.ball_rect(ball)
 
 
 func projectile_rect(projectile: Dictionary) -> Rect2:
@@ -1294,33 +1252,15 @@ func first_ball_velocity() -> Vector2:
 func first_ball_type_id() -> int:
 	if balls.is_empty():
 		return BALL_TYPE_STANDARD
-	return _ball_type(balls[0])
+	return _ball_system.ball_type(balls[0])
 
 
 func active_non_stricked_ball_count() -> int:
-	var count := 0
-	for ball: Dictionary in balls:
-		if bool(ball.get("active", false)) and _is_non_stricked_ball(ball):
-			count += 1
-	return count
+	return _ball_system.active_non_stricked_count()
 
 
 func force_ball(position: Vector2, velocity: Vector2, size: float = BALL_SIZE, type_id: int = BALL_TYPE_STANDARD) -> void:
-	balls = [{
-		"active": true,
-		"position": position,
-		"velocity": velocity,
-		"size": size,
-		"type_id": type_id,
-		"previous_type_id": BALL_TYPE_STANDARD,
-		"non_stricked_time_remaining": 0.0,
-		"frame": 0,
-		"frame_elapsed": 0.0,
-		"speed_scale": ball_speed_scale,
-		"target_speed": _target_speed_for_new_ball(velocity),
-		"speed_hit_count": 0,
-		"magnet_attached": false,
-	}]
+	_ball_system.force_ball(position, velocity, size, type_id, ball_speed_scale, _target_speed_for_new_ball(velocity))
 	_clear_ball_tracks()
 	state = STATE_PLAYING
 
@@ -1348,24 +1288,15 @@ func _add_ready_ball() -> void:
 
 
 func _add_ball(position: Vector2, velocity: Vector2, active := true, type_id := BALL_TYPE_STANDARD) -> bool:
-	if balls.size() >= MAX_BALLS:
-		return false
-	balls.append({
-		"active": active,
-		"position": position,
-		"velocity": velocity,
-		"size": ball_size,
-		"type_id": type_id,
-		"previous_type_id": BALL_TYPE_STANDARD,
-		"non_stricked_time_remaining": 0.0,
-		"frame": _ball_animation_rng.next_mod(BALL_FRAME_COUNT),
-		"frame_elapsed": 0.0,
-		"speed_scale": ball_speed_scale,
-		"target_speed": _target_speed_for_new_ball(velocity),
-		"speed_hit_count": 0,
-		"magnet_attached": false,
-	})
-	return true
+	return _ball_system.add_ball(
+		position,
+		velocity,
+		active,
+		ball_size,
+		type_id,
+		ball_speed_scale,
+		_target_speed_for_new_ball(velocity)
+	)
 
 
 func _add_active_standard_ball() -> bool:
@@ -1398,12 +1329,11 @@ func _ready_ball_position() -> Vector2:
 
 
 func _ball_type(ball: Dictionary) -> int:
-	return int(ball.get("type_id", BALL_TYPE_STANDARD))
+	return _ball_system.ball_type(ball)
 
 
 func _is_non_stricked_ball(ball: Dictionary) -> bool:
-	return _ball_type(ball) == BALL_TYPE_NON_STRICKED \
-		and float(ball.get("non_stricked_time_remaining", 0.0)) > 0.0
+	return _ball_system.is_non_stricked_ball(ball)
 
 
 func _ball_force_breaks_board(ball: Dictionary) -> bool:
@@ -1428,12 +1358,9 @@ func _restore_ball_type_after_non_stricked(ball: Dictionary) -> void:
 
 
 func _reset_racket_to_ready_center() -> void:
-	_clear_racket_hit_recoil()
-	racket_y = clampf(
-		RACKET_READY_CENTER_Y - current_racket_height() * 0.5,
-		RACKET_MIN_Y,
-		RACKET_MAX_BOTTOM - current_racket_height()
-	)
+	_racket_system.sync_from_facade(self)
+	_racket_system.reset_to_ready_center()
+	_racket_system.sync_to_facade(self)
 	if state == STATE_READY or state == STATE_BALL_LOST:
 		_attach_ready_balls()
 
@@ -1499,19 +1426,7 @@ func _advance_ball(ball: Dictionary, delta: float) -> void:
 
 
 func _update_ball_animation(delta: float) -> void:
-	for index in range(balls.size()):
-		var ball := balls[index]
-		if not bool(ball.get("active", false)):
-			continue
-
-		var frame_elapsed := float(ball.get("frame_elapsed", 0.0)) + delta
-		var frame := int(ball.get("frame", 0))
-		while frame_elapsed >= BALL_FRAME_SECONDS:
-			frame = (frame + 1) % BALL_FRAME_COUNT
-			frame_elapsed -= BALL_FRAME_SECONDS
-		ball["frame"] = frame
-		ball["frame_elapsed"] = frame_elapsed
-		balls[index] = ball
+	_ball_system.update_animation(delta)
 
 
 func _update_ball_tracks(delta: float) -> void:
@@ -1929,8 +1844,8 @@ func _load_bonus_stock_from_level(level: KrakoutLevelData) -> void:
 
 
 func _clear_bonus_run_state() -> void:
-	falling_bonuses.clear()
-	bonus_stack.clear()
+	_bonus_system.clear_falling()
+	_bonus_system.clear_stack()
 	bonus_pointer_frame = 0
 	_bonus_pointer_elapsed = 0.0
 	_clear_timed_bonus_state()
@@ -2035,80 +1950,50 @@ func _update_non_stricked_balls(delta: float) -> void:
 
 
 func _set_racket_visual_target(visual_mode: int) -> void:
-	_racket_visual_target_mode = visual_mode
-	if visual_mode != RACKET_VISUAL_MODE_NORMAL:
-		racket_visual_mode = visual_mode
-	elif racket_visual_frame <= 0:
-		racket_visual_mode = RACKET_VISUAL_MODE_NORMAL
+	_racket_system.sync_from_facade(self)
+	_racket_system.set_visual_target(visual_mode)
+	_racket_system.sync_to_facade(self)
 
 
 func _update_racket_visual(delta: float) -> void:
-	_racket_visual_elapsed += delta
-	while _racket_visual_elapsed >= RACKET_VISUAL_FRAME_SECONDS:
-		_racket_visual_elapsed -= RACKET_VISUAL_FRAME_SECONDS
-		if _racket_visual_target_mode == RACKET_VISUAL_MODE_NORMAL:
-			if racket_visual_frame > 0:
-				racket_visual_frame -= 1
-			if racket_visual_frame <= 0:
-				racket_visual_frame = 0
-				racket_visual_mode = RACKET_VISUAL_MODE_NORMAL
-		elif _racket_visual_target_mode == RACKET_VISUAL_MODE_MAGNET:
-			racket_visual_mode = RACKET_VISUAL_MODE_MAGNET
-			racket_visual_frame = (racket_visual_frame + 1) % RACKET_MAGNET_VISUAL_FRAME_COUNT
-		else:
-			racket_visual_mode = _racket_visual_target_mode
-			if racket_visual_frame < RACKET_VISUAL_MAX_FRAME:
-				racket_visual_frame += 1
+	_racket_system.sync_from_facade(self)
+	_racket_system.update_visual(delta)
+	_racket_system.sync_to_facade(self)
 
 
 func _start_racket_hit_recoil() -> void:
-	_racket_hit_recoil_offset_x = RACKET_HIT_RECOIL_PIXELS
-	_racket_hit_recoil_elapsed = 0.0
+	_racket_system.sync_from_facade(self)
+	_racket_system.start_hit_recoil()
+	_racket_system.sync_to_facade(self)
 
 
 func _clear_racket_hit_recoil() -> void:
-	_racket_hit_recoil_offset_x = 0.0
-	_racket_hit_recoil_elapsed = 0.0
+	_racket_system.sync_from_facade(self)
+	_racket_system.clear_hit_recoil()
+	_racket_system.sync_to_facade(self)
 
 
 func _update_racket_hit_recoil(delta: float) -> void:
-	if _racket_hit_recoil_offset_x <= 0.0:
-		_clear_racket_hit_recoil()
-		return
-
-	_racket_hit_recoil_elapsed += delta
-	while _racket_hit_recoil_elapsed > RACKET_HIT_RECOIL_STEP_SECONDS and _racket_hit_recoil_offset_x > 0.0:
-		_racket_hit_recoil_elapsed -= RACKET_HIT_RECOIL_STEP_SECONDS
-		_racket_hit_recoil_offset_x = maxf(0.0, _racket_hit_recoil_offset_x - RACKET_HIT_RECOIL_STEP_PIXELS)
-	if _racket_hit_recoil_offset_x <= 0.0:
-		_clear_racket_hit_recoil()
+	_racket_system.sync_from_facade(self)
+	_racket_system.update_hit_recoil(delta)
+	_racket_system.sync_to_facade(self)
 
 
 func _mouse_delta_x(mouse_x) -> float:
-	if mouse_x == null:
-		return 0.0
-	var next_mouse_x := float(mouse_x)
-	if not _has_last_racket_x_input:
-		return 0.0
-	return next_mouse_x - _last_racket_input_x
+	_racket_system.sync_from_facade(self)
+	return _racket_system.mouse_delta_x(mouse_x)
 
 
 func _remember_racket_input(mouse_y: float, mouse_x = null) -> void:
-	_last_racket_input_y = mouse_y
-	_has_last_racket_input = true
-	if mouse_x != null:
-		_last_racket_input_x = float(mouse_x)
-		_has_last_racket_x_input = true
+	_racket_system.sync_from_facade(self)
+	_racket_system.remember_input(mouse_y, mouse_x)
+	_racket_system.sync_to_facade(self)
 
 
 func _update_double_paddle_x(mouse_delta_x: float) -> void:
-	if not is_double_paddle_active() or is_zero_approx(mouse_delta_x):
-		return
-	_double_paddle_x = clampf(
-		_double_paddle_x + mouse_delta_x * DOUBLE_PADDLE_MOUSE_X_MULTIPLIER,
-		DOUBLE_PADDLE_MIN_X,
-		RACKET_X + DOUBLE_PADDLE_OFFSET_X
-	)
+	_racket_system.sync_from_facade(self)
+	_racket_system.update_double_paddle_x(mouse_delta_x)
+	_racket_system.sync_to_facade(self)
 
 
 func _clear_paddle_mode_state(release_attached_balls := true) -> void:
@@ -2116,15 +2001,11 @@ func _clear_paddle_mode_state(release_attached_balls := true) -> void:
 		_release_magnet_attached_balls()
 	else:
 		_clear_all_magnet_attachments()
-	_double_paddle_active = false
-	_double_paddle_x = RACKET_X + DOUBLE_PADDLE_OFFSET_X
-	_magnet_paddle_active = false
 	_shooting_paddle_mode = PROJECTILE_MODE_DISABLED
 	_single_shot_projectile_armed = false
-	racket_visual_mode = RACKET_VISUAL_MODE_NORMAL
-	racket_visual_frame = 0
-	_racket_visual_target_mode = RACKET_VISUAL_MODE_NORMAL
-	_racket_visual_elapsed = 0.0
+	_racket_system.sync_from_facade(self)
+	_racket_system.clear_paddle_mode_state()
+	_racket_system.sync_to_facade(self)
 
 
 func _is_ball_magnet_attached(ball: Dictionary) -> bool:
@@ -2226,14 +2107,7 @@ func _bounce_ball_from_racket(ball: Dictionary, racket_hit_rect: Rect2) -> void:
 
 
 func _racket_bounce_velocity(ball_hit_rect: Rect2, racket_hit_rect: Rect2, speed: float) -> Vector2:
-	var racket_height := racket_hit_rect.size.y
-	var racket_center := racket_hit_rect.get_center().y
-	var ball_center := ball_hit_rect.get_center().y
-	var normalized_hit := clampf((ball_center - racket_center) / (racket_height * 0.5), -1.0, 1.0)
-	var max_y_speed := minf(RACKET_BOUNCE_MAX_Y_SPEED, speed * 0.95)
-	var velocity_y := normalized_hit * max_y_speed
-	var velocity_x := -sqrt(maxf(0.0, speed * speed - velocity_y * velocity_y))
-	return Vector2(velocity_x, velocity_y)
+	return RacketRulesScript.bounce_velocity(ball_hit_rect, racket_hit_rect, speed)
 
 
 func _bonus_intersects_any_racket(bonus: Dictionary) -> bool:
@@ -2371,17 +2245,7 @@ func _collide_projectile_with_board(projectile: Dictionary) -> bool:
 
 
 func _enemy_hazard_ports() -> Dictionary:
-	return {
-		"racket_rect": Callable(self, "racket_rect"),
-		"racket_segment_count": Callable(self, "_current_racket_segment_count"),
-		"projectile_rect": Callable(self, "projectile_rect"),
-		"target_speed_for_ball": Callable(self, "_target_speed_for_ball"),
-		"award_score_with_popup": Callable(self, "_award_score_with_popup"),
-		"spawn_impact_effect": Callable(self, "_spawn_impact_effect"),
-		"queue_audio_event": Callable(self, "_queue_audio_event"),
-		"queue_audio_event_at_x": Callable(self, "_queue_audio_event_at_x"),
-		"queue_audio_event_with_pan100": Callable(self, "_queue_audio_event_with_pan100"),
-	}
+	return _gameplay_context.to_ports()
 
 
 func _current_racket_segment_count() -> int:
@@ -2528,21 +2392,11 @@ func bonus_rect(bonus: Dictionary) -> Rect2:
 
 
 func _push_bonus_stack(type_id: int) -> bool:
-	if bonus_stack.size() >= MAX_STACKED_BONUSES:
-		return false
-
-	bonus_stack.append({
-		"type_id": clampi(type_id, 0, BONUS_TYPE_COUNT - 1),
-		"frame": 0,
-		"frame_elapsed": 0.0,
-	})
-	return true
+	return _bonus_system.push_stack(clampi(type_id, 0, BONUS_TYPE_COUNT - 1))
 
 
 func _consume_next_bonus() -> void:
-	if bonus_stack.is_empty():
-		return
-	bonus_stack.remove_at(0)
+	_bonus_system.consume_next_stack_entry()
 
 
 func _update_bonus_stack(delta: float) -> void:
@@ -2678,13 +2532,9 @@ func _activate_non_stricked_balls() -> Dictionary:
 
 
 func _adjust_racket_segments(delta_segments: int) -> Dictionary:
-	if delta_segments < 0:
-		if racket_segment_count > RACKET_SHRINK_LIMIT_SEGMENTS:
-			racket_segment_count += delta_segments
-	elif delta_segments > 0:
-		if racket_segment_count < RACKET_EXPAND_LIMIT_SEGMENTS:
-			racket_segment_count += delta_segments
-	racket_y = clampf(racket_y, RACKET_MIN_Y, RACKET_MAX_BOTTOM - current_racket_height())
+	_racket_system.sync_from_facade(self)
+	_racket_system.adjust_segments(delta_segments)
+	_racket_system.sync_to_facade(self)
 	_update_magnet_attached_ball_positions()
 	if state == STATE_READY or state == STATE_BALL_LOST:
 		_attach_ready_balls()
@@ -2702,7 +2552,9 @@ func _activate_back_wall() -> Dictionary:
 
 func _activate_double_paddle() -> Dictionary:
 	_clear_paddle_mode_state()
-	_double_paddle_active = true
+	_racket_system.sync_from_facade(self)
+	_racket_system.double_paddle_active = true
+	_racket_system.sync_to_facade(self)
 	return {
 		"effect": "double_paddle",
 		"active": true,
@@ -2712,7 +2564,9 @@ func _activate_double_paddle() -> Dictionary:
 
 func _activate_magnet_paddle() -> Dictionary:
 	_clear_paddle_mode_state()
-	_magnet_paddle_active = true
+	_racket_system.sync_from_facade(self)
+	_racket_system.magnet_paddle_active = true
+	_racket_system.sync_to_facade(self)
 	_set_racket_visual_target(RACKET_VISUAL_MODE_MAGNET)
 	return {
 		"effect": "magnet_paddle",
@@ -2721,7 +2575,9 @@ func _activate_magnet_paddle() -> Dictionary:
 
 
 func _activate_drunk_paddle() -> Dictionary:
-	_drunk_paddle_time_remaining += DRUNK_PADDLE_DURATION_SECONDS
+	_racket_system.sync_from_facade(self)
+	_racket_system.drunk_time_remaining += DRUNK_PADDLE_DURATION_SECONDS
+	_racket_system.sync_to_facade(self)
 	return {
 		"effect": "drunk_paddle",
 		"seconds_remaining": _drunk_paddle_time_remaining,
@@ -2870,9 +2726,9 @@ func _handle_round_lost() -> void:
 	lives_remaining -= 1
 	if lives_remaining < 0:
 		state = STATE_GAME_OVER
-		balls.clear()
+		_ball_system.clear()
 		_clear_ball_tracks()
-		falling_bonuses.clear()
+		_bonus_system.clear_falling()
 		_clear_level_ready_sequence()
 		_clear_timed_bonus_state()
 		_clear_monster_state()
